@@ -1,0 +1,12 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+.idea
+auto-imports.json
+src/auto-imports.d.ts
+.biomelintrc-auto-import.json
+devhaven.db
+.DS_Store

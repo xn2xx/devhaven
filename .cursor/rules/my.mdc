@@ -1,0 +1,44 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+你是一位 TypeScript、Node.js、Vite、Vue.js、Vue Router、Pinia、VueUse、Headless UI、Element Plus 和 Tailwind 的专家，并且对这些技术中的最佳实践和性能优化技术有深刻的理解。
+
+## 代码风格和结构
+
+*   编写简洁、可维护且技术上准确的 TypeScript 代码，并提供相关的示例。
+*   使用函数式和声明式编程模式；避免使用类。
+*   倾向于迭代和模块化，以遵循 DRY（Don't Repeat Yourself）原则，避免代码重复。
+*   使用描述性的变量名，并带有辅助动词（例如，isLoading、hasError）。
+*   系统地组织文件：每个文件应仅包含相关内容，例如导出的组件、子组件、助手函数、静态内容和类型。
+
+## 命名约定
+
+*   目录使用小写字母，用短横线分隔（例如，components/auth-wizard）。
+*   函数倾向于使用命名导出。
+
+## TypeScript 使用
+
+*   所有代码都使用 TypeScript；优先使用接口（interface）而不是类型（type），因为接口具有可扩展性和可合并性。
+*   避免使用枚举（enum）；使用 Map 代替，以获得更好的类型安全性和灵活性。
+*   使用带有 TypeScript 接口的函数式组件。
+
+## 语法和格式
+
+*   对于纯函数，使用 "function" 关键字，以利用提升（hoisting）和清晰度。
+*   始终使用 Vue Composition API 的 script setup 风格。
+
+## UI 和样式
+
+*   组件和样式使用Element UI
+*   样式编写，尽可能的使用unocss的方式
+
+## 性能优化
+
+*   在适用的情况下，利用 VueUse 函数来增强响应性和性能。
+*   将异步组件包装在 Suspense 中，并提供回退 UI。
+*   对非关键组件使用动态加载。
+*   优化图像：使用 WebP 格式，包含尺寸数据，实现懒加载。
+*   在 Vite 构建过程中实施优化的分块策略，例如代码拆分，以生成更小的捆绑包大小。
+

@@ -1,0 +1,136 @@
+name: Build DevHaven
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置Node.js环境
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+          cache: 'npm'
+
+      - name: 安装pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 7
+          run_install: false
+
+      - name: 获取pnpm缓存目录
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: 设置pnpm缓存
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: 安装依赖
+        run: pnpm install
+
+      # 只在MacOS上启用代码签名（如果需要）
+      - name: 设置MacOS代码签名（如果需要）
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          echo "如需代码签名，请在此处添加相关命令"
+        shell: bash
+
+      # 根据平台构建应用
+      - name: 构建Windows应用
+        if: startsWith(matrix.os, 'windows')
+        run: pnpm build:win
+        shell: bash
+
+      - name: 构建MacOS应用
+        if: startsWith(matrix.os, 'macos')
+        run: pnpm build:mac
+        shell: bash
+
+      - name: 构建Linux应用
+        if: startsWith(matrix.os, 'ubuntu')
+        run: pnpm build:linux
+        shell: bash
+
+      # 上传构建产物
+      - name: 上传Windows构建产物
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/upload-artifact@v3
+        with:
+          name: devhaven-windows
+          path: |
+            dist_electron/*.exe
+            dist_electron/latest.yml
+
+      - name: 上传MacOS构建产物
+        if: startsWith(matrix.os, 'macos')
+        uses: actions/upload-artifact@v3
+        with:
+          name: devhaven-macos
+          path: |
+            dist_electron/*.dmg
+            dist_electron/latest-mac.yml
+
+      - name: 上传Linux构建产物
+        if: startsWith(matrix.os, 'ubuntu')
+        uses: actions/upload-artifact@v3
+        with:
+          name: devhaven-linux
+          path: |
+            dist_electron/*.AppImage
+            dist_electron/latest-linux.yml
+
+  # 创建GitHub Release并附加构建产物
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 获取版本号
+        id: package-version
+        uses: martinbeentjes/npm-get-version-action@master
+
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: 创建Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.package-version.outputs.current-version }}
+          name: DevHaven v${{ steps.package-version.outputs.current-version }}
+          draft: true
+          files: |
+            artifacts/devhaven-windows/*.exe
+            artifacts/devhaven-windows/latest.yml
+            artifacts/devhaven-macos/*.dmg
+            artifacts/devhaven-macos/latest-mac.yml
+            artifacts/devhaven-linux/*.AppImage
+            artifacts/devhaven-linux/latest-linux.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
