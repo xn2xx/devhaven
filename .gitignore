@@ -10,3 +10,4 @@ src/auto-imports.d.ts
 .biomelintrc-auto-import.json
 devhaven.db
 .DS_Store
+dist_electron

@@ -20,11 +20,17 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 设置Node.js环境
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
+      - name: 检查依赖锁文件
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "pnpm-lock.yaml 文件存在"
+            ls -la pnpm-lock.yaml
+          else
+            echo "错误: pnpm-lock.yaml 文件不存在"
+            ls -la
+            exit 1
+          fi
+        shell: bash
 
       - name: 安装pnpm
         uses: pnpm/action-setup@v2
@@ -32,19 +38,11 @@ jobs:
           version: 8
           run_install: false
 
-      - name: 获取pnpm缓存目录
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: 设置pnpm缓存
-        uses: actions/cache@v3
+      - name: 设置Node.js环境
+        uses: actions/setup-node@v4
         with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          node-version: 18
+          cache: 'pnpm'
 
       - name: 安装依赖
         run: pnpm install
@@ -68,17 +66,26 @@ jobs:
       # 根据平台构建应用
       - name: 构建Windows应用
         if: startsWith(matrix.os, 'windows')
-        run: pnpm build:win -- --debug
+        run: |
+          ls -la
+          echo "===== 构建Windows应用 ====="
+          pnpm build:win --debug || { echo "构建失败"; exit 1; }
         shell: bash
 
       - name: 构建MacOS应用
         if: startsWith(matrix.os, 'macos')
-        run: pnpm build:mac:mas -- --debug
+        run: |
+          ls -la
+          echo "===== 构建MacOS应用 ====="
+          pnpm build:mac:mas --debug || { echo "构建失败"; exit 1; }
         shell: bash
 
       - name: 构建Linux应用
         if: startsWith(matrix.os, 'ubuntu')
-        run: pnpm build:linux -- --debug
+        run: |
+          ls -la
+          echo "===== 构建Linux应用 ====="
+          pnpm build:linux --debug || { echo "构建失败"; exit 1; }
         shell: bash
 
       # 上传构建产物
