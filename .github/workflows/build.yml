@@ -18,18 +18,18 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 设置Node.js环境
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 18
           cache: 'npm'
 
       - name: 安装pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 7
+          version: 8
           run_install: false
 
       - name: 获取pnpm缓存目录
@@ -49,6 +49,15 @@ jobs:
       - name: 安装依赖
         run: pnpm install
 
+      # 设置构建环境
+      - name: 设置Python环境 (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          python --version || python3 --version
+          # 确保python命令可用
+          which python || sudo ln -s $(which python3) /usr/local/bin/python
+        shell: bash
+
       # 只在MacOS上启用代码签名（如果需要）
       - name: 设置MacOS代码签名（如果需要）
         if: startsWith(matrix.os, 'macos')
@@ -59,23 +68,23 @@ jobs:
       # 根据平台构建应用
       - name: 构建Windows应用
         if: startsWith(matrix.os, 'windows')
-        run: pnpm build:win
+        run: pnpm build:win -- --debug
         shell: bash
 
       - name: 构建MacOS应用
         if: startsWith(matrix.os, 'macos')
-        run: pnpm build:mac
+        run: pnpm build:mac:mas -- --debug
         shell: bash
 
       - name: 构建Linux应用
         if: startsWith(matrix.os, 'ubuntu')
-        run: pnpm build:linux
+        run: pnpm build:linux -- --debug
         shell: bash
 
       # 上传构建产物
       - name: 上传Windows构建产物
         if: startsWith(matrix.os, 'windows')
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: devhaven-windows
           path: |
@@ -84,7 +93,7 @@ jobs:
 
       - name: 上传MacOS构建产物
         if: startsWith(matrix.os, 'macos')
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: devhaven-macos
           path: |
@@ -93,7 +102,7 @@ jobs:
 
       - name: 上传Linux构建产物
         if: startsWith(matrix.os, 'ubuntu')
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: devhaven-linux
           path: |
@@ -108,14 +117,14 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: 获取版本号
         id: package-version
         uses: martinbeentjes/npm-get-version-action@master
 
       - name: 下载所有构建产物
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 
