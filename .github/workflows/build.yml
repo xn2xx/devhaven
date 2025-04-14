@@ -85,50 +85,56 @@ jobs:
       # 根据平台构建应用
       - name: 构建Windows应用
         if: startsWith(matrix.os, 'windows')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -la
           echo "===== 构建Windows应用 ====="
           if grep -q "build:win" package.json; then
-            ELECTRON_BUILDER_LOGGING=debug pnpm build:win || {
+            ELECTRON_BUILDER_LOGGING=debug pnpm build:win -- --publish never || {
               echo "pnpm脚本构建失败，尝试直接调用electron-builder..."
-              npm run build && npx electron-builder --win || { echo "构建失败"; exit 1; }
+              npm run build && npx electron-builder --win --publish never || { echo "构建失败"; exit 1; }
             }
           else
             echo "使用直接调用electron-builder构建Windows应用"
-            npm run build && npx electron-builder --win || { echo "构建失败"; exit 1; }
+            npm run build && npx electron-builder --win --publish never || { echo "构建失败"; exit 1; }
           fi
         shell: bash
 
       - name: 构建MacOS应用
         if: startsWith(matrix.os, 'macos')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -la
           echo "===== 构建MacOS应用 ====="
           # 如果build:mac:mas命令不存在，则回退到build:mac
           if grep -q "build:mac:mas" package.json; then
-            ELECTRON_BUILDER_LOGGING=debug pnpm build:mac:mas || {
+            ELECTRON_BUILDER_LOGGING=debug pnpm build:mac:mas -- --publish never || {
               echo "pnpm脚本构建失败，尝试直接调用electron-builder..."
-              npm run build && npx electron-builder --mac --config.mac.identity=null || { echo "构建失败"; exit 1; }
+              npm run build && npx electron-builder --mac --config.mac.identity=null --publish never || { echo "构建失败"; exit 1; }
             }
           else
             echo "使用直接调用electron-builder构建MacOS应用"
-            npm run build && npx electron-builder --mac --config.mac.identity=null || { echo "构建失败"; exit 1; }
+            npm run build && npx electron-builder --mac --config.mac.identity=null --publish never || { echo "构建失败"; exit 1; }
           fi
         shell: bash
 
       - name: 构建Linux应用
         if: startsWith(matrix.os, 'ubuntu')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -la
           echo "===== 构建Linux应用 ====="
           if grep -q "build:linux" package.json; then
-            ELECTRON_BUILDER_LOGGING=debug pnpm build:linux || {
+            ELECTRON_BUILDER_LOGGING=debug pnpm build:linux -- --publish never || {
               echo "pnpm脚本构建失败，尝试直接调用electron-builder..."
-              npm run build && npx electron-builder --linux || { echo "构建失败"; exit 1; }
+              npm run build && npx electron-builder --linux --publish never || { echo "构建失败"; exit 1; }
             }
           else
             echo "使用直接调用electron-builder构建Linux应用"
-            npm run build && npx electron-builder --linux || { echo "构建失败"; exit 1; }
+            npm run build && npx electron-builder --linux --publish never || { echo "构建失败"; exit 1; }
           fi
         shell: bash
 
