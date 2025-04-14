@@ -7,6 +7,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# 添加权限配置
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build (${{ matrix.os }})
@@ -171,6 +175,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
 
     steps:
       - name: 检出代码
@@ -179,6 +185,15 @@ jobs:
       - name: 获取版本号
         id: package-version
         uses: martinbeentjes/npm-get-version-action@master
+
+      - name: 创建标签
+        run: |
+          echo "Creating tag v${{ steps.package-version.outputs.current-version }}"
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a v${{ steps.package-version.outputs.current-version }} -m "Release v${{ steps.package-version.outputs.current-version }}"
+          git push origin v${{ steps.package-version.outputs.current-version }}
+        continue-on-error: true
 
       - name: 下载所有构建产物
         uses: actions/download-artifact@v4
@@ -198,5 +213,7 @@ jobs:
             artifacts/devhaven-macos/latest-mac.yml
             artifacts/devhaven-linux/*.AppImage
             artifacts/devhaven-linux/latest-linux.yml
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
