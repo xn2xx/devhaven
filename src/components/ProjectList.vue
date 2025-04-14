@@ -41,8 +41,8 @@
                   </el-dropdown-item>
                   <el-dropdown-item command="favorite">
                     <i
-                     :class="['i-fa-solid:star mr-2']"
-                     :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
+                      :class="['i-fa-solid:star mr-2']"
+                      :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
                     {{ project.is_favorite === 1 ? "取消收藏" : "收藏项目" }}
                   </el-dropdown-item>
                   <el-dropdown-item command="delete" divided>
@@ -68,14 +68,19 @@
             </div>
             <div class="stat-item">
               <i class="i-fa-solid:folder-tree stat-icon"></i>
-              <span class="project-folder" @click.stop="navigateToFolder(project.folder_id)">{{ getFolderName(project.folder_id) }}</span>
+              <span class="project-folder"
+                    @click.stop="navigateToFolder(project.folder_id)">{{ getFolderName(project.folder_id) }}</span>
+            </div>
+            <div class="stat-item">
+              <i @click.stop="handleProjectAction('favorite', project)">
+                <i :class="[project.is_favorite ===1? 'i-fa-solid:star' : 'i-fa-solid:star', 'card-action-icon']" :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
+              </i>
             </div>
             <div class="stat-item">
               <i class="i-fa-solid:folder stat-icon"></i>
               <span class="project-path">{{ project.path }}</span>
             </div>
           </div>
-
           <div class="project-tags">
             <span class="project-tag" :class="getTagClass(project.icon)">{{ getProjectType(project.icon) }}</span>
             <span class="project-tag" v-if="getPreferredIdes(project).length === 1">
@@ -89,37 +94,15 @@
           <div class="project-description">
             {{ project.description || "该项目暂无描述信息。" }}
           </div>
-
           <div class="card-actions">
-            <div v-if="getPreferredIdes(project).length === 1">
-              <button class="card-action-btn" @click.stop="openProject(project)">
-                <i class="i-fa-solid:external-link-alt card-action-icon"></i>
-                {{ getIdeName(getPreferredIdes(project)[0]) }}打开
-              </button>
-            </div>
-            <div v-else class="ide-dropdown">
-              <el-dropdown trigger="click" @command="(ide) => openProjectWithSpecificIde(project, ide)">
-                <button class="card-action-btn">
-                  <i class="i-fa-solid:external-link-alt card-action-icon"></i>
-                  选择IDE打开
-                </button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item v-for="ide in getPreferredIdes(project)" :key="ide" :command="ide">
-                      {{ getIdeName(ide) }}
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
+            <button class="card-action-btn" v-for="ide in getPreferredIdes(project)"
+                    @click.stop="openProjectWithSpecificIde(project,ide)">
+              <i class="i-fa-solid:external-link-alt card-action-icon"></i>
+              {{ getIdeName(ide) }}
+            </button>
             <button class="card-action-btn secondary" @click.stop="handleProjectAction('openFolder', project)">
               <i class="i-fa-solid:folder-open card-action-icon"></i>
               文件夹
-            </button>
-            <button class="card-action-btn secondary" @click.stop="handleProjectAction('favorite', project)">
-              <i
-                :class="[project.is_favorite ===1? 'i-fa-solid:star' : 'i-fa-solid:star', 'card-action-icon']"
-                :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
             </button>
           </div>
         </div>
@@ -141,7 +124,7 @@ const props = defineProps({
   loading: Boolean,
   searchInput: String
 });
-const projects = ref([])
+const projects = ref([]);
 const emit = defineEmits([
   "select-project",
   "add-project",
@@ -154,16 +137,6 @@ const emit = defineEmits([
 const store = useAppStore();
 const folders = computed(() => store.folders);
 
-const openProject = async (project) => {
-  try {
-    const result = await store.openProjectWithIDE(project);
-    if (!result.success) {
-      ElMessage.error(`打开项目失败: ${result.error}`);
-    }
-  } catch (error) {
-    ElMessage.error("打开项目失败");
-  }
-};
 
 const handleProjectAction = async (command, project) => {
   switch (command) {
@@ -189,7 +162,7 @@ const handleProjectAction = async (command, project) => {
       ).then(async () => {
         try {
           await store.deleteProject(project.id);
-          loadProjects()
+          loadProjects();
           ElMessage.success("项目删除成功");
         } catch (error) {
           ElMessage.error("删除项目失败");
@@ -201,7 +174,7 @@ const handleProjectAction = async (command, project) => {
       try {
         await store.toggleFavoriteProject(project);
         project.is_favorite = project.is_favorite === 1 ? 0 : 1;
-        emit("favorite-project",project)
+        emit("favorite-project", project);
         ElMessage.success(project.is_favorite === 1 ? "项目已添加到收藏" : "项目已从收藏中移除");
       } catch (error) {
         console.error(error);
@@ -249,24 +222,20 @@ const getProjectType = (icon) => {
       return "项目";
   }
 };
-
+const ideConfigs = ref([]);
 
 const getIdeName = (ide) => {
-  switch (ide) {
-    case "vscode":
-      return "VS Code";
-    case "idea":
-      return "IntelliJ IDEA";
-    case "webstorm":
-      return "WebStorm";
-    case "pycharm":
-      return "PyCharm";
-    case "studio":
-      return "Android Studio";
-    case "xcode":
-      return "Xcode";
-    default:
-      return "默认IDE";
+  const ideConfig = ideConfigs.value.find((config) => config.name === ide);
+  return ideConfig ? ideConfig.display_name : ide;
+};
+
+// 加载IDE配置列表
+const loadIdeConfigs = async () => {
+  try {
+    ideConfigs.value = await window.api.getIdeConfigs();
+  } catch (error) {
+    console.error(error);
+    ElMessage.error("加载IDE配置失败");
   }
 };
 
@@ -341,8 +310,8 @@ const navigateToFolder = (folderId) => {
 };
 
 const loadProjects = async () => {
-  projects.value = await window.api.getProjects(props.currentFolderId)
-}
+  projects.value = await window.api.getProjects(props.currentFolderId);
+};
 
 // 监听 store 中的项目变化
 watch(() => store.projects, (newProjects) => {
@@ -353,12 +322,12 @@ watch(() => store.projects, (newProjects) => {
 });
 
 onMounted(async () => {
-  loadProjects()
-})
+  loadProjects();
+});
 
 watch(() => props.currentFolderId, async () => {
-  loadProjects()
-})
+  loadProjects();
+});
 
 </script>
 
