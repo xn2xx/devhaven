@@ -1,82 +1,72 @@
-const net = require('net')
-const { dbService } = require("./db.service");
-type ReportOpenProjectData = {
-  type: 'reportOpenProjects'
-  name: string
-  projects: {
-    name: string
-    basePath: string
-  }[]
-}
+const fs = require('fs');
+
+const os = require('os')
+const path = require('path')
+const { dbService } = require('./db.service')
 type Project = {
   ide: string
   projectName: string
-  projectPath: string,
+  projectPath: string
   debHavenProject: any
 }
 const memoryData: Project[] = []
 
-const getIdeaProjects = (): Promise<Project[]> => {
-  return new Promise((resolve) => {
-
-    // 发送socket请求
-    const socket = net.createConnection({
-      host: 'localhost',
-      port: 17335
-    })
-
-    socket.on('connect', () => {
-      console.log('连接到项目监听服务')
-      socket.write('GET_PROJECTS\n')
-    })
-
-    socket.on('data', (data: Buffer) => {
-      try {
-
-        // 转换Buffer为字符串并解析JSON
-        const dataStr = data.toString('utf-8')
-        console.log('接收到项目数据:', dataStr)
-
-        const jsonData = JSON.parse(dataStr) as ReportOpenProjectData
-
-        // 更新内存数据
-        if (jsonData && jsonData.projects) {
-          memoryData.length = 0 // 清空现有数据
-
-          const projects = jsonData.projects.map(project => ({
-            ide: "idea",
-            projectName: project.name,
-            projectPath: project.basePath,
-            debHavenProject: dbService.projects.getByPath(project.basePath)
-          }))
-          memoryData.push(...projects)
-        }
-
-        socket.end()
-        resolve(memoryData)
-      } catch (error) {
-        console.error('解析项目数据失败:', error)
-        socket.end()
-        resolve(memoryData)
-      }
-    })
-
-    socket.on('error', (error: Error) => {
-      console.error('socket连接错误:', error)
-      resolve(memoryData)
-    })
-
-    socket.on('close', () => {
-      console.log('socket连接关闭')
-    })
-  })
-}
 /**
  * 获取打开的项目
- * @returns Project[] 打开的项目列表
+ * @returns Promise<Project[]> 打开的项目列表
  */
 async function getOpenProjects(): Promise<Project[]> {
-  return await getIdeaProjects()
+  try {
+    // 查询%HOME/.debhaven/projects的文件列表
+    const filePath = path.join(os.homedir(), '.devhaven/projects')
+
+    // 检查目录是否存在
+    if (!fs.existsSync(filePath)) {
+      await fs.promises.mkdir(filePath, { recursive: true });
+      return [];
+    }
+
+    // 使用异步读取文件列表
+    const files = await fs.promises.readdir(filePath);
+
+    // 处理文件并获取项目信息
+    const projects: Project[] = [];
+
+    for (const file of files) {
+      try {
+        // 检查文件名格式是否正确
+        const parts = file.split('-');
+        if (parts.length !== 2) continue;
+
+        const [ide, base64Path] = parts;
+        const projectPath = Buffer.from(base64Path, 'base64').toString('utf-8');
+
+        // 获取项目信息
+        const project = dbService.projects.getByPath(projectPath);
+        if (!project) continue;
+
+        projects.push({
+          ide,
+          projectName: project.name,
+          projectPath,
+          debHavenProject: project
+        });
+
+      } catch (fileError) {
+        console.error(`处理文件 ${file} 时出错:`, fileError);
+        // 继续处理下一个文件
+        continue;
+      }
+    }
+
+    // 更新内存缓存
+    memoryData.splice(0, memoryData.length, ...projects);
+
+    return projects;
+  } catch (error) {
+    console.error('获取打开的项目时出错:', error);
+    return [];
+  }
 }
 
 module.exports = {
