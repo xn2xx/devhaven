@@ -78,7 +78,7 @@ class IdeDetector {
           win32: 'C:\\Program Files\\JetBrains\\IntelliJ IDEA*\\bin\\idea64.exe',
           linux: 'idea'
         },
-        args: '{projectPath}'
+        args: 'idea://open?file={projectPath}'
       },
       // WebStorm
       {
@@ -105,7 +105,7 @@ class IdeDetector {
           win32: 'C:\\Program Files\\JetBrains\\WebStorm*\\bin\\webstorm64.exe',
           linux: 'webstorm'
         },
-        args: '{projectPath}'
+        args: 'idea://open?file={projectPath}'
       },
       // PyCharm
       {
@@ -137,7 +137,7 @@ class IdeDetector {
           win32: 'C:\\Program Files\\JetBrains\\PyCharm*\\bin\\pycharm64.exe',
           linux: 'pycharm'
         },
-        args: '{projectPath}'
+        args: 'idea://open?file={projectPath}'
       },
       // Android Studio
       {

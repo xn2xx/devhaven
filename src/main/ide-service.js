@@ -14,8 +14,6 @@ async function initIdeConfigs() {
 
     // 获取当前已配置的IDE
     const existingIdes = await dbService.ideConfigs.getAll();
-    const existingIdeNames = existingIdes.map(ide => ide.name);
-
     // 检测系统安装的IDE
     const detectedIdes = await ideDetector.detectIdes();
     console.log(`检测到 ${detectedIdes.length} 个IDE`);
