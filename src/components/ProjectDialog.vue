@@ -67,13 +67,14 @@
       </div>
 
       <el-form-item label="项目路径" prop="path">
-        <div class="path-input-group">
-          <el-input
-            v-model="form.path"
-            placeholder="/Users/username/Projects/your-project"
-          />
+        <el-input
+          v-model="form.path"
+          placeholder="/Users/username/Projects/your-project"
+        />
+        <div class="path-actions">
           <el-button @click="selectDirectory">
             <i class="i-fa-solid:folder-open"></i>
+            选择项目目录
           </el-button>
         </div>
         <div class="form-helper">本地项目文件夹的绝对路径</div>
@@ -319,5 +320,17 @@ onMounted(() => {
 
 .el-select :deep(.el-select-dropdown__item) {
   padding: 8px 12px;
+}
+
+.path-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.path-actions .el-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>
