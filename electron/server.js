@@ -1,21 +1,24 @@
-const express = require('express')
+const Koa = require('koa')
+const bodyParser = require('koa-bodyparser')
 
-const app = express()
-const port = 3000
+const app = new Koa()
+const port = 17334
 
-// 启用 JSON 解析
-app.use(express.json())
+// 使用 bodyParser 中间件解析 JSON
+app.use(bodyParser())
 
 // Hello World 路由
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello World from DevHaven!' })
+app.use(async (ctx) => {
+  if (ctx.path === '/') {
+    ctx.body = { message: 'Hello World from DevHaven!' }
+  }
 })
 
 // 启动服务器
 function startServer() {
   return new Promise((resolve) => {
     const server = app.listen(port, () => {
-      console.log(`Express server is running on http://localhost:${port}`)
+      console.log(`Koa server is running on http://localhost:${port}`)
       resolve(server)
     })
   })
