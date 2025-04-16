@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { initialize, enable } = require('@electron/remote/main')
@@ -20,6 +20,9 @@ let dbInstance = null
 
 // Keep a global reference of the window object to avoid garbage collection
 let mainWindow
+
+// 全局托盘实例
+let tray = null
 
 /**
  * 初始化应用程序
@@ -45,6 +48,57 @@ async function initApp() {
   }
 }
 
+/**
+ * 创建系统托盘
+ */
+function createTray() {
+  // 创建托盘图标
+  const iconPath = path.join(__dirname, '../../resources/icon.png')
+  tray = new Tray(iconPath)
+  tray.setToolTip('DevHaven')
+
+  // 创建托盘菜单
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: '打开主窗口',
+      click: () => {
+        const mainWindow = getMainWindow()
+        if (mainWindow) {
+          mainWindow.show()
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '设置',
+      click: () => {
+        const mainWindow = getMainWindow()
+        if (mainWindow) {
+          mainWindow.show()
+          mainWindow.webContents.send('navigate-to-settings')
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.quit()
+      }
+    }
+  ])
+
+  tray.setContextMenu(contextMenu)
+
+  // 点击托盘图标时显示主窗口
+  tray.on('click', () => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.show()
+    }
+  })
+}
+
 // 当Electron准备就绪时创建窗口
 app.whenReady().then(async () => {
   await initApp()
@@ -54,6 +108,9 @@ app.whenReady().then(async () => {
 
   // 创建主窗口
   createWindow()
+
+  // 创建系统托盘
+  createTray()
 
   // 在macOS上，当点击dock图标时重新创建窗口
   app.on('activate', () => {
@@ -66,6 +123,16 @@ app.whenReady().then(async () => {
 // 当所有窗口关闭时退出应用，除了在macOS上
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    if (tray) {
+      tray.destroy()
+    }
     app.quit()
+  }
+})
+
+// 在应用退出前清理托盘
+app.on('before-quit', () => {
+  if (tray) {
+    tray.destroy()
   }
 })

@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld("electronAPI", electronAPI);
 // 直接将API暴露到全局范围，适应纯客户端环境
 contextBridge.exposeInMainWorld("api", electronAPI);
 
+// 监听导航到设置页面的消息
+ipcRenderer.on('navigate-to-settings', () => {
+  window.api.router.push('/settings');
+});
+
 // 暴露 Node.js 环境变量
 contextBridge.exposeInMainWorld("process", {
   env: {
