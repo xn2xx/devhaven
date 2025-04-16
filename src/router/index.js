@@ -13,6 +13,11 @@ const routes = [
     name: "Settings",
     component: () => import("../views/SettingsView.vue"),
     meta: { requiresAuth: false }
+  },
+  {
+    path: '/tray',
+    name: 'TrayWindow',
+    component: () => import('../renderer/components/TrayWindow.vue')
   }
 ];
 

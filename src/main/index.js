@@ -23,28 +23,43 @@ let mainWindow
 
 // 全局托盘实例
 let tray = null
+let trayWindow = null
 
 /**
- * 初始化应用程序
+ * 创建托盘窗口
  */
-async function initApp() {
-  try {
-    const dbPath = settingsService.getDbPath()
-    dbInstance = await initDatabase(dbPath)
+function createTrayWindow() {
+  trayWindow = new BrowserWindow({
+    width: 280,
+    height: 300,
+    frame: false,
+    resizable: false,
+    show: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  })
 
-    // 检测并初始化IDE配置
-    await ideService.initIdeConfigs()
+  // 加载托盘窗口的 HTML 文件
+  if (process.env.NODE_ENV === 'development') {
+    trayWindow.loadURL('http://localhost:5173/#/tray')
+  } else {
+    trayWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+      hash: '/tray'
+    })
+  }
 
-    // 启动 Express 服务器
-    await startServer()
+  // 当窗口失去焦点时隐藏
+  trayWindow.on('blur', () => {
+    trayWindow.hide()
+  })
 
-    console.log('应用程序初始化成功')
-  } catch (error) {
-    console.error('应用程序初始化失败:', error)
-    dialog.showErrorBox(
-      '初始化错误',
-      `应用程序初始化失败: ${error.message}`
-    )
+  // 在 macOS 上设置窗口级别为浮动窗口
+  if (process.platform === 'darwin') {
+    trayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   }
 }
 
@@ -57,63 +72,57 @@ function createTray() {
   tray = new Tray(iconPath)
   tray.setToolTip('DevHaven')
 
-  // 创建托盘菜单
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: '打开主窗口',
-      click: () => {
-        const mainWindow = getMainWindow()
-        if (mainWindow) {
-          mainWindow.show()
-        }
-      }
-    },
-    { type: 'separator' },
-    {
-      label: '设置',
-      click: () => {
-        const mainWindow = getMainWindow()
-        if (mainWindow) {
-          mainWindow.show()
-          mainWindow.webContents.send('navigate-to-settings')
-        }
-      }
-    },
-    { type: 'separator' },
-    {
-      label: '退出',
-      click: () => {
-        app.quit()
-      }
-    }
-  ])
+  // 创建托盘窗口
+  createTrayWindow()
 
-  tray.setContextMenu(contextMenu)
-
-  // 点击托盘图标时显示主窗口
+  // 点击托盘图标时显示托盘窗口
   tray.on('click', () => {
-    const mainWindow = getMainWindow()
-    if (mainWindow) {
-      mainWindow.show()
-    }
+    const trayBounds = tray.getBounds()
+    const windowBounds = trayWindow.getBounds()
+
+    // 计算窗口位置，使其显示在托盘图标上方
+    const x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2))
+    const y = Math.round(trayBounds.y - windowBounds.height)
+
+    trayWindow.setPosition(x, y)
+    trayWindow.show()
   })
+}
+
+
+/**
+ * 初始化应用程序
+ */
+async function initApp() {
+  try {
+    const dbPath = settingsService.getDbPath()
+    dbInstance = await initDatabase(dbPath)
+    // 检测并初始化IDE配置
+    await ideService.initIdeConfigs()
+    // 启动 Express 服务器
+    await startServer()
+    console.log('应用程序初始化成功')
+  } catch (error) {
+    console.error('应用程序初始化失败:', error)
+    dialog.showErrorBox(
+      '初始化错误',
+      `应用程序初始化失败: ${error.message}`
+    )
+  }
 }
 
 // 当Electron准备就绪时创建窗口
 app.whenReady().then(async () => {
   await initApp()
-
   // 注册所有IPC处理程序
   registerIpcHandlers()
-
   // 创建主窗口
   createWindow()
-
   // 创建系统托盘
   createTray()
-
   // 在macOS上，当点击dock图标时重新创建窗口
   app.on('activate', () => {
+    console.log('activate')
     if (!getMainWindow()) {
       createWindow()
     }
