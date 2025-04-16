@@ -186,6 +186,14 @@ jobs:
         id: package-version
         uses: martinbeentjes/npm-get-version-action@master
 
+      - name: 删除已存在的标签和发布
+        run: |
+          # 删除本地标签
+          git tag -d v${{ steps.package-version.outputs.current-version }} || true
+          # 删除远程标签
+          git push origin :refs/tags/v${{ steps.package-version.outputs.current-version }} || true
+        continue-on-error: true
+
       - name: 创建标签
         run: |
           echo "Creating tag v${{ steps.package-version.outputs.current-version }}"
@@ -199,6 +207,36 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: 重命名文件以添加时间戳
+        run: |
+          # 为Windows文件添加时间戳
+          for file in artifacts/devhaven-windows/*.exe; do
+            if [ -f "$file" ]; then
+              timestamp=$(date +%Y%m%d%H%M%S)
+              new_name=$(echo "$file" | sed "s/\.exe$/-${timestamp}.exe/")
+              mv "$file" "$new_name"
+            fi
+          done
+
+          # 为MacOS文件添加时间戳
+          for file in artifacts/devhaven-macos/*.dmg; do
+            if [ -f "$file" ]; then
+              timestamp=$(date +%Y%m%d%H%M%S)
+              new_name=$(echo "$file" | sed "s/\.dmg$/-${timestamp}.dmg/")
+              mv "$file" "$new_name"
+            fi
+          done
+
+          # 为Linux文件添加时间戳
+          for file in artifacts/devhaven-linux/*.AppImage; do
+            if [ -f "$file" ]; then
+              timestamp=$(date +%Y%m%d%H%M%S)
+              new_name=$(echo "$file" | sed "s/\.AppImage$/-${timestamp}.AppImage/")
+              mv "$file" "$new_name"
+            fi
+          done
+        shell: bash
 
       - name: 创建Release
         uses: softprops/action-gh-release@v1
