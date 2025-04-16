@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const { app } = require('electron');
+const os = require("node:os");
 
 /**
  * IDE检测器 - 扫描系统检测安装的开发工具
@@ -49,9 +50,16 @@ class IdeDetector {
         icon: 'java',
         paths: {
           darwin: [
+            '/Applications/IDEA.app',
             '/Applications/IntelliJ IDEA.app',
             '/Applications/IntelliJ IDEA CE.app',
-            '~/Applications/IntelliJ IDEA Ultimate.app'
+            '/Applications/IntelliJ IDEA Ultimate.app',
+            '/Applications/IntelliJ IDEA Community Edition.app',
+            `${os.homedir()}/Applications/IDEA.app`,
+            `${os.homedir()}/Applications/IntelliJ IDEA.app`,
+            `${os.homedir()}/Applications/IntelliJ IDEA CE.app`,
+            `${os.homedir()}/Applications/IntelliJ IDEA Ultimate.app`,
+            `${os.homedir()}/Applications/IntelliJ IDEA Community Edition.app`,
           ],
           win32: [
             'C:\\Program Files\\JetBrains\\IntelliJ IDEA*\\bin\\idea64.exe',
@@ -79,7 +87,8 @@ class IdeDetector {
         icon: 'js',
         paths: {
           darwin: [
-            '/Applications/WebStorm.app'
+            '/Applications/WebStorm.app',
+            `${os.homedir()}/Applications/WebStorm.app`,
           ],
           win32: [
             'C:\\Program Files\\JetBrains\\WebStorm*\\bin\\webstorm64.exe',
@@ -106,7 +115,11 @@ class IdeDetector {
         paths: {
           darwin: [
             '/Applications/PyCharm.app',
-            '/Applications/PyCharm CE.app'
+            '/Applications/PyCharm CE.app',
+            '/Applications/PyCharm Professional Edition.app',
+            `${os.homedir()}/Applications/PyCharm.app`,
+            `${os.homedir()}/Applications/PyCharm CE IDEA.app`,
+            `${os.homedir()}/Applications/PyCharm Professional Edition.app`,
           ],
           win32: [
             'C:\\Program Files\\JetBrains\\PyCharm*\\bin\\pycharm64.exe',

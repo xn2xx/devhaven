@@ -154,6 +154,7 @@ async function openWithIde(projectPath, ideName) {
  * @returns {Object} 操作结果
  */
 function openWithMacCommand(command, args) {
+  console.log(`使用macOS命令打开应用: ${command} ${args.join(' ')}`);
   try {
     // 确保文件有执行权限
     if (command.startsWith('/') && fs.existsSync(command)) {
