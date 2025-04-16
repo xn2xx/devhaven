@@ -3,6 +3,7 @@ const { dbService, initDatabase } = require("./db.service");
 const fileService = require("./file-service");
 const ideService = require("./ide-service");
 const settingsService = require("./settings-service");
+const openProjectService = require("./open-project-service");
 const path = require("path");
 const { app } = require("electron");
 
@@ -252,6 +253,12 @@ function registerIpcHandlers() {
   // 保存应用设置
   ipcMain.handle("save-app-settings", (_, settings) => {
     return settingsService.saveSettings(settings);
+  });
+
+  // 获取打开的项目
+  ipcMain.handle("get-open-projects", () => {
+    console.log('get-open-projects')
+    return openProjectService.getOpenProjects();
   });
 }
 

@@ -37,7 +37,15 @@ const electronAPI = {
   deleteProject: (id) => ipcRenderer.invoke("db:deleteProject", id),
   searchProjects: (query) => ipcRenderer.invoke("db:searchProjects", query),
   // 获取收藏的项目列表
-  favoriteProjects: () => ipcRenderer.invoke("db:getFavoriteProjects")
+  favoriteProjects: () => ipcRenderer.invoke("db:getFavoriteProjects"),
+
+  getOpenProjects: () => ipcRenderer.invoke("get-open-projects"),
+
+  // IPC事件监听
+  ipcRenderer: {
+    on: (channel, listener) => ipcRenderer.on(channel, (event, ...args) => listener(...args)),
+    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener)
+  }
 };
 
 // 在纯Electron环境下暴露API接口

@@ -48,46 +48,126 @@ const createTables = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS folders
     (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      name        TEXT NOT NULL,
-      parent_id   INTEGER,
-      icon        TEXT      DEFAULT 'folder',
-      description TEXT,
-      order_index INTEGER   DEFAULT 0,
-      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (parent_id) REFERENCES folders (id) ON DELETE CASCADE
-    )
+      id
+      INTEGER
+      PRIMARY
+      KEY
+      AUTOINCREMENT,
+      name
+      TEXT
+      NOT
+      NULL,
+      parent_id
+      INTEGER,
+      icon
+      TEXT
+      DEFAULT
+      'folder',
+      description
+      TEXT,
+      order_index
+      INTEGER
+      DEFAULT
+      0,
+      created_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      updated_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      FOREIGN
+      KEY
+    (
+      parent_id
+    ) REFERENCES folders
+    (
+      id
+    ) ON DELETE CASCADE
+      )
   `);
 
   // 创建项目表
   db.exec(`
     CREATE TABLE IF NOT EXISTS projects
     (
-      id             INTEGER PRIMARY KEY AUTOINCREMENT,
-      folder_id      INTEGER NOT NULL,
-      name           TEXT    NOT NULL,
-      description    TEXT,
-      path           TEXT    NOT NULL,
-      preferred_ide  TEXT      DEFAULT '["vscode"]',
-      icon           TEXT      DEFAULT 'code',
-      is_favorite    INTEGER   DEFAULT 0,
-      branch         TEXT,
-      last_opened_at TIMESTAMP,
-      created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE
-    )
+      id
+      INTEGER
+      PRIMARY
+      KEY
+      AUTOINCREMENT,
+      folder_id
+      INTEGER
+      NOT
+      NULL,
+      name
+      TEXT
+      NOT
+      NULL,
+      description
+      TEXT,
+      path
+      TEXT
+      NOT
+      NULL,
+      preferred_ide
+      TEXT
+      DEFAULT
+      '["vscode"]',
+      icon
+      TEXT
+      DEFAULT
+      'code',
+      is_favorite
+      INTEGER
+      DEFAULT
+      0,
+      branch
+      TEXT,
+      last_opened_at
+      TIMESTAMP,
+      created_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      updated_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      FOREIGN
+      KEY
+    (
+      folder_id
+    ) REFERENCES folders
+    (
+      id
+    ) ON DELETE CASCADE
+      )
   `);
 
   // 创建标签表
   db.exec(`
     CREATE TABLE IF NOT EXISTS tags
     (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      name       TEXT NOT NULL UNIQUE,
-      color      TEXT      DEFAULT 'primary',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      id
+      INTEGER
+      PRIMARY
+      KEY
+      AUTOINCREMENT,
+      name
+      TEXT
+      NOT
+      NULL
+      UNIQUE,
+      color
+      TEXT
+      DEFAULT
+      'primary',
+      created_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP
     )
   `);
 
@@ -95,58 +175,169 @@ const createTables = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_tags
     (
-      project_id INTEGER NOT NULL,
-      tag_id     INTEGER NOT NULL,
-      PRIMARY KEY (project_id, tag_id),
-      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
-      FOREIGN KEY (tag_id) REFERENCES tags (id) ON DELETE CASCADE
+      project_id
+      INTEGER
+      NOT
+      NULL,
+      tag_id
+      INTEGER
+      NOT
+      NULL,
+      PRIMARY
+      KEY
+    (
+      project_id,
+      tag_id
+    ),
+      FOREIGN KEY
+    (
+      project_id
+    ) REFERENCES projects
+    (
+      id
+    ) ON DELETE CASCADE,
+      FOREIGN KEY
+    (
+      tag_id
+    ) REFERENCES tags
+    (
+      id
     )
+      ON DELETE CASCADE
+      )
   `);
 
   // 创建文档表
   db.exec(`
     CREATE TABLE IF NOT EXISTS documents
     (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      title      TEXT NOT NULL,
-      content    TEXT,
-      type       TEXT      DEFAULT 'general',
-      folder_id  INTEGER,
-      project_id INTEGER,
-      icon       TEXT      DEFAULT 'file-alt',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE,
-      FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
-      CHECK ((folder_id IS NULL AND project_id IS NOT NULL) OR (folder_id IS NOT NULL AND project_id IS NULL))
+      id
+      INTEGER
+      PRIMARY
+      KEY
+      AUTOINCREMENT,
+      title
+      TEXT
+      NOT
+      NULL,
+      content
+      TEXT,
+      type
+      TEXT
+      DEFAULT
+      'general',
+      folder_id
+      INTEGER,
+      project_id
+      INTEGER,
+      icon
+      TEXT
+      DEFAULT
+      'file-alt',
+      created_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      updated_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      FOREIGN
+      KEY
+    (
+      folder_id
+    ) REFERENCES folders
+    (
+      id
+    ) ON DELETE CASCADE,
+      FOREIGN KEY
+    (
+      project_id
+    ) REFERENCES projects
+    (
+      id
     )
+      ON DELETE CASCADE,
+      CHECK
+    (
+    (
+      folder_id
+      IS
+      NULL
+      AND
+      project_id
+      IS
+      NOT
+      NULL
+    ) OR
+    (
+      folder_id
+      IS
+      NOT
+      NULL
+      AND
+      project_id
+      IS
+      NULL
+    ))
+      )
   `);
 
   // 创建设置表
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings
     (
-      id          INTEGER PRIMARY KEY CHECK (id = 1),
-      db_path     TEXT,
-      theme       TEXT      DEFAULT 'light',
-      default_ide TEXT      DEFAULT 'vscode',
-      created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
+      id
+      INTEGER
+      PRIMARY
+      KEY
+      CHECK
+    (
+      id =
+      1
+    ),
+      db_path TEXT,
+      theme TEXT DEFAULT 'light',
+      default_ide TEXT DEFAULT 'vscode',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
   `);
 
   // 创建IDE配置表
   db.exec(`
     CREATE TABLE IF NOT EXISTS ide_configs
     (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      name         TEXT NOT NULL UNIQUE,
-      display_name TEXT NOT NULL,
-      command      TEXT NOT NULL,
-      args         TEXT,
-      icon         TEXT,
-      created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      id
+      INTEGER
+      PRIMARY
+      KEY
+      AUTOINCREMENT,
+      name
+      TEXT
+      NOT
+      NULL
+      UNIQUE,
+      display_name
+      TEXT
+      NOT
+      NULL,
+      command
+      TEXT
+      NOT
+      NULL,
+      args
+      TEXT,
+      icon
+      TEXT,
+      created_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP,
+      updated_at
+      TIMESTAMP
+      DEFAULT
+      CURRENT_TIMESTAMP
     )
   `);
 };
@@ -321,9 +512,11 @@ const dbService = {
       if (folderId) {
         // 查询当前文件夹以及所有子文件夹的项目
         stmt = db.prepare(`
-          SELECT p.* FROM projects p
-          JOIN folders f ON p.folder_id = f.id
-          WHERE f.parent_id = ? or f.id = ?
+          SELECT p.*
+          FROM projects p
+                 JOIN folders f ON p.folder_id = f.id
+          WHERE f.parent_id = ?
+             or f.id = ?
           ORDER BY p.name ASC
         `);
         return stmt.all(folderId, folderId);
@@ -441,6 +634,10 @@ const dbService = {
     getFavoriteProjects: () => {
       const stmt = db.prepare("SELECT * FROM projects WHERE is_favorite = 1 ORDER BY name ASC");
       return stmt.all();
+    },
+    getByPath: (path) => {
+      const stmt = db.prepare("SELECT * FROM projects WHERE path = ? ORDER BY name ASC limit 1");
+      return stmt.get(path);
     }
   },
   // IDE配置相关操作

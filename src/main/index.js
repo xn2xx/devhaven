@@ -10,17 +10,11 @@ const { createWindow, getMainWindow } = require('./window')
 const { registerIpcHandlers } = require('./ipc-handlers')
 const settingsService = require('./settings-service')
 const ideService = require('./ide-service')
-const { startServer } = require('../../electron/server.js')
-
 // Initialize remote module
 initialize()
 
 // Database instance
 let dbInstance = null
-
-// Keep a global reference of the window object to avoid garbage collection
-let mainWindow
-
 // 全局托盘实例
 let tray = null
 let trayWindow = null
@@ -38,14 +32,19 @@ function createTrayWindow() {
     skipTaskbar: true,
     alwaysOnTop: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, '../preload/index.js')
     }
   })
 
+  // 为该窗口启用远程模块
+  enable(trayWindow.webContents);
   // 加载托盘窗口的 HTML 文件
   if (process.env.NODE_ENV === 'development') {
     trayWindow.loadURL('http://localhost:5173/#/tray')
+    // 打开开发者工具
+    trayWindow.webContents.openDevTools();
   } else {
     trayWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
       hash: '/tray'
@@ -86,6 +85,9 @@ function createTray() {
 
     trayWindow.setPosition(x, y)
     trayWindow.show()
+
+    // 通知托盘窗口刷新项目列表
+    trayWindow.webContents.send('refresh-tray-projects')
   })
 }
 
@@ -99,8 +101,6 @@ async function initApp() {
     dbInstance = await initDatabase(dbPath)
     // 检测并初始化IDE配置
     await ideService.initIdeConfigs()
-    // 启动 Express 服务器
-    await startServer()
     console.log('应用程序初始化成功')
   } catch (error) {
     console.error('应用程序初始化失败:', error)

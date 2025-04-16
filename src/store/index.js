@@ -41,7 +41,8 @@ export const useAppStore = defineStore("app", {
     error: null,
 
     // Favorite status - 用于追踪收藏状态的变化
-    favoriteStatus: 0
+    favoriteStatus: 0,
+    openProjects: []
   }),
 
   getters: {
@@ -69,6 +70,9 @@ export const useAppStore = defineStore("app", {
     },
     getLastCreatedFolderId: (state) => {
       return state.lastCreatedFolderId;
+    },
+    getOpenProjects: (state) => {
+      return state.openProjects;
     }
   },
 
