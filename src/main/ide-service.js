@@ -3,7 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const ideDetector = require("./ide-detector");
 const { dbService } = require("./db.service");
-const {getCurrentEditFile} = require('./open-project-service')
+const { getCurrentEditFile, getOpenProjects } = require("./open-project-service");
+
 /**
  * 检测并初始化IDE配置
  * @returns {Promise<Array>} 已配置的IDE列表
@@ -62,93 +63,90 @@ async function openWithIde(projectPath, ideName) {
   try {
     // 获取IDE配置
     const ideConfig = await dbService.ideConfigs.getByName(ideName);
-
     if (!ideConfig) {
       return { success: false, error: `未找到IDE配置 "${ideName}"` };
     }
-
     // 执行脚本类型的IDE
-    if (ideConfig.is_script) {
-      if (!ideConfig.script_content) {
-        return { success: false, error: "脚本内容为空" };
+    if (!ideConfig.command) {
+      return { success: false, error: "命令为空" };
+    }
+    // 判断是否已经打开了项目
+    const openProjects = await getOpenProjects();
+    const openProject = openProjects.find((project) => project.projectPath === projectPath);
+    let currentEditFile = null;
+    if (openProject && ideName.includes(getIdeType(openProject.ide))) {
+      currentEditFile = await getCurrentEditFile(projectPath);
+    }
+    // 处理命令参数
+    let args = [];
+    if (ideConfig.args) {
+      // 替换参数中的占位符
+      const processedArgs = ideConfig.args.replace(/{projectPath}/g, projectPath);
+      args = processedArgs.split(" ").filter((arg) => arg.trim());
+    } else {
+      args = [projectPath];
+    }
+    console.log(`使用IDE打开: ${ideConfig.command} ${args.join(" ")}`);
+    // 处理macOS上特殊的情况
+    if (process.platform === "darwin" && ideConfig.command.endsWith(".app")) {
+      // 处理.app应用程序
+      let command;
+      if (ideConfig.name.includes("vscode") || ideConfig.name.includes("cursor")) {
+        if (currentEditFile && currentEditFile.filePath) {
+          return openWithMacCommand("open", [
+            "-a",
+            ideConfig.command,
+            `cursor://file${currentEditFile.filePath}:${currentEditFile.line}:${currentEditFile.column}`
+          ]);
+        } else {
+          return openWithMacCommand("open", [
+            "-a",
+            ideConfig.command,
+            `cursor://file${projectPath}`
+          ]);
+        }
+      } else if (ideConfig.command.includes("Xcode.app")) {
+        // 对于Xcode，使用open命令
+        return openWithMacCommand("open", ["-a", "Xcode", projectPath]);
+      } else if (
+        ideConfig.name.includes("idea") ||
+        ideConfig.name.includes("webstorm") ||
+        ideConfig.name.includes("pycharm")
+      ) {
+        // 对于idea、webstorm、pycharm，使用open命令
+        // idea://open?file={projectPath}
+        if (currentEditFile && currentEditFile.filePath) {
+          return openWithMacCommand("open", [
+            "-a",
+            ideConfig.command,
+            `idea://open?file=${currentEditFile.filePath}&line=${currentEditFile.line}&column=${currentEditFile.column}`
+          ]);
+        } else {
+          return openWithMacCommand("open", [
+            "-a",
+            ideConfig.command,
+            `idea://open?file=${projectPath}`
+          ]);
+        }
+      } else {
+        // 其他.app应用使用open命令
+        return openWithMacCommand("open", ["-a", ideConfig.command, ...args]);
       }
 
-      // 替换脚本中的占位符
-      const scriptContent = ideConfig.script_content.replace(/{projectPath}/g, projectPath);
-
-      // 执行脚本
-      exec(scriptContent, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`脚本执行错误: ${error.message}`);
-          return;
-        }
-        if (stderr) {
-          console.error(`脚本错误输出: ${stderr}`);
-        }
-        console.log(`脚本标准输出: ${stdout}`);
+      return openWithMacCommand(command, args);
+    } else {
+      // 其他平台或常规命令
+      const child = spawn(ideConfig.command, args, {
+        detached: true,
+        stdio: "ignore"
       });
 
+      child.on("error", (error) => {
+        console.error("打开IDE失败:", error);
+      });
+
+      child.unref();
       return { success: true };
-    }
-    // 执行应用程序类型的IDE
-    else {
-      if (!ideConfig.command) {
-        return { success: false, error: "命令为空" };
-      }
-      const currentEditFile = await getCurrentEditFile(projectPath);
-      // 处理命令参数
-      let args = [];
-      if (ideConfig.args) {
-        // 替换参数中的占位符
-        const processedArgs = ideConfig.args.replace(/{projectPath}/g, projectPath);
-        args = processedArgs.split(" ").filter((arg) => arg.trim());
-      } else {
-        args = [projectPath];
-      }
-
-      console.log(`使用IDE打开: ${ideConfig.command} ${args.join(" ")}`);
-
-      // 处理macOS上特殊的情况
-      if (process.platform === "darwin" && ideConfig.command.endsWith(".app")) {
-        // 处理.app应用程序
-        let command;
-        if (ideConfig.name.includes("vscode") || ideConfig.name.includes("cursor")) {
-          if (currentEditFile && currentEditFile.filePath) {
-            return openWithMacCommand("open", ["-a", ideConfig.command, `cursor://file${currentEditFile.filePath}:${currentEditFile.line}:${currentEditFile.column}`]);
-          } else {
-            return openWithMacCommand("open", ["-a", ideConfig.command, `cursor://file${projectPath}`]);
-          }
-        } else if (ideConfig.command.includes("Xcode.app")) {
-          // 对于Xcode，使用open命令
-          return openWithMacCommand("open", ["-a", "Xcode", projectPath]);
-        } else if (ideConfig.name.includes("idea") || ideConfig.name.includes("webstorm") || ideConfig.name.includes("pycharm")) {
-          // 对于idea、webstorm、pycharm，使用open命令
-          // idea://open?file={projectPath}
-          if (currentEditFile && currentEditFile.filePath) {
-            return openWithMacCommand("open", ["-a", ideConfig.command, `idea://open?file=${currentEditFile.filePath}&line=${currentEditFile.line}&column=${currentEditFile.column}`]);
-          } else {
-            return openWithMacCommand("open", ["-a", ideConfig.command, `idea://open?file=${projectPath}`]);
-          }
-        } else {
-          // 其他.app应用使用open命令
-          return openWithMacCommand("open", ["-a", ideConfig.command, ...args]);
-        }
-
-        return openWithMacCommand(command, args);
-      } else {
-        // 其他平台或常规命令
-        const child = spawn(ideConfig.command, args, {
-          detached: true,
-          stdio: "ignore"
-        });
-
-        child.on("error", (error) => {
-          console.error("打开IDE失败:", error);
-        });
-
-        child.unref();
-        return { success: true };
-      }
     }
   } catch (error) {
     console.error("使用IDE打开时出错:", error);
