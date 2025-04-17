@@ -7,6 +7,8 @@ const isLoading = ref(false);
 import ideaIcon from "../../../../resources/ide/intellij-idea.svg?asset";
 import pycharmIcon from "../../../../resources/ide/pycharm.svg?asset";
 import webstorm from "../../../../resources/ide/pycharm.svg?asset";
+import cursorIcon from "../../../../resources/ide/cursor.png?asset";
+import vscodeIcon from "../../../../resources/ide/vscode.svg?asset";
 
 const fetchOpenProjects = async () => {
   isLoading.value = true;
@@ -25,13 +27,16 @@ const fetchOpenProjects = async () => {
 const getIdeIconPath = (ide: string) => {
   // 转换为小写，方便比较
   const ideLower = ide.toLowerCase();
-
   if (ideLower.includes("webstorm")) {
     return webstorm;
   } else if (ideLower.includes("idea")) {
     return ideaIcon;
   } else if (ideLower.includes("pycharm")) {
     return pycharmIcon;
+  } else if (ideLower.includes("cursor")) {
+    return cursorIcon;
+  }else if (ideLower.includes("visual")){
+    return vscodeIcon
   }
 
   // 默认图标

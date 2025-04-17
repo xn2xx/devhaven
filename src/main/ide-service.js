@@ -215,10 +215,8 @@ const getIdeType = (ide) => {
     return 'pycharm';
   } else if (ide.includes('cursor')) {
     return 'cursor';
-  } else if (ide.includes('vscode')) {
+  } else if (ide.includes('visual')) {
     return 'vscode';
-  } else if (ide.includes('vs')) {
-    return 'vs';
   }
   return null;
 }
