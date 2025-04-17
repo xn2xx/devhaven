@@ -10,10 +10,23 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "src/renderer/src/*"
+      ],
+      "@/resources/*": [
+        "resources/*"
+      ]
     },
-    "types": ["node", "electron"]
+    "types": [
+      "node",
+      "electron",
+      "electron-vite/node"
+    ]
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

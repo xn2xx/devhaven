@@ -11,3 +11,4 @@ src/auto-imports.d.ts
 devhaven.db
 .DS_Store
 dist_electron
+**/auto-imports.d.ts

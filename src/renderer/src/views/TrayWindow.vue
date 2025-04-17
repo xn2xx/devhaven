@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from "vue";
-import { ElIcon } from 'element-plus';
+import { ElIcon } from "element-plus";
+
 const projects = ref<DevHaven.Project[]>([]);
 const isLoading = ref(false);
+import ideaIcon from "../../../../resources/ide/intellij-idea.svg?asset";
+import pycharmIcon from "../../../../resources/ide/pycharm.svg?asset";
+import webstorm from "../../../../resources/ide/pycharm.svg?asset";
 
 const fetchOpenProjects = async () => {
   isLoading.value = true;
@@ -22,16 +26,16 @@ const getIdeIconPath = (ide: string) => {
   // 转换为小写，方便比较
   const ideLower = ide.toLowerCase();
 
-  if (ideLower.includes('webstorm')) {
-    return './ide/webstorm.svg';
-  } else if (ideLower.includes('idea')) {
-    return './ide/intellij-idea.svg';
-  } else if (ideLower.includes('pycharm')) {
-    return './ide/pycharm.svg';
+  if (ideLower.includes("webstorm")) {
+    return webstorm;
+  } else if (ideLower.includes("idea")) {
+    return ideaIcon;
+  } else if (ideLower.includes("pycharm")) {
+    return pycharmIcon;
   }
 
   // 默认图标
-  return './icon.png';
+  return "./icon.png";
 };
 
 const resumeIde = async (project: DevHaven.Project) => {
@@ -80,9 +84,6 @@ onUnmounted(() => {
         <div class="project-icon">
           <el-icon :size="24">
             <img :src="getIdeIconPath(project.ide)" class="ide-img-icon" />
-            <el-icon :size="24">
-              {{ ideaIcon }}
-            </el-icon>
           </el-icon>
         </div>
 
@@ -135,8 +136,12 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-text {
@@ -277,13 +282,39 @@ onUnmounted(() => {
 }
 
 /* 颜色类 */
-.bg-blue-500 { background-color: #3b82f6; }
-.bg-green-500 { background-color: #22c55e; }
-.bg-purple-500 { background-color: #a855f7; }
-.bg-orange-500 { background-color: #f97316; }
-.bg-red-500 { background-color: #ef4444; }
-.bg-teal-500 { background-color: #14b8a6; }
-.bg-indigo-500 { background-color: #6366f1; }
-.bg-pink-500 { background-color: #ec4899; }
-.bg-amber-500 { background-color: #f59e0b; }
+.bg-blue-500 {
+  background-color: #3b82f6;
+}
+
+.bg-green-500 {
+  background-color: #22c55e;
+}
+
+.bg-purple-500 {
+  background-color: #a855f7;
+}
+
+.bg-orange-500 {
+  background-color: #f97316;
+}
+
+.bg-red-500 {
+  background-color: #ef4444;
+}
+
+.bg-teal-500 {
+  background-color: #14b8a6;
+}
+
+.bg-indigo-500 {
+  background-color: #6366f1;
+}
+
+.bg-pink-500 {
+  background-color: #ec4899;
+}
+
+.bg-amber-500 {
+  background-color: #f59e0b;
+}
 </style>

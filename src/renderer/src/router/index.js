@@ -15,7 +15,7 @@ const routes = [
   {
     path: '/tray',
     name: 'TrayWindow',
-    component: () => import('../renderer/components/TrayWindow.vue')
+    component: () => import('../views/TrayWindow.vue')
   }
 ];
 
