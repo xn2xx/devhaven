@@ -76,12 +76,15 @@ root
     - icon.png                       // 应用图标
 - src                                // 源代码目录
     - App.vue                        // 主应用组件
+    - auto-imports.d.ts              // 自动导入的类型定义
+    - global.d.ts                    // 全局类型声明文件
     - components                     // 通用组件目录
         - CompanyDialog.vue          // 公司对话框组件
         - ProjectDialog.vue          // 项目对话框组件
         - ProjectList.vue            // 项目列表组件
         - RecursiveFolderTree.vue    // 递归文件夹树组件
         - Sidebar.vue                // 侧边栏组件
+        - TrayWindow.vue             // 系统托盘窗口组件，显示已打开的项目列表
         - settings                   // 设置相关组件
             - AboutSection.vue       // 关于部分组件
             - DatabaseSettings.vue   // 数据库设置组件

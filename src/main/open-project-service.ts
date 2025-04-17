@@ -3,19 +3,13 @@ const fs = require('fs');
 const os = require('os')
 const path = require('path')
 const { dbService } = require('./db.service')
-type Project = {
-  ide: string
-  projectName: string
-  projectPath: string
-  debHavenProject: any
-}
-const memoryData: Project[] = []
+const memoryData: DevHaven.Project[] = []
 
 /**
  * 获取打开的项目
  * @returns Promise<Project[]> 打开的项目列表
  */
-async function getOpenProjects(): Promise<Project[]> {
+async function getOpenProjects(): Promise<DevHaven.Project[]> {
   try {
     // 查询%HOME/.debhaven/projects的文件列表
     const filePath = path.join(os.homedir(), '.devhaven/projects')
@@ -30,7 +24,7 @@ async function getOpenProjects(): Promise<Project[]> {
     const files = await fs.promises.readdir(filePath);
 
     // 处理文件并获取项目信息
-    const projects: Project[] = [];
+    const projects: DevHaven.Project[] = [];
 
     for (const file of files) {
       try {
@@ -43,11 +37,13 @@ async function getOpenProjects(): Promise<Project[]> {
 
         // 获取项目信息
         const project = dbService.projects.getByPath(projectPath);
-        if (!project) continue;
+        // 查看文件内容
+        const fileContent = fs.readFileSync(path.join(filePath, file), 'utf-8');
+        const projectInfo = JSON.parse(fileContent);
 
         projects.push({
           ide,
-          projectName: project.name,
+          projectName: projectInfo.name,
           projectPath,
           debHavenProject: project
         });

@@ -260,6 +260,10 @@ function registerIpcHandlers() {
     console.log('get-open-projects')
     return openProjectService.getOpenProjects();
   });
+  ipcMain.handle("resume-ide", (_, project) => {
+    console.log('resume-ide', project)
+    return ideService.resumeIde(project);
+  });
 }
 
 module.exports = {

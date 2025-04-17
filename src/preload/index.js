@@ -6,6 +6,7 @@ const electronAPI = {
   selectDbPath: () => ipcRenderer.invoke("select-db-path"),
   openFolder: (path) => ipcRenderer.invoke("open-folder", path),
   openWithIDE: (path, ide) => ipcRenderer.invoke("open-with-ide", path, ide),
+  resumeIde: (project) => ipcRenderer.invoke("resume-ide", project),
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
   openExecutableDialog: () => ipcRenderer.invoke("open-executable-dialog"),

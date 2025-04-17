@@ -180,7 +180,51 @@ function openWithMacCommand(command, args) {
   }
 }
 
+/**
+ * 恢复IDE
+ * @param {Object} project 项目对象
+ * @returns {Promise<Object>} 操作结果
+ */
+async function resumeIde(project) {
+  // 项目是debHavenProject原始信息
+  // 通过路径获取ide类型
+  const ideType = getIdeType(project.ide)
+  if (!ideType) {
+    console.error('未找到IDE类型', project.ide)
+    return { success: false, error: '未找到IDE类型' };
+  }
+  // 通过ideType获取ide配置
+  const ideConfig = await dbService.ideConfigs.getByName(ideType)
+  if (!ideConfig) {
+    console.error('未找到IDE配置', ideType)
+    return { success: false, error: '未找到IDE配置' };
+  }
+  // 打开ide
+  await openWithIde(project.projectPath, ideConfig.name)
+
+  return { success: true };
+}
+
+const getIdeType = (ide) => {
+  ide = ide.toLowerCase()
+  if (ide.includes('webstorm')) {
+    return 'webstorm';
+  } else if (ide.includes('idea')) {
+    return 'idea';
+  } else if (ide.includes('pycharm')) {
+    return 'pycharm';
+  } else if (ide.includes('cursor')) {
+    return 'cursor';
+  } else if (ide.includes('vscode')) {
+    return 'vscode';
+  } else if (ide.includes('vs')) {
+    return 'vs';
+  }
+  return null;
+}
+
 module.exports = {
   initIdeConfigs,
-  openWithIde
+  openWithIde,
+  resumeIde
 };
