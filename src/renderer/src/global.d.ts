@@ -9,6 +9,12 @@ declare namespace DevHaven {
     projectPath: string;
     isFavorite?: boolean;
     debHavenProject?: any;
+    editInfo?: EditInfo;
+  }
+  interface EditInfo {
+    filePath?: string;
+    line?: number;
+    column?: number;
   }
 
 }

@@ -244,11 +244,12 @@ function registerIpcHandlers() {
   });
 
   // ========== 设置相关 IPC 处理程序 ==========
-
   // 获取应用设置
+
   ipcMain.handle("get-app-settings", () => {
     return settingsService.getSettings();
   });
+
 
   // 保存应用设置
   ipcMain.handle("save-app-settings", (_, settings) => {

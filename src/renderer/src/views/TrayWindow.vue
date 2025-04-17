@@ -35,8 +35,8 @@ const getIdeIconPath = (ide: string) => {
     return pycharmIcon;
   } else if (ideLower.includes("cursor")) {
     return cursorIcon;
-  }else if (ideLower.includes("visual")){
-    return vscodeIcon
+  } else if (ideLower.includes("visual")) {
+    return vscodeIcon;
   }
 
   // 默认图标
@@ -44,6 +44,7 @@ const getIdeIconPath = (ide: string) => {
 };
 
 const resumeIde = async (project: DevHaven.Project) => {
+  console.log("resumeIde", project);
   await window.api.resumeIde({
     ide: project.ide,
     projectName: project.projectName,

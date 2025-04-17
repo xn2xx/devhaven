@@ -51,7 +51,7 @@ async function getOpenProjects(): Promise<DevHaven.Project[]> {
       } catch (fileError) {
         console.error(`处理文件 ${file} 时出错:`, fileError);
         // 继续处理下一个文件
-        continue;
+
       }
     }
 
@@ -65,6 +65,17 @@ async function getOpenProjects(): Promise<DevHaven.Project[]> {
   }
 }
 
+async function getCurrentEditFile(projectPath: string) {
+  const base64Path = Buffer.from(projectPath).toString('base64');
+  const filePath = path.join(os.homedir(), '.devhaven/projects', `EDIT-FILE-${base64Path}`);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const fileContent = fs.readFileSync(filePath, 'utf-8');
+  return JSON.parse(fileContent);
+}
+
 module.exports = {
-  getOpenProjects
+  getOpenProjects,
+  getCurrentEditFile
 }
