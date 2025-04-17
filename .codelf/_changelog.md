@@ -95,6 +95,33 @@
                - TrayWindow.vue     // refact 移除本地类型声明，改用全局类型
    ```
 
+## 2023-09-25 16:30:00
+
+### 1. 使用本地资源文件显示IDE图标
+
+**Change Type**: improvement
+
+> **Purpose**: 提升IDE图标显示质量和可维护性
+> **Detailed Description**: 替换UnoCSS图标为本地SVG资源文件，使用Element Plus的el-icon组件加载显示
+> **Reason for Change**: 本地SVG图标文件提供更精确和高质量的IDE标识，提升用户体验
+> **Impact Scope**: 仅影响系统托盘窗口中IDE图标的显示方式
+> **API Changes**: 无API变更
+> **Configuration Changes**: 无配置变更
+> **Performance Impact**: 本地资源文件加载可能略微增加初始化时间，但提供更好的显示效果
+
+   ```
+   root
+   - src
+       - renderer
+           - components
+               - TrayWindow.vue     // improvement 使用Element Plus的el-icon加载本地SVG图标资源
+   - resources
+       - ide
+           - webstorm.svg          // 使用本地SVG资源文件显示IDE图标
+           - intellij-idea.svg     // 使用本地SVG资源文件显示IDE图标
+           - pycharm.svg           // 使用本地SVG资源文件显示IDE图标
+   ```
+
 ## {datetime: YYYY-MM-DD HH:mm:ss}
 
 ### 1. {function simple description}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from "vue";
-
+import { ElIcon } from 'element-plus';
 const projects = ref<DevHaven.Project[]>([]);
 const isLoading = ref(false);
 
@@ -17,47 +17,31 @@ const fetchOpenProjects = async () => {
   }
 };
 
-// 获取项目缩写作为图标显示
-const getProjectInitials = (name: string) => {
-  if (!name) return "PR";
-  const words = name.split(/[-_\s]/);
-  if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
+// 获取IDE图标路径
+const getIdeIconPath = (ide: string) => {
+  // 转换为小写，方便比较
+  const ideLower = ide.toLowerCase();
+
+  if (ideLower.includes('webstorm')) {
+    return './ide/webstorm.svg';
+  } else if (ideLower.includes('idea')) {
+    return './ide/intellij-idea.svg';
+  } else if (ideLower.includes('pycharm')) {
+    return './ide/pycharm.svg';
   }
-  return name.substring(0, 2).toUpperCase();
+
+  // 默认图标
+  return './icon.png';
 };
 
-// 为每个项目生成一个随机的背景颜色
-const getProjectColor = (name: string) => {
-  const colors = [
-    'bg-blue-500', 'bg-green-500', 'bg-purple-500',
-    'bg-orange-500', 'bg-red-500', 'bg-teal-500',
-    'bg-indigo-500', 'bg-pink-500', 'bg-amber-500'
-  ];
-  const index = name.length % colors.length;
-  return colors[index];
-};
-
-// 获取IDE图标
-const getIdeIcon = (ide: string) => {
-  // 根据路径判断IDE类型，这里简单模拟
-  if (ide.includes('Webstorm')) {
-    return 'i-mdi-web';
-  } else if (ide.includes('Idea')) {
-    return 'i-mdi-language-java';
-  } else if (ide.includes('Pycharm')) {
-    return 'i-mdi-file-document';
-  }
-  return 'i-mdi-code-tags';
-};
-
-const resumeIde = (project: DevHaven.Project) => {
-  window.api.resumeIde({
+const resumeIde = async (project: DevHaven.Project) => {
+  await window.api.resumeIde({
     ide: project.ide,
     projectName: project.projectName,
     projectPath: project.projectPath
   });
 };
+
 // 监听刷新项目列表事件
 const handleRefreshProjects = () => {
   fetchOpenProjects();
@@ -92,16 +76,21 @@ onUnmounted(() => {
 
     <div v-else class="project-list">
       <div v-for="project in projects" :key="project.projectPath" class="project-item" @click="resumeIde(project)">
-        <!-- 项目图标 -->
-        <div class="project-icon" :class="getProjectColor(project.projectName)">
-          {{ getProjectInitials(project.projectName) }}
+        <!-- 应用图标 -->
+        <div class="project-icon">
+          <el-icon :size="24">
+            <img :src="getIdeIconPath(project.ide)" class="ide-img-icon" />
+            <el-icon :size="24">
+              {{ ideaIcon }}
+            </el-icon>
+          </el-icon>
         </div>
 
         <!-- 项目信息 -->
         <div class="project-info">
-          <div class="project-title">{{ project.projectName }}</div>
+          <div class="project-title" v-if="project.debHavenProject">{{ project.debHavenProject.name }}</div>
+          <div class="project-title" v-else>{{ project.projectName }}</div>
           <div class="project-path">
-            <span :class="getIdeIcon(project.ide)" class="ide-icon"></span>
             <span class="path-text">{{ project.projectPath }}</span>
           </div>
         </div>
@@ -212,6 +201,13 @@ onUnmounted(() => {
   color: white;
   font-weight: 600;
   font-size: 14px;
+  background-color: #2a2a2a;
+}
+
+.ide-img-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .project-info {
@@ -237,11 +233,6 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.ide-icon {
-  font-size: 14px;
-  margin-right: 4px;
 }
 
 .path-text {
@@ -272,25 +263,14 @@ onUnmounted(() => {
   color: #f0f0f0;
 }
 
-.favorite-icon {
-  font-size: 18px;
-  color: #f5c042;
-}
-
 .i-mdi-dots-vertical,
 .i-mdi-folder-open-outline {
   font-size: 18px;
 }
 
 /* 为UnoCSS的图标样式 */
-.i-mdi-web,
-.i-mdi-language-java,
-.i-mdi-file-document,
-.i-mdi-code-tags,
-.i-mdi-star,
-.i-mdi-star-outline,
-.i-mdi-dots-vertical,
-.i-mdi-folder-open-outline {
+.i-mdi-folder-open-outline,
+.i-mdi-dots-vertical {
   width: 1em;
   height: 1em;
   display: inline-block;
