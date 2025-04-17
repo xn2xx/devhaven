@@ -26,17 +26,13 @@ DevHaven提供了一个集中式平台，将所有项目整合在一个界面中
 - **搜索功能**：快速查找项目
 
 ## 插件支持
-
 为了提供更流畅的开发体验，DevHaven提供了配套的IDE插件，可自动同步IDE中打开的项目到DevHaven应用：
-
 - [**VS Code插件**](https://github.com/zxcvbnmzsedr/devhaven-vs-plugin) - 自动同步VS Code中打开的项目
 - [**IntelliJ IDEA插件**](https://github.com/zxcvbnmzsedr/devhaven-idea-plugin) - 适用于IntelliJ平台的所有IDE（包括WebStorm、PyCharm等）
-
 这些插件可以实现：
 - 自动检测IDE中打开的项目
 - 将项目信息同步到DevHaven
 - 无需手动添加项目，提高工作效率
-
 详细信息请查看[插件目录](./plugin)。
 
 ## 技术栈
@@ -44,7 +40,7 @@ DevHaven提供了一个集中式平台，将所有项目整合在一个界面中
 - **前端**：Vue.js 3（组合式API）、Element Plus
 - **样式**：UnoCSS
 - **状态管理**：Pinia
-- **数据库**：SQLite with better-sqlite3
+- **数据库**：SQLite better-sqlite3
 - **桌面集成**：Electron
 
 ## 开发指南
