@@ -35,6 +35,9 @@ importers:
       pinia:
         specifier: ^2.0.30
         version: 2.3.1(typescript@5.8.3)(vue@3.5.13(typescript@5.8.3))
+      ts-node:
+        specifier: ^10.9.2
+        version: 10.9.2(@types/node@22.14.1)(typescript@5.8.3)
       unocss:
         specifier: 66.1.0-beta.10
         version: 66.1.0-beta.10(postcss@8.5.3)(vite@4.5.13(@types/node@22.14.1))(vue@3.5.13(typescript@5.8.3))
@@ -72,9 +75,6 @@ importers:
       electron-builder:
         specifier: ^23.6.0
         version: 23.6.0
-      ts-node:
-        specifier: ^10.9.2
-        version: 10.9.2(@types/node@22.14.1)(typescript@5.8.3)
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
