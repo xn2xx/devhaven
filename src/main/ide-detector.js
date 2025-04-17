@@ -43,6 +43,33 @@ class IdeDetector {
           linux: 'which code'
         }
       },
+      {
+        name: 'cursor',
+        display_name: 'Cursor',
+        icon: 'code',
+        paths: {
+          darwin: [
+            '/Applications/Cursor.app',
+          ],
+          win32: [
+
+          ],
+          linux: [
+            '/usr/bin/cursor',
+          ]
+        },
+        command: {
+          darwin: '',
+          win32: 'code.cmd',
+          linux: 'code'
+        },
+        args: '{projectPath}',
+        detectCommand: {
+          darwin: 'which code',
+          win32: 'where code 2>nul',
+          linux: 'which code'
+        }
+      },
       // IntelliJ IDEA
       {
         name: 'idea',

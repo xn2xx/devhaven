@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { useAppStore } from './store'
+import { useAppStore } from './src/store'
 import {  watchEffect } from 'vue'
 
 const store = useAppStore()

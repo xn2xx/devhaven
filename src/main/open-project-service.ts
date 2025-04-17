@@ -1,0 +1,81 @@
+const fs = require('fs');
+
+const os = require('os')
+const path = require('path')
+const { dbService } = require('./db.service')
+const memoryData: DevHaven.Project[] = []
+
+/**
+ * 获取打开的项目
+ * @returns Promise<Project[]> 打开的项目列表
+ */
+async function getOpenProjects(): Promise<DevHaven.Project[]> {
+  try {
+    // 查询%HOME/.debhaven/projects的文件列表
+    const filePath = path.join(os.homedir(), '.devhaven/projects')
+
+    // 检查目录是否存在
+    if (!fs.existsSync(filePath)) {
+      await fs.promises.mkdir(filePath, { recursive: true });
+      return [];
+    }
+
+    // 使用异步读取文件列表
+    const files = await fs.promises.readdir(filePath);
+
+    // 处理文件并获取项目信息
+    const projects: DevHaven.Project[] = [];
+
+    for (const file of files) {
+      try {
+        // 检查文件名格式是否正确
+        const parts = file.split('-');
+        if (parts.length !== 2) continue;
+
+        const [ide, base64Path] = parts;
+        const projectPath = Buffer.from(base64Path, 'base64').toString('utf-8');
+
+        // 获取项目信息
+        const project = dbService.projects.getByPath(projectPath);
+        // 查看文件内容
+        const fileContent = fs.readFileSync(path.join(filePath, file), 'utf-8');
+        const projectInfo = JSON.parse(fileContent);
+
+        projects.push({
+          ide,
+          projectName: projectInfo.name,
+          projectPath,
+          debHavenProject: project
+        });
+
+      } catch (fileError) {
+        console.error(`处理文件 ${file} 时出错:`, fileError);
+        // 继续处理下一个文件
+
+      }
+    }
+
+    // 更新内存缓存
+    memoryData.splice(0, memoryData.length, ...projects);
+
+    return projects;
+  } catch (error) {
+    console.error('获取打开的项目时出错:', error);
+    return [];
+  }
+}
+
+async function getCurrentEditFile(projectPath: string) {
+  const base64Path = Buffer.from(projectPath).toString('base64');
+  const filePath = path.join(os.homedir(), '.devhaven/projects', `EDIT-FILE-${base64Path}`);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const fileContent = fs.readFileSync(filePath, 'utf-8');
+  return JSON.parse(fileContent);
+}
+
+module.exports = {
+  getOpenProjects,
+  getCurrentEditFile
+}

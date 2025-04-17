@@ -6,6 +6,7 @@ const electronAPI = {
   selectDbPath: () => ipcRenderer.invoke("select-db-path"),
   openFolder: (path) => ipcRenderer.invoke("open-folder", path),
   openWithIDE: (path, ide) => ipcRenderer.invoke("open-with-ide", path, ide),
+  resumeIde: (project) => ipcRenderer.invoke("resume-ide", project),
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
   openExecutableDialog: () => ipcRenderer.invoke("open-executable-dialog"),
@@ -37,13 +38,26 @@ const electronAPI = {
   deleteProject: (id) => ipcRenderer.invoke("db:deleteProject", id),
   searchProjects: (query) => ipcRenderer.invoke("db:searchProjects", query),
   // 获取收藏的项目列表
-  favoriteProjects: () => ipcRenderer.invoke("db:getFavoriteProjects")
+  favoriteProjects: () => ipcRenderer.invoke("db:getFavoriteProjects"),
+
+  getOpenProjects: () => ipcRenderer.invoke("get-open-projects"),
+
+  // IPC事件监听
+  ipcRenderer: {
+    on: (channel, listener) => ipcRenderer.on(channel, (event, ...args) => listener(...args)),
+    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener)
+  }
 };
 
 // 在纯Electron环境下暴露API接口
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);
 // 直接将API暴露到全局范围，适应纯客户端环境
 contextBridge.exposeInMainWorld("api", electronAPI);
+
+// 监听导航到设置页面的消息
+ipcRenderer.on('navigate-to-settings', () => {
+  window.api.router.push('/settings');
+});
 
 // 暴露 Node.js 环境变量
 contextBridge.exposeInMainWorld("process", {

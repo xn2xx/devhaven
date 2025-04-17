@@ -3,6 +3,7 @@ const { dbService, initDatabase } = require("./db.service");
 const fileService = require("./file-service");
 const ideService = require("./ide-service");
 const settingsService = require("./settings-service");
+const openProjectService = require("./open-project-service");
 const path = require("path");
 const { app } = require("electron");
 
@@ -243,15 +244,26 @@ function registerIpcHandlers() {
   });
 
   // ========== 设置相关 IPC 处理程序 ==========
-
   // 获取应用设置
+
   ipcMain.handle("get-app-settings", () => {
     return settingsService.getSettings();
   });
 
+
   // 保存应用设置
   ipcMain.handle("save-app-settings", (_, settings) => {
     return settingsService.saveSettings(settings);
+  });
+
+  // 获取打开的项目
+  ipcMain.handle("get-open-projects", () => {
+    console.log('get-open-projects')
+    return openProjectService.getOpenProjects();
+  });
+  ipcMain.handle("resume-ide", (_, project) => {
+    console.log('resume-ide', project)
+    return ideService.resumeIde(project);
   });
 }
 
