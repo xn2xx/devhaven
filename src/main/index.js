@@ -46,7 +46,7 @@ function createTrayWindow() {
     // 打开开发者工具
     trayWindow.webContents.openDevTools();
   } else {
-    trayWindow.loadFile(path.join(__dirname, '../renderer/index.html'), {
+    trayWindow.loadFile(path.join(__dirname, '../../out/renderer/index.html'), {
       hash: '/tray'
     })
   }

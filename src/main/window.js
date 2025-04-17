@@ -34,7 +34,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // 生产模式：加载本地文件
-    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../../out/renderer/index.html'));
   }
 
   // 处理窗口关闭事件
