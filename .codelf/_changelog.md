@@ -122,6 +122,42 @@
            - pycharm.svg           // 使用本地SVG资源文件显示IDE图标
    ```
 
+## 2023-10-15 11:30:00
+
+### 1. 添加GitHub收藏功能
+
+**Change Type**: feature
+
+> **Purpose**: 增强项目管理能力，支持用户管理GitHub收藏项目
+> **Detailed Description**: 添加GitHub OAuth认证和Star项目管理功能，用户可以浏览、筛选和导入已收藏的GitHub项目
+> **Reason for Change**: 用户需要一个集中管理GitHub收藏项目的功能，提高项目查找和访问效率
+> **Impact Scope**: 影响主页导航、路由系统，添加新的页面和后端服务
+> **API Changes**:
+>   - 新增IPC API: `github:authenticate` - GitHub OAuth认证
+>   - 新增IPC API: `github:auth-status` - 获取GitHub认证状态
+>   - 新增IPC API: `github:logout` - GitHub登出
+>   - 新增IPC API: `github:get-starred-repos` - 获取GitHub已加星标的仓库
+> **Configuration Changes**: 在package.json中添加axios和keytar依赖
+> **Performance Impact**: GitHub API调用可能会导致一定的网络延迟，但对整体性能影响有限
+
+   ```
+   root
+   - src
+       - main
+           - github-service.js     // add GitHub API服务模块，实现OAuth认证和API调用
+           - ipc-handlers.js       // refact 添加GitHub相关的IPC处理程序
+       - preload
+           - index.js              // refact 添加GitHub相关API接口
+       - renderer
+           - src
+               - router
+                   - index.js      // refact 添加GitHub收藏管理页面路由
+               - views
+                   - GithubStarView.vue // add GitHub收藏管理页面组件
+                   - HomeView.vue       // refact 在设置按钮左边添加GitHub Stars按钮
+   - package.json                  // refact 添加axios和keytar依赖
+   ```
+
 ## {datetime: YYYY-MM-DD HH:mm:ss}
 
 ### 1. {function simple description}

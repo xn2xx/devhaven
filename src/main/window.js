@@ -31,7 +31,7 @@ function createWindow() {
     // 开发模式：从Vite开发服务器加载
     mainWindow.loadURL('http://localhost:5173');
     // 打开开发者工具
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   } else {
     // 生产模式：加载本地文件
     mainWindow.loadFile(path.join(__dirname, '../../out/renderer/index.html'));

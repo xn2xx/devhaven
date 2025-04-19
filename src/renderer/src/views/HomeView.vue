@@ -41,6 +41,9 @@
           <button class="theme-toggle" @click="toggleTheme">
             <i :class="isDarkMode ? 'i-fa-solid:sun' : 'i-fa-solid:moon'"></i>
           </button>
+          <el-button class="theme-toggle" @click="goToGithubStars">
+            <i class="i-fa-brands:github"></i>
+          </el-button>
           <el-button class="theme-toggle" @click="goToSettings">
             <i class="i-fa-solid:cog"></i>
           </el-button>
@@ -243,6 +246,10 @@ const handleSidebarCollapse = (collapsed) => {
 
 const goToSettings = () => {
   router.push("/settings");
+};
+
+const goToGithubStars = () => {
+  router.push("/github-stars");
 };
 
 // 生命周期钩子

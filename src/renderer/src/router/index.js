@@ -16,6 +16,11 @@ const routes = [
     path: '/tray',
     name: 'TrayWindow',
     component: () => import('../views/TrayWindow.vue')
+  },
+  {
+    path: '/github-stars',
+    name: 'GithubStars',
+    component: () => import('../views/GithubStarView.vue')
   }
 ];
 

@@ -2,7 +2,7 @@
 require("ts-node").register({
   transpileOnly: true,
   compilerOptions: {
-    module: "commonjs",
+    module: "ESNext",
     target: "es2020",
     esModuleInterop: true
   }

@@ -4,7 +4,7 @@
 
 > 该工具帮助开发者集中管理和组织各种项目，提供项目分类、收藏和快速启动等功能
 
-> 当前版本：1.0.0
+> 当前版本：1.0.1
 
 > 开发团队：独立开发
 
@@ -21,6 +21,8 @@
 * better-sqlite3 (8.3.0): Node.js的SQLite客户端
 * electron-store (8.1.0): Electron的持久数据存储
 * UnoCSS (66.1.0-beta.10): 即时原子CSS引擎
+* axios (1.6.7): 基于Promise的HTTP客户端
+* keytar (7.9.0): 系统密钥链访问库
 
 
 ## Development Environment
@@ -40,6 +42,10 @@
 
 ```
 root
+- .codelf                            // 项目文档目录
+    - project.md                     // 项目详情文档
+    - _changelog.md                  // 变更日志
+    - attention.md                   // 开发注意事项
 - .cursor                            // Cursor IDE配置目录
     - rules
         - my.mdc                     // Cursor规则配置
@@ -95,6 +101,7 @@ root
         - db.service.js              // 数据库服务
         - file-service.js            // 文件服务
         - float-window.js            // 浮动窗口服务
+        - github-service.js          // GitHub API服务
         - ide-detector.js            // IDE检测工具
         - ide-service.js             // IDE服务
         - index.js                   // 主进程入口
@@ -117,8 +124,10 @@ root
     - store                          // Pinia状态管理目录
         - index.js                   // 状态存储配置
     - views                          // 视图组件目录
+        - GithubStarView.vue         // GitHub收藏管理视图
         - HomeView.vue               // 首页视图
         - SettingsView.vue           // 设置视图
+        - TrayWindow.vue             // 系统托盘窗口视图
 - tsconfig.json                      // TypeScript配置
 - tsconfig.node.json                 // Node.js TypeScript配置
 - tsconfig.web.json                  // Web TypeScript配置

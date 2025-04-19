@@ -42,6 +42,12 @@ const electronAPI = {
 
   getOpenProjects: () => ipcRenderer.invoke("get-open-projects"),
 
+  // GitHub相关操作
+  authenticateGithub: () => ipcRenderer.invoke("github:authenticate"),
+  getGithubAuthStatus: () => ipcRenderer.invoke("github:auth-status"),
+  logoutGithub: () => ipcRenderer.invoke("github:logout"),
+  getGithubStarredRepos: () => ipcRenderer.invoke("github:get-starred-repos"),
+
   // IPC事件监听
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, (event, ...args) => listener(...args)),

@@ -4,6 +4,7 @@ const fileService = require("./file-service");
 const ideService = require("./ide-service");
 const settingsService = require("./settings-service");
 const openProjectService = require("./open-project-service");
+const githubService = require("./github-service");
 const path = require("path");
 const { app } = require("electron");
 
@@ -264,6 +265,48 @@ function registerIpcHandlers() {
   ipcMain.handle("resume-ide", (_, project) => {
     console.log('resume-ide', project)
     return ideService.resumeIde(project);
+  });
+
+  // ========== GitHub 相关 IPC 处理程序 ==========
+
+  // GitHub认证
+  ipcMain.handle("github:authenticate", async () => {
+    try {
+      return await githubService.authenticate();
+    } catch (error) {
+      console.error("GitHub认证失败:", error);
+      throw error;
+    }
+  });
+
+  // 获取GitHub认证状态
+  ipcMain.handle("github:auth-status", async () => {
+    try {
+      return await githubService.getAuthStatus();
+    } catch (error) {
+      console.error("获取GitHub认证状态失败:", error);
+      throw error;
+    }
+  });
+
+  // GitHub登出
+  ipcMain.handle("github:logout", async () => {
+    try {
+      return await githubService.logout();
+    } catch (error) {
+      console.error("GitHub登出失败:", error);
+      throw error;
+    }
+  });
+
+  // 获取GitHub已加星标的仓库
+  ipcMain.handle("github:get-starred-repos", async () => {
+    try {
+      return await githubService.getStarredRepositories();
+    } catch (error) {
+      console.error("获取GitHub已加星标的仓库失败:", error);
+      throw error;
+    }
   });
 }
 

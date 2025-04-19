@@ -12,3 +12,6 @@ devhaven.db
 .DS_Store
 dist_electron
 **/auto-imports.d.ts
+ui
+.env.development
+.env.prod
