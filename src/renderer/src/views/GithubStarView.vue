@@ -8,7 +8,7 @@
       <el-button v-if="!isAuthenticated" type="primary" size="small" @click="handleLogin">
         <i class="i-fa-brands:github mr-1"></i> 连接 GitHub
       </el-button>
-      <el-button v-else type="default" size="small" @click="handleLogout">
+      <el-button v-else size="small" @click="handleLogout">
         <i class="i-fa-solid:sign-out-alt mr-1"></i> 断开连接
       </el-button>
     </div>
@@ -104,7 +104,6 @@
                     </h4>
                     <div class="project-owner">
                       <a :href="project.owner.html_url" target="_blank">
-                        <img :src="project.owner.avatar_url" :alt="project.owner.login" class="owner-avatar">
                         <span>{{ project.owner.login }}</span>
                       </a>
                     </div>
@@ -347,13 +346,16 @@ const fetchStarredRepos = async () => {
 
 // 打开项目
 const openProject = (project) => {
-  window.open(project.html_url, '_blank');
+  window.api.openExternalUrl(project.html_url);
 };
 
 // 导入项目到DevHaven
 const importProject = (project) => {
-  // 实现导入项目到DevHaven的逻辑
-  ElMessage.info('功能开发中: 导入项目到DevHaven');
+  // 构建克隆URL
+  const cloneUrl = project.clone_url;
+  // 使用默认浏览器打开
+  window.api.openExternalUrl(cloneUrl);
+  ElMessage.success(`已打开项目克隆地址: ${project.name}`);
 };
 
 // 检查认证状态
@@ -546,6 +548,7 @@ onMounted(() => {
   border-radius: 8px;
   padding: 16px;
   display: flex;
+  height: 250px;
   flex-direction: column;
   gap: 12px;
   transition: all 0.2s ease;

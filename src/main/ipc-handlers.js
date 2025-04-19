@@ -6,7 +6,7 @@ const settingsService = require("./settings-service");
 const openProjectService = require("./open-project-service");
 const githubService = require("./github-service");
 const path = require("path");
-const { app } = require("electron");
+const { app, shell } = require("electron");
 
 /**
  * 注册所有IPC处理程序
@@ -218,6 +218,17 @@ function registerIpcHandlers() {
     }
 
     return result;
+  });
+
+  // 在系统默认浏览器中打开外部URL
+  ipcMain.handle("open-external-url", async (_, url) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error("打开外部URL失败:", error);
+      throw error;
+    }
   });
 
   // 选择文件夹

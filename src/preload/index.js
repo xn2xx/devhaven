@@ -10,6 +10,7 @@ const electronAPI = {
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
   openExecutableDialog: () => ipcRenderer.invoke("open-executable-dialog"),
+  openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
 
   // 应用设置
   getAppSettings: () => ipcRenderer.invoke("get-app-settings"),
