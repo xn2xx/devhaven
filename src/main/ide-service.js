@@ -92,6 +92,7 @@ async function openWithIde(projectPath, ideName) {
       // 处理.app应用程序
       let command;
       if (ideConfig.name.includes("vscode") || ideConfig.name.includes("cursor")) {
+        // 需要先打开应用，再进行切换
         if (currentEditFile && currentEditFile.filePath) {
           return openWithMacCommand("open", [
             "-a",
@@ -102,7 +103,7 @@ async function openWithIde(projectPath, ideName) {
           return openWithMacCommand("open", [
             "-a",
             ideConfig.command,
-            `cursor://file${projectPath}`
+            `cursor://file${projectPath}?windowId=_blank`
           ]);
         }
       } else if (ideConfig.command.includes("Xcode.app")) {
