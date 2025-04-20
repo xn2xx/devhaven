@@ -11,6 +11,8 @@ const electronAPI = {
   openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
   openExecutableDialog: () => ipcRenderer.invoke("open-executable-dialog"),
   openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
+  pathExists: (path) => ipcRenderer.invoke("path-exists", path),
+  cloneGithubRepo: (repoUrl, targetPath) => ipcRenderer.invoke("clone-github-repo", repoUrl, targetPath),
 
   // 应用设置
   getAppSettings: () => ipcRenderer.invoke("get-app-settings"),

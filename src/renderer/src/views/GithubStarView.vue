@@ -159,6 +159,13 @@
         </div>
       </template>
     </div>
+
+    <!-- 项目弹窗 -->
+    <ProjectDialog
+      v-model:visible="projectDialogVisible"
+      :project-data="projectToImport"
+      @save="saveImportedProject"
+    />
   </div>
 </template>
 
@@ -166,6 +173,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAppStore } from '../store';
+import ProjectDialog from '../components/ProjectDialog.vue';
 
 // Store
 const store = useAppStore();
@@ -175,6 +183,11 @@ const loading = ref(false);
 const isAuthenticated = ref(false);
 const starredProjects = ref([]);
 const githubUser = ref(null);
+
+// 项目导入相关
+const projectDialogVisible = ref(false);
+const projectToImport = ref(null);
+const importedProjects = ref([]);
 
 // 筛选状态
 const languageSearch = ref('');
@@ -295,6 +308,22 @@ const getLanguageColor = (language) => {
   return colors[language] || '#8e8e8e';
 };
 
+// 检查项目是否已导入
+const isProjectImported = (githubId) => {
+  return importedProjects.value.some(project => project.github_id === githubId);
+};
+
+// 获取已导入的项目
+const fetchImportedProjects = async () => {
+  try {
+    // 这里需要实现一个API来获取已导入的GitHub项目
+    // 暂时使用空数组
+    importedProjects.value = [];
+  } catch (error) {
+    console.error('获取已导入项目失败:', error);
+  }
+};
+
 // GitHub授权
 const handleLogin = async () => {
   loading.value = true;
@@ -305,6 +334,7 @@ const handleLogin = async () => {
       isAuthenticated.value = true;
       githubUser.value = result.user;
       await fetchStarredRepos();
+      await fetchImportedProjects();
       ElMessage.success(`已连接到GitHub账号: ${result.user.login}`);
     } else {
       ElMessage.error('GitHub连接失败');
@@ -323,6 +353,7 @@ const handleLogout = async () => {
     isAuthenticated.value = false;
     githubUser.value = null;
     starredProjects.value = [];
+    importedProjects.value = [];
     ElMessage.success('已断开GitHub连接');
   } catch (error) {
     console.error('GitHub登出错误:', error);
@@ -351,11 +382,71 @@ const openProject = (project) => {
 
 // 导入项目到DevHaven
 const importProject = (project) => {
-  // 构建克隆URL
-  const cloneUrl = project.clone_url;
-  // 使用默认浏览器打开
-  window.api.openExternalUrl(cloneUrl);
-  ElMessage.success(`已打开项目克隆地址: ${project.name}`);
+  // 构建项目数据
+  projectToImport.value = {
+    id: null,
+    name: project.name,
+    description: project.description || '',
+    path: `${store.settings?.githubProjectsPath || ''}/${project.owner.login}/${project.name}`,
+    folder_id: null,
+    preferred_ide: ['vscode'],
+    icon: project.language ? getIconByLanguage(project.language) : 'code',
+    source_type: 'github',
+    github_url: project.html_url,
+    is_cloned: 0 // 初始设置为未克隆
+  };
+
+  // 打开项目对话框
+  projectDialogVisible.value = true;
+};
+
+// 根据语言获取图标
+const getIconByLanguage = (language) => {
+  const langToIcon = {
+    'JavaScript': 'js',
+    'TypeScript': 'ts',
+    'Python': 'python',
+    'Java': 'java',
+    'Ruby': 'gem',
+    'PHP': 'php',
+    'HTML': 'html5',
+    'CSS': 'css3',
+    'C': 'code',
+    'C++': 'code',
+    'C#': 'code',
+    'Go': 'code',
+    'Rust': 'code'
+  };
+
+  return langToIcon[language] || 'code';
+};
+
+// 保存导入的项目
+const saveImportedProject = async (project) => {
+  try {
+    // 确保设置source_type和is_cloned
+    project.source_type = 'github';
+    if (project.is_cloned === undefined) {
+      project.is_cloned = 0;
+    }
+
+    // 创建项目
+    const newProject = await store.createProject(project);
+
+    if (newProject) {
+      ElMessage.success(`项目 ${project.name} 已导入`);
+
+      // 添加到已导入项目列表
+      importedProjects.value.push({
+        id: newProject.id,
+        github_id: project.id,
+        name: project.name
+      });
+    }
+  } catch (error) {
+    console.error('导入项目失败:', error);
+    ElMessage.error('导入项目失败');
+  }
 };
 
 // 检查认证状态
@@ -367,6 +458,7 @@ const checkAuthStatus = async () => {
     if (status.isAuthenticated) {
       githubUser.value = status.user;
       await fetchStarredRepos();
+      await fetchImportedProjects();
     }
   } catch (error) {
     console.error('检查GitHub认证状态错误:', error);

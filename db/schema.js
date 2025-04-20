@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS projects (
   preferred_ide TEXT DEFAULT 'vscode', -- Default IDE preference
   icon TEXT DEFAULT 'code', -- Font Awesome icon name
   branch TEXT, -- Current git branch (if applicable)
+  source_type TEXT DEFAULT 'local', -- 'local' or 'github' to indicate project source
+  github_url TEXT, -- GitHub repository URL (if applicable)
+  is_cloned INTEGER DEFAULT 1, -- 1 if project is cloned locally, 0 if not yet cloned
   last_opened_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

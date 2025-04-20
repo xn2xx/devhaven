@@ -45,6 +45,14 @@
                       :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
                     {{ project.is_favorite === 1 ? "取消收藏" : "收藏项目" }}
                   </el-dropdown-item>
+                  <el-dropdown-item v-if="project.source_type === 'github' && project.is_cloned === 0" command="clone">
+                    <i class="i-fa-solid:download mr-2"></i>
+                    克隆仓库
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="project.source_type === 'github'" command="viewOnGithub">
+                    <i class="i-fa-brands:github mr-2"></i>
+                    在 GitHub 上查看
+                  </el-dropdown-item>
                   <el-dropdown-item command="delete" divided>
                     <i class="i-fa-solid:trash-alt mr-2 text-red-500"></i>
                     <span class="text-red-500">删除项目</span>
@@ -77,8 +85,10 @@
               </i>
             </div>
             <div class="stat-item">
-              <i class="i-fa-solid:folder stat-icon"></i>
+              <i :class="[project.source_type === 'github' ? 'i-fa-brands:github' : 'i-fa-solid:folder', 'stat-icon']"></i>
               <span class="project-path">{{ project.path }}</span>
+              <span v-if="project.source_type === 'github'" class="github-badge">GitHub</span>
+              <span v-if="project.source_type === 'github' && project.is_cloned === 0" class="not-cloned-badge">未克隆</span>
             </div>
           </div>
           <div class="project-tags">
@@ -94,9 +104,24 @@
           <div class="project-description">
             {{ project.description || "该项目暂无描述信息。" }}
           </div>
+
+          <!-- 克隆进度条 -->
+          <div v-if="cloningProject && cloningProject.id === project.id" class="clone-progress">
+            <el-progress
+              :percentage="cloneProgress"
+              :status="cloneStatus === 'completed' ? 'success' : undefined"
+              :stroke-width="8"
+            ></el-progress>
+            <div class="clone-status">{{ getCloneStatusText() }}</div>
+          </div>
+
           <div class="card-actions">
-            <button class="card-action-btn" v-for="ide in getPreferredIdes(project)"
-                    @click.stop="openProjectWithSpecificIde(project,ide)">
+            <button
+              class="card-action-btn"
+              v-for="ide in getPreferredIdes(project)"
+              @click.stop="openProjectWithSpecificIde(project, ide)"
+              :disabled="project.source_type === 'github' && project.is_cloned === 0 && !cloningProject"
+            >
               <i class="i-fa-solid:external-link-alt card-action-icon"></i>
               {{ getIdeName(ide) }}
             </button>
@@ -104,10 +129,36 @@
               <i class="i-fa-solid:folder-open card-action-icon"></i>
               文件夹
             </button>
+            <button
+              v-if="project.source_type === 'github' && project.is_cloned === 0"
+              class="card-action-btn github"
+              @click.stop="handleProjectAction('clone', project)"
+            >
+              <i class="i-fa-solid:download card-action-icon"></i>
+              克隆
+            </button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- 克隆确认对话框 -->
+    <el-dialog
+      v-model="cloneConfirmDialogVisible"
+      title="克隆GitHub仓库"
+      width="500px"
+    >
+      <p class="mb-3">您确定要将以下GitHub仓库克隆到本地吗？</p>
+      <p v-if="projectToClone" class="font-bold mb-1">{{ projectToClone.name }}</p>
+      <p v-if="projectToClone" class="mb-4">目标路径：{{ projectToClone.path }}</p>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="cloneConfirmDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmClone">确认克隆</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 
 </template>
@@ -133,6 +184,13 @@ const emit = defineEmits([
   "select-folder"
 ]);
 
+// 克隆相关状态
+const cloneConfirmDialogVisible = ref(false);
+const projectToClone = ref(null);
+const cloningProject = ref(null);
+const cloneProgress = ref(0);
+const cloneStatus = ref('');
+
 // Store
 const store = useAppStore();
 const folders = computed(() => store.folders);
@@ -142,6 +200,17 @@ const handleProjectAction = async (command, project) => {
   switch (command) {
     case "openFolder":
       try {
+        if (project.source_type === 'github' && project.is_cloned === 0) {
+          ElMessage.warning("项目尚未克隆到本地，请先克隆项目");
+          return;
+        }
+
+        const exists = await window.api.pathExists(project.path);
+        if (!exists) {
+          ElMessage.error("项目路径不存在，请检查路径或重新克隆项目");
+          return;
+        }
+
         await window.electronAPI.openFolder(project.path);
       } catch (error) {
         ElMessage.error("打开文件夹失败");
@@ -181,6 +250,92 @@ const handleProjectAction = async (command, project) => {
         ElMessage.error("操作收藏失败");
       }
       break;
+    case "viewOnGithub":
+      if (project.github_url) {
+        window.api.openExternalUrl(project.github_url);
+      } else {
+        ElMessage.warning("没有找到GitHub URL");
+      }
+      break;
+    case "clone":
+      showCloneConfirmDialog(project);
+      break;
+  }
+};
+
+// 显示克隆确认对话框
+const showCloneConfirmDialog = (project) => {
+  projectToClone.value = project;
+  cloneConfirmDialogVisible.value = true;
+};
+
+// 确认克隆仓库
+const confirmClone = async () => {
+  if (!projectToClone.value || !projectToClone.value.github_url) {
+    ElMessage.error("无效的GitHub仓库");
+    cloneConfirmDialogVisible.value = false;
+    return;
+  }
+
+  cloneConfirmDialogVisible.value = false;
+  await cloneRepository(projectToClone.value);
+};
+
+// 克隆仓库
+const cloneRepository = async (project) => {
+  try {
+    cloningProject.value = project;
+    cloneProgress.value = 0;
+    cloneStatus.value = 'cloning';
+
+    // 设置克隆进度监听器
+    window.api.ipcRenderer.on('clone-progress-update', handleCloneProgress);
+
+    // 开始克隆
+    const result = await window.api.cloneGithubRepo(project.github_url, project.path);
+
+    if (result.success) {
+      ElMessage.success(`仓库 ${project.name} 克隆成功`);
+
+      // 更新项目状态为已克隆
+      await store.updateProject(project.id, {
+        is_cloned: 1
+      });
+
+      // 更新当前项目的克隆状态
+      project.is_cloned = 1;
+    } else {
+      ElMessage.error(`克隆失败: ${result.message}`);
+    }
+  } catch (error) {
+    console.error('克隆仓库出错:', error);
+    ElMessage.error('克隆过程中发生错误');
+  } finally {
+    // 清理
+    setTimeout(() => {
+      window.api.ipcRenderer.removeListener('clone-progress-update', handleCloneProgress);
+      cloningProject.value = null;
+      cloneProgress.value = 0;
+      cloneStatus.value = '';
+    }, 2000);
+  }
+};
+
+// 处理克隆进度更新
+const handleCloneProgress = (progress) => {
+  cloneProgress.value = progress.percent;
+  cloneStatus.value = progress.status;
+};
+
+// 获取克隆状态文本
+const getCloneStatusText = () => {
+  switch (cloneStatus.value) {
+    case 'cloning':
+      return `正在克隆 (${cloneProgress.value}%)`;
+    case 'completed':
+      return '克隆完成';
+    default:
+      return '准备克隆...';
   }
 };
 
@@ -284,12 +439,28 @@ const getPreferredIdes = (project) => {
 
 const openProjectWithSpecificIde = async (project, ide) => {
   try {
-    const result = await store.openProjectWithIDE(project, ide);
-    if (!result.success) {
-      ElMessage.error(`打开项目失败: ${result.error}`);
+    // 如果是GitHub项目且未克隆，提示先克隆
+    if (project.source_type === 'github' && project.is_cloned === 0) {
+      ElMessage.warning("项目尚未克隆到本地，请先克隆项目");
+      return;
     }
+
+    // 检查项目路径是否存在
+    const exists = await window.api.pathExists(project.path);
+    if (!exists) {
+      ElMessage.error("项目路径不存在，请检查路径或重新克隆项目");
+      return;
+    }
+
+    // 更新项目的最后打开时间
+    const now = new Date();
+    store.updateProject(project.id, { last_opened_at: now.toISOString() });
+
+    // 打开项目
+    await window.api.openWithIDE(project.path, ide);
   } catch (error) {
-    ElMessage.error("打开项目失败");
+    ElMessage.error(`使用 ${getIdeName(ide)} 打开项目失败`);
+    console.error(error);
   }
 };
 
@@ -596,5 +767,48 @@ watch(() => props.currentFolderId, async () => {
   .projects-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.github-badge {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #24292e;
+  color: white;
+  margin-left: 6px;
+}
+
+.not-cloned-badge {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #f97316;
+  color: white;
+  margin-left: 6px;
+}
+
+.clone-progress {
+  margin: 10px 0;
+}
+
+.clone-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  text-align: center;
+}
+
+.card-action-btn.github {
+  background-color: #24292e;
+  color: white;
+}
+
+.card-action-btn.github:hover {
+  background-color: #1a1f24;
+}
+
+.card-action-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

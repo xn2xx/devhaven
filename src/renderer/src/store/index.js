@@ -24,6 +24,13 @@ export const useAppStore = defineStore("app", {
     // Theme state
     theme: "light",
 
+    // Settings
+    settings: {
+      dbPath: "",
+      theme: "light",
+      githubProjectsPath: ""
+    },
+
     // Folders and projects
     folders: [],
     currentFolder: null,
@@ -87,6 +94,7 @@ export const useAppStore = defineStore("app", {
         const settings = await api.getAppSettings();
         this.dbPath = settings.dbPath;
         this.theme = settings.theme;
+        this.settings = settings;
         // Load initial data
         await this.loadFolders();
 

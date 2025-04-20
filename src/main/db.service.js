@@ -125,6 +125,16 @@ const createTables = () => {
       0,
       branch
       TEXT,
+      source_type
+      TEXT
+      DEFAULT
+      'local',
+      github_url
+      TEXT,
+      is_cloned
+      INTEGER
+      DEFAULT
+      1,
       last_opened_at
       TIMESTAMP,
       created_at

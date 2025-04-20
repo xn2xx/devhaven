@@ -39,7 +39,6 @@ const ACCOUNT_NAME = 'github-oauth'
 class GitHubService {
   constructor() {
     this.authWindow = null
-    this.authResolver = null
   }
 
   // 获取当前认证状态
@@ -129,11 +128,6 @@ class GitHubService {
     try {
       console.log('启动GitHub认证流程...')
 
-      // 创建一个认证Promise
-      const authPromise = new Promise((resolve) => {
-        this.authResolver = resolve
-      })
-
       // 创建一个随机state值防止CSRF攻击
       const state = Math.random().toString(36).substring(2, 15)
       store.set('oauth_state', state)
@@ -164,9 +158,8 @@ class GitHubService {
       await shell.openExternal(authUrl)
       console.log('已在系统浏览器中打开GitHub授权页面')
 
-      // 等待认证完成
-      console.log('等待认证完成...')
-      return await authPromise
+      // 直接返回成功状态
+      return { success: true }
     } catch (error) {
       console.error('启动认证流程失败:', error)
       return { success: false, error: error.message }
@@ -178,12 +171,6 @@ class GitHubService {
     // 协议处理器已在主进程的app.setAsDefaultProtocolClient中注册
     // 这里不需要做额外的操作，因为主进程已经监听了协议激活事件
     // 并会调用我们的handleCallback方法
-
-    // 如果存在之前的解析器（可能是之前未完成的认证），需要清除
-    if (this.authResolver) {
-      this.authResolver({ success: false, error: 'Authentication was restarted' })
-      this.authResolver = null
-    }
   }
 
   // 处理授权回调
@@ -231,13 +218,6 @@ class GitHubService {
 
       if (state !== savedState) {
         console.error('State参数不匹配，可能是CSRF攻击')
-        if (this.authResolver) {
-          this.authResolver({
-            success: false,
-            error: 'State parameter mismatch, possible CSRF attack'
-          })
-          this.authResolver = null
-        }
         return
       }
 
@@ -255,23 +235,15 @@ class GitHubService {
         const user = await this.getCurrentUser(token)
         console.log('用户信息获取成功:', user.login)
 
-        console.log('调用认证解析器，返回成功结果')
-        this.authResolver({ success: true, user })
-        this.authResolver = null
+        return { success: true, user }
       } else {
         // 没有收到授权码
         console.error('未从回调URL中获取到授权码')
-        if (this.authResolver) {
-          this.authResolver({ success: false, error: 'No authorization code received' })
-          this.authResolver = null
-        }
+        return { success: false, error: 'No authorization code received' }
       }
     } catch (error) {
       console.error('认证回调处理出错:', error)
-      if (this.authResolver) {
-        this.authResolver({ success: false, error: error.message })
-        this.authResolver = null
-      }
+      return { success: false, error: error.message }
     }
   }
 

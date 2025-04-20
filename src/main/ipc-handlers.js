@@ -319,6 +319,39 @@ function registerIpcHandlers() {
       throw error;
     }
   });
+
+  // 克隆GitHub仓库
+  ipcMain.handle("clone-github-repo", async (event, repoUrl, targetPath) => {
+    try {
+      // 创建一个webContents引用，用于发送进度更新
+      const { sender } = event;
+
+      // 开始克隆过程
+      const result = await fileService.cloneGitRepository(
+        repoUrl,
+        targetPath,
+        (progress) => {
+          // 通过IPC发送进度更新
+          sender.send("clone-progress-update", progress);
+        }
+      );
+
+      return result;
+    } catch (error) {
+      console.error("克隆GitHub仓库失败:", error);
+      throw error;
+    }
+  });
+
+  // 检查路径是否存在
+  ipcMain.handle("path-exists", async (_, path) => {
+    try {
+      return fileService.pathExists(path);
+    } catch (error) {
+      console.error("检查路径失败:", error);
+      throw error;
+    }
+  });
 }
 
 module.exports = {

@@ -1,5 +1,7 @@
 const { dialog, shell } = require('electron');
 const fs = require('fs');
+const { exec, spawn } = require('child_process');
+const path = require('path');
 
 /**
  * 打开选择数据库路径对话框
@@ -79,9 +81,115 @@ async function openFolder(folderPath) {
   return false;
 }
 
+/**
+ * 克隆GitHub仓库
+ * @param {string} repoUrl 仓库URL
+ * @param {string} targetPath 目标路径
+ * @param {function} progressCallback 进度回调函数
+ * @returns {Promise<{success: boolean, message: string}>} 克隆结果
+ */
+async function cloneGitRepository(repoUrl, targetPath, progressCallback) {
+  // 确保目标目录存在
+  const dirPath = path.dirname(targetPath);
+  if (!fs.existsSync(dirPath)) {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+    } catch (err) {
+      return {
+        success: false,
+        message: `创建目录失败: ${err.message}`
+      };
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    // 检查目标路径是否已存在并且不为空
+    if (fs.existsSync(targetPath) && fs.readdirSync(targetPath).length > 0) {
+      return resolve({
+        success: false,
+        message: '目标目录已存在且不为空'
+      });
+    }
+
+    // 使用git clone命令克隆仓库
+    const gitProcess = spawn('git', ['clone', repoUrl, targetPath]);
+
+    let stdoutData = '';
+    let stderrData = '';
+    let progressPercent = 0;
+
+    // 从git输出解析进度
+    gitProcess.stderr.on('data', (data) => {
+      stderrData += data.toString();
+
+      // 尝试从git输出中提取进度信息
+      const progressLines = data.toString().split('\n');
+      for (const line of progressLines) {
+        if (line.includes('Receiving objects:')) {
+          const match = line.match(/Receiving objects:\s+(\d+)%/);
+          if (match && match[1]) {
+            const newPercent = parseInt(match[1], 10);
+            if (newPercent > progressPercent) {
+              progressPercent = newPercent;
+              if (progressCallback) {
+                progressCallback({
+                  percent: progressPercent,
+                  status: 'cloning'
+                });
+              }
+            }
+          }
+        }
+      }
+    });
+
+    gitProcess.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+
+    gitProcess.on('close', (code) => {
+      if (code === 0) {
+        if (progressCallback) {
+          progressCallback({
+            percent: 100,
+            status: 'completed'
+          });
+        }
+        resolve({
+          success: true,
+          message: '克隆成功'
+        });
+      } else {
+        resolve({
+          success: false,
+          message: `克隆失败 (exit code ${code}): ${stderrData}`
+        });
+      }
+    });
+
+    gitProcess.on('error', (err) => {
+      resolve({
+        success: false,
+        message: `克隆出错: ${err.message}`
+      });
+    });
+  });
+}
+
+/**
+ * 检查路径是否存在
+ * @param {string} path 要检查的路径
+ * @returns {boolean} 路径是否存在
+ */
+function pathExists(path) {
+  return fs.existsSync(path);
+}
+
 module.exports = {
   selectDatabasePath,
   selectFolder,
   selectExecutable,
-  openFolder
+  openFolder,
+  cloneGitRepository,
+  pathExists
 };

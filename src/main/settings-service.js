@@ -7,7 +7,8 @@ const store = new Store({
   name: "devhaven-settings",
   defaults: {
     dbPath: path.join(app.getPath("userData"), "devhaven.db"),
-    theme: "light"
+    theme: "light",
+    githubProjectsPath: path.join(app.getPath("home"), "DevHavenGitHub")
   }
 });
 
@@ -18,7 +19,8 @@ const store = new Store({
 function getSettings() {
   return {
     dbPath: store.get("dbPath"),
-    theme: store.get("theme")
+    theme: store.get("theme"),
+    githubProjectsPath: store.get("githubProjectsPath")
   };
 }
 
@@ -30,6 +32,7 @@ function getSettings() {
 function saveSettings(settings) {
   if (settings.dbPath) store.set("dbPath", settings.dbPath);
   if (settings.theme) store.set("theme", settings.theme);
+  if (settings.githubProjectsPath) store.set("githubProjectsPath", settings.githubProjectsPath);
   return { success: true };
 }
 
@@ -47,6 +50,22 @@ function getDbPath() {
  */
 function setDbPath(dbPath) {
   store.set("dbPath", dbPath);
+}
+
+/**
+ * 获取GitHub项目目录
+ * @returns {string} GitHub项目目录
+ */
+function getGithubProjectsPath() {
+  return store.get("githubProjectsPath");
+}
+
+/**
+ * 设置GitHub项目目录
+ * @param {string} githubProjectsPath GitHub项目目录
+ */
+function setGithubProjectsPath(githubProjectsPath) {
+  store.set("githubProjectsPath", githubProjectsPath);
 }
 
 /**
@@ -86,6 +105,8 @@ module.exports = {
   saveSettings,
   getDbPath,
   setDbPath,
+  getGithubProjectsPath,
+  setGithubProjectsPath,
   getTheme,
   setTheme
 };
