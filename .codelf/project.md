@@ -11,6 +11,7 @@
 > 技术栈：Electron, Vue.js 3, TypeScript, Element Plus, UnoCSS, Pinia, SQLite (better-sqlite3)
 
 
+
 ## 依赖 (来自package.json)
 
 * vue (^3.2.47): 前端框架
@@ -42,7 +43,7 @@
 ```
 root
 - .cursor                           // Cursor IDE相关配置
-    - .DS_Store
+    - .DS_Store                     // macOS系统生成的文件，存储自定义文件夹属性
     - rules
         - my.mdc                    // Cursor规则文件，定义代码风格和项目规范
 - .editorconfig                     // 编辑器配置文件，保持不同IDE下的统一代码格式
@@ -66,8 +67,6 @@ root
 - doc                               // 文档资源
     - image.png                     // 应用截图
     - setting.png                   // 设置界面截图
-- electron                          // Electron主进程相关
-    - main.js                       // Electron入口文件
 - electron-builder.yml              // Electron打包配置
 - electron.vite.config.ts           // Electron-Vite配置文件，定义构建和开发设置
 - eslint.config.mjs                 // ESLint配置
@@ -80,14 +79,14 @@ root
 - resources                         // 资源文件
     - icon.png                      // 应用图标
     - ide                           // 各IDE图标
-        - cursor.png
-        - intellij-idea.svg
-        - pycharm.svg
-        - vscode.svg
-        - webstorm.svg
-- scripts                           // 脚本文件目录
+        - cursor.png                // Cursor IDE图标
+        - intellij-idea.svg         // IntelliJ IDEA图标
+        - pycharm.svg               // PyCharm IDE图标
+        - vscode.svg                // Visual Studio Code图标
+        - webstorm.svg              // WebStorm IDE图标
+- scripts                           // 脚本文件目录，用于自动化任务
 - src                               // 源代码目录
-    - .DS_Store
+    - .DS_Store                     // macOS系统生成的文件
     - main                          // 主进程代码
         - db.service.js             // 数据库服务，处理数据存储和查询
         - file-service.js           // 文件服务，处理文件操作

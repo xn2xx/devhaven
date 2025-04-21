@@ -1,82 +1,155 @@
-## 2024-09-27 18:30:00
+## 2023-11-15 16:30:00
 
-### 1. 初始化.codelf目录和文件
+### 1. 初始化项目框架
 
-**变更类型**: 文档
+**Change Type**: feature
 
-> **目的**: 为项目添加.codelf目录和文件，用于更好地理解和管理项目
-> **详细描述**: 添加project.md、attention.md、_changelog.md文件，完善项目文档
-> **变更原因**: 需要更全面地记录项目结构、开发指南和变更历史
-> **影响范围**: 项目文档
-> **API变更**: 无
-> **配置变更**: 无
-> **性能影响**: 无
-
-   ```
-   root
-   - .codelf    // add 项目文档目录
-    - project.md // add 项目结构和依赖说明
-    - attention.md // add 开发指南和最佳实践
-    - _changelog.md // add 变更日志
-   ```
-
-### 2. 完善项目结构和开发文档
-
-**变更类型**: 文档
-
-> **目的**: 完善项目文档，提供更详细的项目结构和开发指南
-> **详细描述**: 更新项目基本信息、技术栈、依赖、文件结构和开发注意事项
-> **变更原因**: 确保开发人员能够更好地理解项目结构和开发标准
-> **影响范围**: 项目文档
-> **API变更**: 无
-> **配置变更**: 无
-> **性能影响**: 无
+> **Purpose**: 创建基于Electron+Vue3+TypeScript的桌面应用基础架构
+> **Detailed Description**: 设置Electron主进程和渲染进程架构，配置Vue3前端框架，添加TypeScript支持
+> **Reason for Change**: 项目启动，需要搭建基础开发环境
+> **Impact Scope**: 整个项目架构
+> **API Changes**: N/A
+> **Configuration Changes**: 添加electron.vite.config.ts, tsconfig.json, package.json等配置文件
+> **Performance Impact**: 无
 
    ```
    root
-   - .codelf    // refact 项目文档目录
-    - project.md // refact 完善项目信息和结构说明
-    - attention.md // refact 完善开发指南和最佳实践
+   - electron.vite.config.ts // add 配置Electron和Vite构建选项
+   - package.json // add 项目依赖和脚本
+   - tsconfig.json // add TypeScript配置
+   - src // add 源代码目录
+     - main // add 主进程代码
+     - preload // add 预加载脚本
+     - renderer // add 渲染进程代码
    ```
 
-## {datetime: YYYY-MM-DD HH:mm:ss}
+### 2. 添加数据库功能
 
-### 1. {function simple description}
+**Change Type**: feature
 
-**Change Type**: {type: feature/fix/improvement/refactor/docs/test/build}
-
-> **Purpose**: {function purpose}
-> **Detailed Description**: {function detailed description}
-> **Reason for Change**: {why this change is needed}
-> **Impact Scope**: {other modules or functions that may be affected by this change}
-> **API Changes**: {if there are API changes, detail the old and new APIs}
-> **Configuration Changes**: {changes to environment variables, config files, etc.}
-> **Performance Impact**: {impact of the change on system performance}
-
-   ```
-   root
-   - pkg    // {type: add/del/refact/-} {The role of a folder}
-    - utils // {type: add/del/refact} {The function of the file}
-   - xxx    // {type: add/del/refact} {The function of the file}
-   ```
-
-### 2. {function simple description}
-
-**Change Type**: {type: feature/fix/improvement/refactor/docs/test/build}
-
-> **Purpose**: {function purpose}
-> **Detailed Description**: {function detailed description}
-> **Reason for Change**: {why this change is needed}
-> **Impact Scope**: {other modules or functions that may be affected by this change}
-> **API Changes**: {if there are API changes, detail the old and new APIs}
-> **Configuration Changes**: {changes to environment variables, config files, etc.}
-> **Performance Impact**: {impact of the change on system performance}
+> **Purpose**: 实现项目和公司信息的本地存储
+> **Detailed Description**: 使用better-sqlite3集成SQLite数据库，创建数据模型和服务
+> **Reason for Change**: 需要本地持久化存储用户项目和公司信息
+> **Impact Scope**: 数据管理相关功能
+> **API Changes**: 添加数据库CRUD API
+> **Configuration Changes**: 数据库初始化和配置
+> **Performance Impact**: 低，只在需要时访问数据库
 
    ```
    root
-   - pkg    // {type: add/del/refact/-} {The role of a folder}
-    - utils // {type: add/del/refact} {The function of the file}
-   - xxx    // {type: add/del/refact} {The function of the file}
+   - db // add 数据库相关
+     - schema.js // add 数据库模式定义
+   - src
+     - main
+       - db.service.js // add 数据库服务
    ```
 
-...
+### 3. 实现IDE集成
+
+**Change Type**: feature
+
+> **Purpose**: 支持用户使用首选IDE打开项目
+> **Detailed Description**: 开发IDE检测和启动功能，支持VS Code、WebStorm、PyCharm等常用IDE
+> **Reason for Change**: 核心功能，让用户能一键用喜欢的IDE打开项目
+> **Impact Scope**: IDE相关功能
+> **API Changes**: 添加IDE检测和启动API
+> **Configuration Changes**: IDE配置选项
+> **Performance Impact**: 中等，需要执行系统命令
+
+   ```
+   root
+   - resources
+     - ide // add IDE图标
+       - vscode.svg // add VS Code图标
+       - webstorm.svg // add WebStorm图标
+       - pycharm.svg // add PyCharm图标
+       - intellij-idea.svg // add IntelliJ IDEA图标
+       - cursor.png // add Cursor IDE图标
+   - src
+     - main
+       - ide-detector.js // add IDE检测器
+       - ide-service.js // add IDE服务
+       - open-project-service.ts // add 项目打开服务
+   ```
+
+## 2023-12-10 14:45:00
+
+### 1. 用户界面实现
+
+**Change Type**: feature
+
+> **Purpose**: 开发用户友好的项目管理界面
+> **Detailed Description**: 使用Vue3和Element Plus构建项目列表、设置界面等UI组件
+> **Reason for Change**: 提供用户交互界面
+> **Impact Scope**: 前端UI
+> **API Changes**: N/A
+> **Configuration Changes**: N/A
+> **Performance Impact**: 中等，取决于渲染效率
+
+   ```
+   root
+   - src
+     - renderer // refact 渲染进程代码
+       - App.vue // add 应用主组件
+       - main.js // add 渲染进程入口
+       - src
+         - components // add UI组件
+           - ProjectList.vue // add 项目列表组件
+           - ProjectDialog.vue // add 项目对话框
+           - CompanyDialog.vue // add 公司对话框
+           - Sidebar.vue // add 侧边栏组件
+           - RecursiveFolderTree.vue // add 文件树组件
+         - views // add 视图组件
+           - HomeView.vue // add 主页视图
+           - SettingsView.vue // add 设置视图
+   ```
+
+## 2024-02-18 09:15:00
+
+### 1. GitHub集成
+
+**Change Type**: feature
+
+> **Purpose**: 添加GitHub仓库管理功能
+> **Detailed Description**: 实现GitHub API集成，支持查看和管理用户的GitHub星标项目
+> **Reason for Change**: 扩展功能，方便用户管理GitHub项目
+> **Impact Scope**: GitHub相关功能
+> **API Changes**: 添加GitHub API
+> **Configuration Changes**: GitHub认证配置
+> **Performance Impact**: 中等，依赖GitHub API响应速度
+
+   ```
+   root
+   - src
+     - main
+       - github-service.js // add GitHub服务
+     - renderer
+       - src
+         - views
+           - GithubStarView.vue // add GitHub星标视图
+   ```
+
+## 2024-05-22 10:30:00
+
+### 1. 系统托盘集成
+
+**Change Type**: improvement
+
+> **Purpose**: 实现系统托盘功能，允许应用在后台运行
+> **Detailed Description**: 添加系统托盘图标和菜单，支持快速访问常用功能
+> **Reason for Change**: 提升用户体验，方便用户快速访问应用
+> **Impact Scope**: 系统集成
+> **API Changes**: N/A
+> **Configuration Changes**: 托盘配置
+> **Performance Impact**: 低，只在系统托盘交互时消耗资源
+
+   ```
+   root
+   - src
+     - main
+       - window.js // refact 添加托盘功能
+     - renderer
+       - src
+         - views
+           - TrayWindow.vue // add 托盘窗口视图
+   ```
