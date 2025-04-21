@@ -1,9 +1,8 @@
-const { execFile, exec, spawn } = require("child_process");
-const fs = require("fs");
-const path = require("path");
-const ideDetector = require("./ide-detector");
-const { dbService } = require("./db.service");
-const { getCurrentEditFile, getOpenProjects } = require("./open-project-service");
+import { spawn } from "child_process";
+import fs from "fs";
+import * as ideDetector from "./ide-detector";
+import { dbService } from "./db-service";
+import { getCurrentEditFile, getOpenProjects } from "./open-project-service";
 
 /**
  * 检测并初始化IDE配置
@@ -231,7 +230,7 @@ const getIdeType = (ide) => {
   return null;
 };
 
-module.exports = {
+export {
   initIdeConfigs,
   openWithIde,
   resumeIde

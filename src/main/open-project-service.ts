@@ -1,8 +1,8 @@
-const fs = require('fs');
 
-const os = require('os')
-const path = require('path')
-const { dbService } = require('./db.service')
+import fs from 'fs';
+import os from 'os'
+import path from 'path'
+import { dbService } from './db-service'
 const memoryData: DevHaven.Project[] = []
 
 /**
@@ -75,7 +75,7 @@ async function getCurrentEditFile(projectPath: string) {
   return JSON.parse(fileContent);
 }
 
-module.exports = {
+export {
   getOpenProjects,
   getCurrentEditFile
 }

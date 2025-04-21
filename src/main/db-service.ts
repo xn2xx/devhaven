@@ -1,7 +1,7 @@
-const Database = require('better-sqlite3')
-const path = require('path')
-const fs = require('fs')
-const app = require('electron').app
+import Database from 'better-sqlite3'
+import path from 'path'
+import fs from 'fs'
+import { app } from 'electron'
 
 let db = null
 
@@ -563,8 +563,4 @@ const dbService = {
   }
 }
 
-module.exports = {
-  initDatabase,
-  getDb,
-  dbService
-}
+export { initDatabase, getDb, dbService }

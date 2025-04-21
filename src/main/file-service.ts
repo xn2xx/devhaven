@@ -1,7 +1,7 @@
-const { dialog, shell } = require('electron');
-const fs = require('fs');
-const { exec, spawn } = require('child_process');
-const path = require('path');
+import { dialog, shell } from 'electron';
+import fs from 'fs';
+import { exec, spawn } from 'child_process';
+import path from 'path';
 
 /**
  * 打开选择数据库路径对话框
@@ -185,7 +185,7 @@ function pathExists(path) {
   return fs.existsSync(path);
 }
 
-module.exports = {
+export {
   selectDatabasePath,
   selectFolder,
   selectExecutable,

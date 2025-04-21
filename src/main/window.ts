@@ -1,6 +1,6 @@
-const { BrowserWindow } = require('electron');
-const path = require('path');
-const { enable } = require('@electron/remote/main');
+import { BrowserWindow } from 'electron';
+import path from 'path';
+import { enable } from '@electron/remote/main';
 
 // 全局窗口引用，避免垃圾回收
 let mainWindow;
@@ -53,7 +53,4 @@ function getMainWindow() {
   return mainWindow;
 }
 
-module.exports = {
-  createWindow,
-  getMainWindow
-};
+export { createWindow, getMainWindow };

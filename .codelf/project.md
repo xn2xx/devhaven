@@ -88,19 +88,19 @@ root
 - src                               // 源代码目录
     - .DS_Store                     // macOS系统生成的文件
     - main                          // 主进程代码
-        - db.service.js             // 数据库服务，处理数据存储和查询
+        - db-service.ts             // 数据库服务，处理数据存储和查询
         - file-service.js           // 文件服务，处理文件操作
         - github-service.js         // GitHub相关服务，处理GitHub API交互
         - ide-detector.js           // IDE检测器，识别系统中安装的IDE
         - ide-service.js            // IDE服务，处理IDE相关操作
-        - index.js                  // 主进程入口
+        - index.ts                  // 主进程入口
         - ipc-handlers.js           // IPC通信处理，主进程与渲染进程之间的通信
         - open-project-service.ts   // 项目打开服务，使用特定IDE打开项目
         - register-ts.js            // TypeScript注册，支持在主进程中使用TypeScript
         - settings-service.js       // 设置服务，处理应用配置
         - window.js                 // 窗口管理
     - preload                       // 预加载脚本
-        - index.js                  // 预加载入口，定义渲染进程与主进程的接口
+        - index.ts                  // 预加载入口，定义渲染进程与主进程的接口
     - renderer                      // 渲染进程代码
         - App.vue                   // 应用主组件
         - index.html                // HTML入口
@@ -119,9 +119,9 @@ root
                     - IdeSettings.vue      // IDE设置组件
             - global.d.ts           // 全局类型声明
             - router                // 路由配置
-                - index.js          // 路由定义和管理
+                - index.ts          // 路由定义和管理
             - store                 // 状态管理
-                - index.js          // Pinia存储配置
+                - index.ts          // Pinia存储配置
             - views                 // 视图组件
                 - GithubStarView.vue // GitHub星标视图
                 - HomeView.vue      // 主页视图，展示项目列表

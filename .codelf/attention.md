@@ -34,7 +34,7 @@ root
 - src
     - main
         - services // 主进程服务
-            - db.service.js // 数据库相关操作
+            - db-service.ts // 数据库相关操作
             - ide-service.js // IDE相关操作
             - file-service.js // 文件系统相关操作
     - renderer

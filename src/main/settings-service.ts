@@ -100,13 +100,15 @@ function setTheme(theme) {
   store.set("theme", theme);
 }
 
-module.exports = {
+export {
   getSettings,
   saveSettings,
   getDbPath,
   setDbPath,
   getGithubProjectsPath,
   setGithubProjectsPath,
+  getDefaultIde,
+  setDefaultIde,
   getTheme,
   setTheme
-};
+}

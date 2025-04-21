@@ -1,8 +1,7 @@
-const { BrowserWindow, net, shell } = require('electron')
-const { stringify } = require('querystring')
-const axios = require('axios')
-const keytar = require('keytar')
-const Store = require('electron-store')
+import { shell } from "electron";
+import axios from "axios";
+import keytar from "keytar";
+import Store from "electron-store";
 
 // 用于存储GitHub认证相关信息
 const store = new Store({
@@ -307,4 +306,4 @@ class GitHubService {
   }
 }
 
-module.exports = new GitHubService()
+export { GitHubService }

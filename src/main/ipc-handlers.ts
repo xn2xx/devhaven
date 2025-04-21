@@ -1,12 +1,12 @@
-const { ipcMain } = require("electron");
-const { dbService, initDatabase } = require("./db.service");
-const fileService = require("./file-service");
-const ideService = require("./ide-service");
-const settingsService = require("./settings-service");
-const openProjectService = require("./open-project-service");
-const githubService = require("./github-service");
-const path = require("path");
-const { app, shell } = require("electron");
+import { ipcMain } from "electron";
+import { dbService, initDatabase } from "./db-service";
+import * as fileService from "./file-service";
+import * as ideService from "./ide-service";
+import * as settingsService from "./settings-service";
+import * as openProjectService from "./open-project-service";
+import * as githubService from "./github-service";
+import path from "path";
+import { app, shell } from "electron";
 
 /**
  * 注册所有IPC处理程序
@@ -354,6 +354,4 @@ function registerIpcHandlers() {
   });
 }
 
-module.exports = {
-  registerIpcHandlers
-};
+export { registerIpcHandlers };

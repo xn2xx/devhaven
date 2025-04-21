@@ -41,7 +41,7 @@
      - schema.js // add 数据库模式定义
    - src
      - main
-       - db.service.js // add 数据库服务
+       - db-service.ts // add 数据库服务
    ```
 
 ### 3. 实现IDE集成
