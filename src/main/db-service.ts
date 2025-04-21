@@ -1,9 +1,9 @@
-import Database from 'better-sqlite3'
-import path from 'path'
-import fs from 'fs'
-import { app } from 'electron'
+import Database from "better-sqlite3";
+import path from "path";
+import fs from "fs";
+import { app } from "electron";
 
-let db = null
+let db: Database.Database | null = null
 
 // 初始化数据库
 const initDatabase = async (customDbPath = null) => {
@@ -19,7 +19,7 @@ const initDatabase = async (customDbPath = null) => {
 
     // 初始化数据库连接
     db = new Database(dbPath, {
-      verbose: process.env.NODE_ENV === 'development' ? console.log : null
+      verbose: process.env.NODE_ENV === 'development' ? console.log : undefined
     })
 
     // 启用外键支持
@@ -47,7 +47,7 @@ const getDb = () => {
 // 创建表结构
 const createTables = () => {
   // 创建文件夹表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS folders
     (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +63,7 @@ const createTables = () => {
   `)
 
   // 创建项目表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS projects
     (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +86,7 @@ const createTables = () => {
   `)
 
   // 创建标签表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS tags
     (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +97,7 @@ const createTables = () => {
   `)
 
   // 创建项目标签关联表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS project_tags
     (
       project_id INTEGER NOT NULL,
@@ -110,7 +110,7 @@ const createTables = () => {
   `)
 
   // 创建文档表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS documents
     (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,7 +131,7 @@ const createTables = () => {
   `)
 
   // 创建设置表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS settings
     (
       id          INTEGER PRIMARY KEY CHECK ( id = 1 ),
@@ -144,7 +144,7 @@ const createTables = () => {
   `)
 
   // 创建IDE配置表
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS ide_configs
     (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,55 +165,55 @@ const dbService = {
   folders: {
     // 获取所有文件夹
     getAll: () => {
-      const stmt = db.prepare('SELECT * FROM folders ORDER BY parent_id, order_index, name ASC')
+      const stmt = getDb().prepare('SELECT * FROM folders ORDER BY parent_id, order_index, name ')
       return stmt.all()
     },
 
     // 根据ID获取文件夹
-    getById: (id) => {
-      const stmt = db.prepare('SELECT * FROM folders WHERE id = ?')
+    getById: (id: number) => {
+      const stmt = getDb().prepare('SELECT * FROM folders WHERE id = ?')
       return stmt.get(id)
     },
 
     // 获取子文件夹
-    getChildren: (parentId) => {
-      const stmt = db.prepare(
-        'SELECT * FROM folders WHERE parent_id = ? ORDER BY order_index, name ASC'
+    getChildren: (parentId: number) => {
+      const stmt = getDb().prepare(
+        'SELECT * FROM folders WHERE parent_id = ? ORDER BY order_index, name '
       )
       return stmt.all(parentId)
     },
 
     // 获取根文件夹（没有父文件夹的文件夹）
     getRoots: () => {
-      const stmt = db.prepare(
-        'SELECT * FROM folders WHERE parent_id IS NULL ORDER BY order_index, name ASC'
+      const stmt = getDb().prepare(
+        'SELECT * FROM folders WHERE parent_id IS NULL ORDER BY order_index, name '
       )
       return stmt.all()
     },
 
     // 创建文件夹
-    create: (folder) => {
+    create: (folder: DevHaven.Folder) => {
       const now = new Date().toISOString()
 
       // 计算新文件夹的排序索引
-      let orderIndex = 0
+      let orderIndex: number
       if (folder.parent_id) {
         // 获取同级文件夹中最大的order_index
-        const stmt = db.prepare(
+        const stmt = getDb().prepare(
           'SELECT MAX(order_index) as max_order FROM folders WHERE parent_id = ?'
         )
-        const result = stmt.get(folder.parent_id)
+        const result: any = stmt.get(folder.parent_id)
         orderIndex = (result.max_order || 0) + 1
       } else {
         // 获取根文件夹中最大的order_index
-        const stmt = db.prepare(
+        const stmt = getDb().prepare(
           'SELECT MAX(order_index) as max_order FROM folders WHERE parent_id IS NULL'
         )
-        const result = stmt.get()
+        const result: any = stmt.get()
         orderIndex = (result.max_order || 0) + 1
       }
 
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         INSERT INTO folders (name, parent_id, icon, description, order_index, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
@@ -229,14 +229,14 @@ const dbService = {
       )
 
       if (result.changes > 0) {
-        return dbService.folders.getById(result.lastInsertRowid)
+        return dbService.folders.getById(result.lastInsertRowid as number)
       }
       return null
     },
 
     // 更新文件夹
-    update: (id, data) => {
-      const folder = dbService.folders.getById(id)
+    update: (id: number, data: DevHaven.Folder) => {
+      const folder: DevHaven.Folder = dbService.folders.getById(id) as DevHaven.Folder
       if (!folder) {
         throw new Error('Folder not found')
       }
@@ -275,25 +275,25 @@ const dbService = {
       else if (parentChanged) {
         if (data.parent_id) {
           // 获取新父文件夹下最大的order_index
-          const stmt = db.prepare(
+          const stmt = getDb().prepare(
             'SELECT MAX(order_index) as max_order FROM folders WHERE parent_id = ?'
           )
-          const result = stmt.get(data.parent_id)
+          const result: any = stmt.get(data.parent_id)
           orderIndex = (result.max_order || 0) + 1
           console.log('计算了新的order_index:', orderIndex, '(在新父文件夹下)')
         } else {
           // 获取根文件夹中最大的order_index
-          const stmt = db.prepare(
+          const stmt = getDb().prepare(
             'SELECT MAX(order_index) as max_order FROM folders WHERE parent_id IS NULL'
           )
-          const result = stmt.get()
+          const result: any = stmt.get()
           orderIndex = (result.max_order || 0) + 1
           console.log('文件夹将变为根级别, 新排序值:', orderIndex)
         }
       }
 
       const now = new Date().toISOString()
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         UPDATE folders
         SET name        = ?,
             parent_id   = ?,
@@ -333,8 +333,8 @@ const dbService = {
     },
 
     // 删除文件夹
-    delete: (id) => {
-      const stmt = db.prepare('DELETE FROM folders WHERE id = ?')
+    delete: (id: number) => {
+      const stmt = getDb().prepare('DELETE FROM folders WHERE id = ?')
       const result = stmt.run(id)
       return result.changes > 0
     }
@@ -347,37 +347,37 @@ const dbService = {
       let stmt
       if (folderId) {
         // 查询当前文件夹以及所有子文件夹的项目
-        stmt = db.prepare(`
+        stmt = getDb().prepare(`
           SELECT p.*
           FROM projects p
                  JOIN folders f ON p.folder_id = f.id
           WHERE f.parent_id = ?
              or f.id = ?
-          ORDER BY p.name ASC
+          ORDER BY p.name
         `)
         return stmt.all(folderId, folderId)
       } else {
-        stmt = db.prepare('SELECT * FROM projects ORDER BY name ASC')
+        stmt = getDb().prepare('SELECT * FROM projects ORDER BY name ')
         return stmt.all()
       }
     },
 
     // 根据ID获取项目
-    getById: (id) => {
-      const stmt = db.prepare('SELECT * FROM projects WHERE id = ?')
+    getById: (id: number) => {
+      const stmt = getDb().prepare('SELECT * FROM projects WHERE id = ?')
       return stmt.get(id)
     },
 
     // 创建项目
-    create: (project) => {
+    create: (project: DevHaven.Project) => {
       const now = new Date().toISOString()
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         INSERT INTO projects (folder_id, name, description, path,
                               preferred_ide, icon, branch, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
-      const result = stmt.run(
+      const result: any = stmt.run(
         project.folder_id,
         project.name,
         project.description || null,
@@ -390,14 +390,14 @@ const dbService = {
       )
 
       if (result.changes > 0) {
-        return dbService.projects.getById(result.lastInsertRowid)
+        return dbService.projects.getById(result.lastInsertRowid as number)
       }
       return null
     },
 
     // 更新项目
-    update: (id, data) => {
-      const project = dbService.projects.getById(id)
+    update: (id: number, data: DevHaven.Project) => {
+      const project: DevHaven.Project = dbService.projects.getById(id) as DevHaven.Project
       if (!project) {
         throw new Error('Project not found')
       }
@@ -414,7 +414,7 @@ const dbService = {
         }
       }
 
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         UPDATE projects
         SET folder_id      = ?,
             name           = ?,
@@ -447,32 +447,32 @@ const dbService = {
     },
 
     // 删除项目
-    delete: (id) => {
-      const stmt = db.prepare('DELETE FROM projects WHERE id = ?')
+    delete: (id: number) => {
+      const stmt = getDb().prepare('DELETE FROM projects WHERE id = ?')
       const result = stmt.run(id)
       return result.changes > 0
     },
 
     // 搜索项目
-    search: (query) => {
+    search: (query: string) => {
       const searchTerm = `%${query}%`
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         SELECT p.*, f.name as folder_name
         FROM projects p
                LEFT JOIN folders f ON p.folder_id = f.id
         WHERE p.name LIKE ?
            OR p.description LIKE ?
-        ORDER BY p.name ASC
+        ORDER BY p.name
       `)
 
       return stmt.all(searchTerm, searchTerm)
     },
     getFavoriteProjects: () => {
-      const stmt = db.prepare('SELECT * FROM projects WHERE is_favorite = 1 ORDER BY name ASC')
+      const stmt = getDb().prepare('SELECT * FROM projects WHERE is_favorite = 1 ORDER BY name ')
       return stmt.all()
     },
-    getByPath: (path) => {
-      const stmt = db.prepare('SELECT * FROM projects WHERE path = ? ORDER BY name ASC limit 1')
+    getByPath: (path: string) => {
+      const stmt = getDb().prepare('SELECT * FROM projects WHERE path = ? ORDER BY name limit 1')
       return stmt.get(path)
     }
   },
@@ -480,27 +480,27 @@ const dbService = {
   ideConfigs: {
     // 获取所有IDE配置
     getAll: () => {
-      const stmt = db.prepare('SELECT * FROM ide_configs ORDER BY display_name ASC')
+      const stmt = getDb().prepare('SELECT * FROM ide_configs ORDER BY display_name ')
       return stmt.all()
     },
 
     // 根据ID获取IDE配置
-    getById: (id) => {
-      const stmt = db.prepare('SELECT * FROM ide_configs WHERE id = ?')
+    getById: (id: number) => {
+      const stmt = getDb().prepare('SELECT * FROM ide_configs WHERE id = ?')
       return stmt.get(id)
     },
 
     // 根据名称获取IDE配置
-    getByName: (name) => {
-      const stmt = db.prepare('SELECT * FROM ide_configs WHERE name = ?')
+    getByName: (name: string) => {
+      const stmt = getDb().prepare('SELECT * FROM ide_configs WHERE name = ?')
       return stmt.get(name)
     },
 
     // 创建IDE配置
-    create: (ideConfig) => {
+    create: (ideConfig: DevHaven.IdeConfig) => {
       const now = new Date().toISOString()
 
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         INSERT INTO ide_configs (name, display_name, command, args,
                                  icon, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -511,28 +511,27 @@ const dbService = {
         ideConfig.display_name,
         ideConfig.command,
         ideConfig.args || null,
-        ideConfig.icon || 'desktop',
         now,
         now
       )
 
       if (result.changes > 0) {
-        return dbService.ideConfigs.getById(result.lastInsertRowid)
+        return dbService.ideConfigs.getById(result.lastInsertRowid as number)
       }
 
       return null
     },
 
     // 更新IDE配置
-    update: (id, data) => {
-      const ideConfig = dbService.ideConfigs.getById(id)
+    update: (id: number, data: DevHaven.IdeConfig) => {
+      const ideConfig: DevHaven.IdeConfig = dbService.ideConfigs.getById(id) as DevHaven.IdeConfig
       if (!ideConfig) {
         throw new Error('IDE config not found')
       }
 
       const now = new Date().toISOString()
 
-      const stmt = db.prepare(`
+      const stmt = getDb().prepare(`
         UPDATE ide_configs
         SET display_name = ?,
             command      = ?,
@@ -546,7 +545,6 @@ const dbService = {
         data.display_name || ideConfig.display_name,
         data.command || ideConfig.command,
         data.args !== undefined ? data.args : ideConfig.args,
-        data.icon || ideConfig.icon,
         now,
         id
       )
@@ -555,8 +553,8 @@ const dbService = {
     },
 
     // 删除IDE配置
-    delete: (id) => {
-      const stmt = db.prepare('DELETE FROM ide_configs WHERE id = ?')
+    delete: (id: number) => {
+      const stmt = getDb().prepare('DELETE FROM ide_configs WHERE id = ?')
       const result = stmt.run(id)
       return result.changes > 0
     }
