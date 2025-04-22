@@ -1,13 +1,47 @@
-import fs from "fs";
-import path from "path";
+import * as fs from "fs";
+import * as path from "path";
 import { execSync } from "child_process";
-import { app } from "electron";
-import os from "node:os";
+import * as os from "node:os";
 
 /**
  * IDE检测器 - 扫描系统检测安装的开发工具
  */
-const ideDefinitions = [
+
+// 定义平台类型
+type Platform = 'darwin' | 'win32' | 'linux';
+
+// IDE定义接口
+interface IdeDefinition {
+  name: string;
+  display_name: string;
+  icon: string;
+  paths: {
+    darwin: string[];
+    win32: string[];
+    linux: string[];
+  };
+  command: {
+    darwin: string;
+    win32: string;
+    linux: string;
+  };
+  args: string;
+  detectCommand?: {
+    darwin: string;
+    win32: string;
+    linux: string;
+  };
+}
+
+// 检测到的IDE接口
+interface DetectedIde {
+  name: string;
+  display_name: string;
+  command: string;
+  args: string;
+  icon: string;
+}
+const ideDefinitions: IdeDefinition[] = [
   // VS Code
   {
     name: "vscode",
@@ -210,11 +244,11 @@ const ideDefinitions = [
 ];
 /**
  * 扫描系统安装的IDE
- * @returns {Array} 检测到的IDE列表
+ * @returns 检测到的IDE列表
  */
-export const detectIdes = async () => {
-  const platform = process.platform;
-  const detectedIdes = [];
+export const detectIdes = async (): Promise<DetectedIde[]> => {
+  const platform = process.platform as Platform;
+  const detectedIdes: DetectedIde[] = [];
 
   for (const ide of ideDefinitions) {
     try {
@@ -237,11 +271,11 @@ export const detectIdes = async () => {
 };
 /**
  * 检测单个IDE
- * @param {Object} ide IDE定义
- * @param {string} platform 平台
- * @returns {Object|null} 检测到的IDE配置
+ * @param ide IDE定义
+ * @param platform 平台
+ * @returns 检测到的IDE配置或null
  */
-const detectIde = async (ide, platform) => {
+const detectIde = async (ide: IdeDefinition, platform: Platform): Promise<DetectedIde | null> => {
   // 1. 尝试通过路径检测
   for (const testPath of ide.paths[platform]) {
     try {
@@ -305,10 +339,10 @@ const detectIde = async (ide, platform) => {
 
 /**
  * 解析环境变量
- * @param {string} pathWithEnv 包含环境变量的路径
- * @returns {string} 解析后的路径
+ * @param pathWithEnv 包含环境变量的路径
+ * @returns 解析后的路径
  */
-const resolveEnvVars = (pathWithEnv) => {
+const resolveEnvVars = (pathWithEnv: string): string => {
   // 匹配 %VAR% 形式的环境变量
   if (process.platform === "win32") {
     return pathWithEnv.replace(/%([^%]+)%/g, (_, varName) => {
@@ -323,10 +357,10 @@ const resolveEnvVars = (pathWithEnv) => {
 
 /**
  * 查找匹配通配符的路径
- * @param {string} pathWithWildcard 包含通配符的路径
- * @returns {Array} 匹配的路径列表
+ * @param pathWithWildcard 包含通配符的路径
+ * @returns 匹配的路径列表
  */
-const findMatchingPaths = (pathWithWildcard) => {
+const findMatchingPaths = (pathWithWildcard: string): string[] => {
   if (!pathWithWildcard.includes("*")) {
     return [pathWithWildcard];
   }
