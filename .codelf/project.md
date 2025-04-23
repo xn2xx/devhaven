@@ -92,7 +92,7 @@ root
         - file-service.js           // 文件服务，处理文件操作
         - github-service.js         // GitHub相关服务，处理GitHub API交互
         - ide-detector.js           // IDE检测器，识别系统中安装的IDE
-        - ide-service.js            // IDE服务，处理IDE相关操作
+        - ide-service.ts            // IDE服务，处理IDE相关操作
         - index.ts                  // 主进程入口
         - ipc-handlers.js           // IPC通信处理，主进程与渲染进程之间的通信
         - open-project-service.ts   // 项目打开服务，使用特定IDE打开项目

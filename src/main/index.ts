@@ -15,9 +15,9 @@ initialize();
 // Database instance
 let dbInstance = null;
 // 全局托盘实例
-let tray = null;
-let trayWindow = null;
-let server = null;
+let tray: Tray | null = null;
+let trayWindow: BrowserWindow | null = null;
+let server: http.Server | null = null;
 
 /**
  * 注册自定义协议处理器
@@ -39,7 +39,7 @@ function registerProtocol() {
 }
 
 // 处理deeplink URL
-function handleDeepLink(url) {
+function handleDeepLink(url: string) {
   console.log("收到协议URL:", url);
   if (url && url.startsWith("devhaven://oauth/callback")) {
     console.log("处理GitHub OAuth回调:", url);
@@ -88,7 +88,9 @@ function createTrayWindow() {
 
   // 当窗口失去焦点时隐藏
   trayWindow.on("blur", () => {
-    trayWindow.hide();
+    if (trayWindow) {
+      trayWindow.hide();
+    }
   });
 
   // 在 macOS 上设置窗口级别为浮动窗口
@@ -111,6 +113,8 @@ function createTray() {
 
   // 点击托盘图标时显示托盘窗口
   tray.on("click", () => {
+    if (!tray || !trayWindow) return;
+
     const trayBounds = tray.getBounds();
     const windowBounds = trayWindow.getBounds();
 
@@ -136,7 +140,7 @@ async function initApp() {
     // 检测并初始化IDE配置
     await ideService.initIdeConfigs();
     console.log("应用程序初始化成功");
-  } catch (error) {
+  } catch (error: any) {
     console.error("应用程序初始化失败:", error);
     dialog.showErrorBox(
       "初始化错误",
@@ -234,12 +238,12 @@ function startLocalServer() {
     }
   }
 
-  return new Promise((resolve, reject) => {
+  return new Promise<number>((resolve, reject) => {
     try {
       server = http.createServer((req, res) => {
         console.log("本地服务器收到请求:", req.url);
 
-        if (req.url.startsWith("/oauth/callback")) {
+        if (req.url && req.url.startsWith("/oauth/callback")) {
           // 设置CORS头
           res.setHeader("Access-Control-Allow-Origin", "*");
           res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");

@@ -153,3 +153,45 @@
          - views
            - TrayWindow.vue // add 托盘窗口视图
    ```
+
+## 2024-07-09 11:00:00
+
+### 1. 修复IDE服务的TypeScript类型错误
+
+**Change Type**: fix
+
+> **Purpose**: 修复IDE服务中的TypeScript类型错误
+> **Detailed Description**: 为ide-service.ts添加完整类型定义，解决类型不兼容问题
+> **Reason for Change**: 提高代码质量和类型安全性，消除编译警告
+> **Impact Scope**: IDE相关功能
+> **API Changes**: 无
+> **Configuration Changes**: 无
+> **Performance Impact**: 无
+
+   ```
+   root
+   - src
+     - main
+       - ide-service.ts // update 添加完整的TypeScript类型声明
+   ```
+
+## 2024-07-09 11:30:00
+
+### 1. 修复index.ts的TypeScript类型错误
+
+**Change Type**: fix
+
+> **Purpose**: 修复主进程入口文件中的TypeScript类型错误
+> **Detailed Description**: 为index.ts添加明确的类型定义，解决隐式any类型错误
+> **Reason for Change**: 提高代码质量和类型安全性，消除编译警告
+> **Impact Scope**: 主进程入口文件
+> **API Changes**: 无
+> **Configuration Changes**: 无
+> **Performance Impact**: 无
+
+   ```
+   root
+   - src
+     - main
+       - index.ts // update 添加完整的TypeScript类型声明
+   ```
