@@ -3,7 +3,7 @@ import path from 'path';
 import { enable } from '@electron/remote/main';
 
 // 全局窗口引用，避免垃圾回收
-let mainWindow;
+let mainWindow: BrowserWindow | null = null;
 
 /**
  * 创建主窗口
