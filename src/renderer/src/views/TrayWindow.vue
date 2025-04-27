@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed, watch } from "vue";
 import { ElIcon } from "element-plus";
 
 const projects = ref<DevHaven.Project[]>([]);
-const isLoading = ref(false);
 import ideaIcon from "../../../../resources/ide/intellij-idea.svg?asset";
 import pycharmIcon from "../../../../resources/ide/pycharm.svg?asset";
 import webstorm from "../../../../resources/ide/pycharm.svg?asset";
@@ -11,15 +10,14 @@ import cursorIcon from "../../../../resources/ide/cursor.png?asset";
 import vscodeIcon from "../../../../resources/ide/vscode.svg?asset";
 
 const fetchOpenProjects = async () => {
-  isLoading.value = true;
   try {
     console.log("获取已打开的项目列表");
     projects.value = await window.api.getOpenProjects();
     console.log("projects", projects.value);
+    // 延迟一段时间后更新窗口大小，确保DOM已经渲染
+    setTimeout(updateWindowSize, 100);
   } catch (error) {
     console.error("获取已打开项目失败:", error);
-  } finally {
-    isLoading.value = false;
   }
 };
 
@@ -57,28 +55,62 @@ const handleRefreshProjects = () => {
   fetchOpenProjects();
 };
 
+// 更新窗口大小的函数
+const updateWindowSize = () => {
+  try {
+    // 获取当前内容高度
+    const contentHeight = document.body.offsetHeight;
+    console.log('当前内容高度:', contentHeight);
+
+    // 通知主进程更新窗口大小
+    if (window.api.ipcRenderer) {
+      window.api.ipcRenderer.send('update-tray-height', contentHeight);
+    }
+  } catch (error) {
+    console.error('更新窗口大小失败:', error);
+  }
+};
+
+// 监听项目列表变化，自动调整窗口大小
+watch(projects, () => {
+  // 当项目列表变化时，延迟更新窗口大小
+  setTimeout(updateWindowSize, 100);
+}, { deep: true });
+
 // 组件挂载时设置事件监听和初始获取项目列表
 onMounted(() => {
   fetchOpenProjects();
   // 添加事件监听
   window.api.ipcRenderer.on("refresh-tray-projects", handleRefreshProjects);
+
+  // 延迟一段时间后初始化窗口大小
+  setTimeout(updateWindowSize, 300);
+
+  // 添加窗口大小变化监听
+  window.addEventListener('resize', updateWindowSize);
 });
 
 // 组件卸载时移除事件监听
 onUnmounted(() => {
   // 移除事件监听
   window.api.ipcRenderer.removeListener("refresh-tray-projects", handleRefreshProjects);
+
+  // 移除窗口大小变化监听
+  window.removeEventListener('resize', updateWindowSize);
 });
+
+// 因为窗口始终置顶，所以需要定时刷新项目列表保证数据是同步的
+setInterval(() => {
+  fetchOpenProjects();
+}, 5000);
 </script>
 
 <template>
   <div class="tray-window">
-    <div v-if="isLoading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">加载中...</div>
-    </div>
+    <!-- 添加可拖动区域 -->
+    <div class="drag-handle"></div>
 
-    <div v-else-if="projects.length === 0" class="empty-container">
+    <div v-if="projects.length === 0" class="empty-container">
       <div class="empty-icon i-mdi-folder-open-outline"></div>
       <div class="empty-text">暂无打开的项目</div>
       <div class="empty-description">当您打开项目后，将会在此处显示</div>
@@ -116,12 +148,37 @@ onUnmounted(() => {
 <style>
 .tray-window {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #1e1e1e;
+  background-color: transparent !important; /* 强制透明背景 */
   color: #f0f0f0;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: 8px;
   max-height: 100vh;
   overflow-y: auto;
+  position: relative;
+  /* 确保无背景色 */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+html, body {
+  background: transparent !important; /* 确保HTML和body也是透明的 */
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* 防止滚动条 */
+}
+
+/* 添加拖动区域样式 */
+.drag-handle {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  -webkit-app-region: drag;
+  cursor: move;
+  z-index: 10;
+  background: transparent;
 }
 
 .loading-container {
@@ -164,6 +221,11 @@ onUnmounted(() => {
   height: 150px;
   text-align: center;
   padding: 0 16px;
+  background-color: rgba(30, 30, 30, 0.6);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .empty-icon {
@@ -193,12 +255,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 8px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  background-color: rgba(30, 30, 30, 0.7); /* 稍微增加透明度 */
+  backdrop-filter: blur(10px); /* 增加模糊效果 */
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .project-item:hover {
-  background-color: #2a2a2a;
+  background-color: rgba(42, 42, 42, 0.8);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 
 .project-icon {

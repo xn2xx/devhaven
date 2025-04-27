@@ -8,6 +8,20 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     />
+    <style>
+      /* 确保整个页面背景透明 */
+      html, body {
+        background: transparent !important;
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      #app {
+        background: transparent !important;
+        height: 100%;
+      }
+    </style>
   </head>
 
   <body>

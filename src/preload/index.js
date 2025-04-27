@@ -10,6 +10,9 @@ const electronAPI = {
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   openDirectoryDialog: () => ipcRenderer.invoke("open-directory-dialog"),
   openExecutableDialog: () => ipcRenderer.invoke("open-executable-dialog"),
+  openExternalUrl: (url) => ipcRenderer.invoke("open-external-url", url),
+  pathExists: (path) => ipcRenderer.invoke("path-exists", path),
+  cloneGithubRepo: (repoUrl, targetPath) => ipcRenderer.invoke("clone-github-repo", repoUrl, targetPath),
 
   // 应用设置
   getAppSettings: () => ipcRenderer.invoke("get-app-settings"),
@@ -42,10 +45,17 @@ const electronAPI = {
 
   getOpenProjects: () => ipcRenderer.invoke("get-open-projects"),
 
+  // GitHub相关操作
+  authenticateGithub: () => ipcRenderer.invoke("github:authenticate"),
+  getGithubAuthStatus: () => ipcRenderer.invoke("github:auth-status"),
+  logoutGithub: () => ipcRenderer.invoke("github:logout"),
+  getGithubStarredRepos: () => ipcRenderer.invoke("github:get-starred-repos"),
+
   // IPC事件监听
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, (event, ...args) => listener(...args)),
-    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener)
+    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
+    send: (channel, ...args) => ipcRenderer.send(channel, ...args)
   }
 };
 

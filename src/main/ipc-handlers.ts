@@ -1,11 +1,13 @@
-const { ipcMain } = require("electron");
-const { dbService, initDatabase } = require("./db.service");
-const fileService = require("./file-service");
-const ideService = require("./ide-service");
-const settingsService = require("./settings-service");
-const openProjectService = require("./open-project-service");
-const path = require("path");
-const { app } = require("electron");
+import { ipcMain } from "electron";
+import { dbService, initDatabase } from "./db-service";
+import * as fileService from "./file-service";
+import * as ideService from "./ide-service";
+import * as settingsService from "./settings-service";
+import * as openProjectService from "./open-project-service";
+import * as githubService from "./github-service";
+import path from "path";
+import { app, shell } from "electron";
+import { getMainWindow, getTrayWindow } from "./window";
 
 /**
  * 注册所有IPC处理程序
@@ -219,6 +221,17 @@ function registerIpcHandlers() {
     return result;
   });
 
+  // 在系统默认浏览器中打开外部URL
+  ipcMain.handle("open-external-url", async (_, url) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error("打开外部URL失败:", error);
+      throw error;
+    }
+  });
+
   // 选择文件夹
   ipcMain.handle("select-folder", async () => {
     return fileService.selectFolder();
@@ -265,8 +278,92 @@ function registerIpcHandlers() {
     console.log('resume-ide', project)
     return ideService.resumeIde(project);
   });
+
+  // ========== GitHub 相关 IPC 处理程序 ==========
+
+  // GitHub认证
+  ipcMain.handle("github:authenticate", async () => {
+    try {
+      return await githubService.authenticate();
+    } catch (error) {
+      console.error("GitHub认证失败:", error);
+      throw error;
+    }
+  });
+
+  // 获取GitHub认证状态
+  ipcMain.handle("github:auth-status", async () => {
+    try {
+      return await githubService.getAuthStatus();
+    } catch (error) {
+      console.error("获取GitHub认证状态失败:", error);
+      throw error;
+    }
+  });
+
+  // GitHub登出
+  ipcMain.handle("github:logout", async () => {
+    try {
+      return await githubService.logout();
+    } catch (error) {
+      console.error("GitHub登出失败:", error);
+      throw error;
+    }
+  });
+
+  // 获取GitHub已加星标的仓库
+  ipcMain.handle("github:get-starred-repos", async () => {
+    try {
+      return await githubService.getStarredRepositories();
+    } catch (error) {
+      console.error("获取GitHub已加星标的仓库失败:", error);
+      throw error;
+    }
+  });
+
+  // 克隆GitHub仓库
+  ipcMain.handle("clone-github-repo", async (event, repoUrl, targetPath) => {
+    try {
+      // 创建一个webContents引用，用于发送进度更新
+      const { sender } = event;
+
+      // 开始克隆过程
+      const result = await fileService.cloneGitRepository(
+        repoUrl,
+        targetPath,
+        (progress) => {
+          // 通过IPC发送进度更新
+          sender.send("clone-progress-update", progress);
+        }
+      );
+
+      return result;
+    } catch (error) {
+      console.error("克隆GitHub仓库失败:", error);
+      throw error;
+    }
+  });
+
+  // 检查路径是否存在
+  ipcMain.handle("path-exists", async (_, path) => {
+    try {
+      return fileService.pathExists(path);
+    } catch (error) {
+      console.error("检查路径失败:", error);
+      throw error;
+    }
+  });
+
+  // 注册调整悬浮窗高度的处理程序
+  ipcMain.on('update-tray-height', (_, height) => {
+    const trayWindow = getTrayWindow();
+    if (trayWindow) {
+      const [width] = trayWindow.getSize();
+      // 适当添加一些边距，并限制最大高度
+      const newHeight = Math.min(Math.max(height + 16, 100), 600);
+      trayWindow.setSize(width, newHeight);
+    }
+  });
 }
 
-module.exports = {
-  registerIpcHandlers
-};
+export { registerIpcHandlers };

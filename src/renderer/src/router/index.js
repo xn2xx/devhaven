@@ -5,17 +5,22 @@ const routes = [
   {
     path: "/",
     name: "Home",
-    component: () => import("../views/HomeView.vue"),
+    component: () => import("../views/home/index.vue"),
   },
   {
     path: "/settings",
     name: "Settings",
-    component: () => import("../views/SettingsView.vue"),
+    component: () => import("../views/settings/index.vue"),
   },
   {
     path: '/tray',
     name: 'TrayWindow',
     component: () => import('../views/TrayWindow.vue')
+  },
+  {
+    path: '/github-stars',
+    name: 'GithubStars',
+    component: () => import('../views/GithubStarView.vue')
   }
 ];
 

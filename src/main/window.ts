@@ -1,9 +1,10 @@
-const { BrowserWindow } = require('electron');
-const path = require('path');
-const { enable } = require('@electron/remote/main');
+import { BrowserWindow } from 'electron';
+import path from 'path';
+import { enable } from '@electron/remote/main';
 
 // 全局窗口引用，避免垃圾回收
-let mainWindow;
+let mainWindow: BrowserWindow | null = null;
+let trayWindow: BrowserWindow | null = null;
 
 /**
  * 创建主窗口
@@ -31,7 +32,7 @@ function createWindow() {
     // 开发模式：从Vite开发服务器加载
     mainWindow.loadURL('http://localhost:5173');
     // 打开开发者工具
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   } else {
     // 生产模式：加载本地文件
     mainWindow.loadFile(path.join(__dirname, '../../out/renderer/index.html'));
@@ -53,7 +54,20 @@ function getMainWindow() {
   return mainWindow;
 }
 
-module.exports = {
-  createWindow,
-  getMainWindow
-};
+/**
+ * 设置托盘窗口实例
+ * @param {BrowserWindow} window 托盘窗口实例
+ */
+function setTrayWindow(window: BrowserWindow) {
+  trayWindow = window;
+}
+
+/**
+ * 获取托盘窗口实例
+ * @returns {BrowserWindow|null} 托盘窗口实例或null
+ */
+function getTrayWindow() {
+  return trayWindow;
+}
+
+export { createWindow, getMainWindow, getTrayWindow, setTrayWindow };

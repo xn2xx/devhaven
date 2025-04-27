@@ -1,165 +1,197 @@
-## 2023-09-18 14:30:00
+## 2023-11-15 16:30:00
 
-### 1. 移除Express和Koa相关依赖和代码
+### 1. 初始化项目框架
 
-**Change Type**: refactor
+**Change Type**: feature
 
-> **Purpose**: 简化项目架构，移除不必要的Web服务器依赖
-> **Detailed Description**: 删除了项目中的Express和Koa相关代码，通过内存存储替代了服务器功能
-> **Reason for Change**: 项目实际上不需要完整的Web服务器，使用简单的内存存储机制即可满足需求
-> **Impact Scope**: 影响项目启动过程和IPC通信机制
-> **API Changes**:
->   - 原API: HTTP接口 `http://localhost:17334/openProjects`
->   - 新API: IPC通信 `get-open-projects`
-> **Configuration Changes**: 已从package.json中移除相关依赖
-> **Performance Impact**: 减少了不必要的服务启动，提高了应用启动速度
+> **Purpose**: 创建基于Electron+Vue3+TypeScript的桌面应用基础架构
+> **Detailed Description**: 设置Electron主进程和渲染进程架构，配置Vue3前端框架，添加TypeScript支持
+> **Reason for Change**: 项目启动，需要搭建基础开发环境
+> **Impact Scope**: 整个项目架构
+> **API Changes**: N/A
+> **Configuration Changes**: 添加electron.vite.config.ts, tsconfig.json, package.json等配置文件
+> **Performance Impact**: 无
 
    ```
    root
-   - electron
-       - server.js                  // refact 将Koa服务器改为简单的内存存储模块
-   - src
-       - main
-           - index.js               // refact 移除Express服务器启动逻辑
-           - ipc-handlers.js        // add 添加获取打开项目的IPC处理程序
-       - renderer
-           - components
-               - TrayWindow.vue     // refact 修改获取项目列表的方法，使用IPC替代HTTP
-   - package.json                   // refact 移除Express和Koa相关依赖
+   - electron.vite.config.ts // add 配置Electron和Vite构建选项
+   - package.json // add 项目依赖和脚本
+   - tsconfig.json // add TypeScript配置
+   - src // add 源代码目录
+     - main // add 主进程代码
+     - preload // add 预加载脚本
+     - renderer // add 渲染进程代码
    ```
 
-## 2023-09-24 16:45:00
+### 2. 添加数据库功能
 
-### 1. 优化系统托盘窗口UI
+**Change Type**: feature
 
-**Change Type**: improvement
-
-> **Purpose**: 提升系统托盘窗口的用户体验和视觉效果
-> **Detailed Description**: 重新设计TrayWindow.vue组件UI，添加项目图标、更清晰的项目信息展示和交互功能
-> **Reason for Change**: 原有UI过于简单，不够美观和用户友好，缺乏必要的视觉层次和交互功能
-> **Impact Scope**: 仅影响系统托盘窗口的显示效果，不影响其他功能
-> **API Changes**: 无API变更
-> **Configuration Changes**: 无配置变更
-> **Performance Impact**: 引入了更多的UI元素，但对性能影响较小
+> **Purpose**: 实现项目和公司信息的本地存储
+> **Detailed Description**: 使用better-sqlite3集成SQLite数据库，创建数据模型和服务
+> **Reason for Change**: 需要本地持久化存储用户项目和公司信息
+> **Impact Scope**: 数据管理相关功能
+> **API Changes**: 添加数据库CRUD API
+> **Configuration Changes**: 数据库初始化和配置
+> **Performance Impact**: 低，只在需要时访问数据库
 
    ```
    root
+   - db // add 数据库相关
+     - schema.js // add 数据库模式定义
    - src
-       - renderer
-           - components
-               - TrayWindow.vue     // refact 重新设计系统托盘窗口UI，添加项目图标、编辑器标识和收藏功能
+     - main
+       - db-service.ts // add 数据库服务
    ```
 
-## 2023-09-25 10:30:00
+### 3. 实现IDE集成
 
-### 1. 添加空项目列表提示
+**Change Type**: feature
 
-**Change Type**: improvement
-
-> **Purpose**: 增强用户体验，提供更友好的空状态提示
-> **Detailed Description**: 在系统托盘窗口中当没有打开的项目时添加提示信息，让用户了解当前状态
-> **Reason for Change**: 原有实现在没有项目时会显示空白界面，缺乏必要的反馈，容易让用户困惑
-> **Impact Scope**: 仅影响系统托盘窗口的显示效果，不影响其他功能
-> **API Changes**: 无API变更
-> **Configuration Changes**: 无配置变更
-> **Performance Impact**: 几乎不影响性能
+> **Purpose**: 支持用户使用首选IDE打开项目
+> **Detailed Description**: 开发IDE检测和启动功能，支持VS Code、WebStorm、PyCharm等常用IDE
+> **Reason for Change**: 核心功能，让用户能一键用喜欢的IDE打开项目
+> **Impact Scope**: IDE相关功能
+> **API Changes**: 添加IDE检测和启动API
+> **Configuration Changes**: IDE配置选项
+> **Performance Impact**: 中等，需要执行系统命令
 
    ```
    root
-   - src
-       - renderer
-           - components
-               - TrayWindow.vue     // improvement 添加空项目列表状态的视觉提示
-   ```
-
-## 2023-09-25 14:00:00
-
-### 1. 抽取接口到全局类型声明文件
-
-**Change Type**: refactor
-
-> **Purpose**: 改善代码结构和类型管理
-> **Detailed Description**: 创建global.d.ts全局类型声明文件，将组件中的接口定义移至全局空间
-> **Reason for Change**: 统一管理类型定义，避免重复定义，提高代码可维护性
-> **Impact Scope**: 影响TypeScript类型系统和组件中的类型引用
-> **API Changes**: 无API变更，仅为内部类型定义重构
-> **Configuration Changes**: 无配置变更
-> **Performance Impact**: 无性能影响，仅为代码组织优化
-
-   ```
-   root
-   - src
-       - global.d.ts               // add 添加全局类型声明文件
-       - renderer
-           - components
-               - TrayWindow.vue     // refact 移除本地类型声明，改用全局类型
-   ```
-
-## 2023-09-25 16:30:00
-
-### 1. 使用本地资源文件显示IDE图标
-
-**Change Type**: improvement
-
-> **Purpose**: 提升IDE图标显示质量和可维护性
-> **Detailed Description**: 替换UnoCSS图标为本地SVG资源文件，使用Element Plus的el-icon组件加载显示
-> **Reason for Change**: 本地SVG图标文件提供更精确和高质量的IDE标识，提升用户体验
-> **Impact Scope**: 仅影响系统托盘窗口中IDE图标的显示方式
-> **API Changes**: 无API变更
-> **Configuration Changes**: 无配置变更
-> **Performance Impact**: 本地资源文件加载可能略微增加初始化时间，但提供更好的显示效果
-
-   ```
-   root
-   - src
-       - renderer
-           - components
-               - TrayWindow.vue     // improvement 使用Element Plus的el-icon加载本地SVG图标资源
    - resources
-       - ide
-           - webstorm.svg          // 使用本地SVG资源文件显示IDE图标
-           - intellij-idea.svg     // 使用本地SVG资源文件显示IDE图标
-           - pycharm.svg           // 使用本地SVG资源文件显示IDE图标
+     - ide // add IDE图标
+       - vscode.svg // add VS Code图标
+       - webstorm.svg // add WebStorm图标
+       - pycharm.svg // add PyCharm图标
+       - intellij-idea.svg // add IntelliJ IDEA图标
+       - cursor.png // add Cursor IDE图标
+   - src
+     - main
+       - ide-detector.js // add IDE检测器
+       - ide-service.js // add IDE服务
+       - open-project-service.ts // add 项目打开服务
    ```
 
-## {datetime: YYYY-MM-DD HH:mm:ss}
+## 2023-12-10 14:45:00
 
-### 1. {function simple description}
+### 1. 用户界面实现
 
-**Change Type**: {type: feature/fix/improvement/refactor/docs/test/build}
+**Change Type**: feature
 
-> **Purpose**: {function purpose}
-> **Detailed Description**: {function detailed description}
-> **Reason for Change**: {why this change is needed}
-> **Impact Scope**: {other modules or functions that may be affected by this change}
-> **API Changes**: {if there are API changes, detail the old and new APIs}
-> **Configuration Changes**: {changes to environment variables, config files, etc.}
-> **Performance Impact**: {impact of the change on system performance}
-
-   ```
-   root
-   - pkg    // {type: add/del/refact/-} {The role of a folder}
-    - utils // {type: add/del/refact} {The function of the file}
-   - xxx    // {type: add/del/refact} {The function of the file}
-   ```
-
-### 2. {function simple description}
-
-**Change Type**: {type: feature/fix/improvement/refactor/docs/test/build}
-
-> **Purpose**: {function purpose}
-> **Detailed Description**: {function detailed description}
-> **Reason for Change**: {why this change is needed}
-> **Impact Scope**: {other modules or functions that may be affected by this change}
-> **API Changes**: {if there are API changes, detail the old and new APIs}
-> **Configuration Changes**: {changes to environment variables, config files, etc.}
-> **Performance Impact**: {impact of the change on system performance}
+> **Purpose**: 开发用户友好的项目管理界面
+> **Detailed Description**: 使用Vue3和Element Plus构建项目列表、设置界面等UI组件
+> **Reason for Change**: 提供用户交互界面
+> **Impact Scope**: 前端UI
+> **API Changes**: N/A
+> **Configuration Changes**: N/A
+> **Performance Impact**: 中等，取决于渲染效率
 
    ```
    root
-   - pkg    // {type: add/del/refact/-} {The role of a folder}
-    - utils // {type: add/del/refact} {The function of the file}
-   - xxx    // {type: add/del/refact} {The function of the file}
+   - src
+     - renderer // refact 渲染进程代码
+       - App.vue // add 应用主组件
+       - main.js // add 渲染进程入口
+       - src
+         - components // add UI组件
+           - ProjectList.vue // add 项目列表组件
+           - ProjectDialog.vue // add 项目对话框
+           - CompanyDialog.vue // add 公司对话框
+           - Sidebar.vue // add 侧边栏组件
+           - RecursiveFolderTree.vue // add 文件树组件
+         - views // add 视图组件
+           - HomeView.vue // add 主页视图
+           - SettingsView.vue // add 设置视图
    ```
 
-...
+## 2024-02-18 09:15:00
+
+### 1. GitHub集成
+
+**Change Type**: feature
+
+> **Purpose**: 添加GitHub仓库管理功能
+> **Detailed Description**: 实现GitHub API集成，支持查看和管理用户的GitHub星标项目
+> **Reason for Change**: 扩展功能，方便用户管理GitHub项目
+> **Impact Scope**: GitHub相关功能
+> **API Changes**: 添加GitHub API
+> **Configuration Changes**: GitHub认证配置
+> **Performance Impact**: 中等，依赖GitHub API响应速度
+
+   ```
+   root
+   - src
+     - main
+       - github-service.js // add GitHub服务
+     - renderer
+       - src
+         - views
+           - GithubStarView.vue // add GitHub星标视图
+   ```
+
+## 2024-05-22 10:30:00
+
+### 1. 系统托盘集成
+
+**Change Type**: improvement
+
+> **Purpose**: 实现系统托盘功能，允许应用在后台运行
+> **Detailed Description**: 添加系统托盘图标和菜单，支持快速访问常用功能
+> **Reason for Change**: 提升用户体验，方便用户快速访问应用
+> **Impact Scope**: 系统集成
+> **API Changes**: N/A
+> **Configuration Changes**: 托盘配置
+> **Performance Impact**: 低，只在系统托盘交互时消耗资源
+
+   ```
+   root
+   - src
+     - main
+       - window.js // refact 添加托盘功能
+     - renderer
+       - src
+         - views
+           - TrayWindow.vue // add 托盘窗口视图
+   ```
+
+## 2024-07-09 11:00:00
+
+### 1. 修复IDE服务的TypeScript类型错误
+
+**Change Type**: fix
+
+> **Purpose**: 修复IDE服务中的TypeScript类型错误
+> **Detailed Description**: 为ide-service.ts添加完整类型定义，解决类型不兼容问题
+> **Reason for Change**: 提高代码质量和类型安全性，消除编译警告
+> **Impact Scope**: IDE相关功能
+> **API Changes**: 无
+> **Configuration Changes**: 无
+> **Performance Impact**: 无
+
+   ```
+   root
+   - src
+     - main
+       - ide-service.ts // update 添加完整的TypeScript类型声明
+   ```
+
+## 2024-07-09 11:30:00
+
+### 1. 修复index.ts的TypeScript类型错误
+
+**Change Type**: fix
+
+> **Purpose**: 修复主进程入口文件中的TypeScript类型错误
+> **Detailed Description**: 为index.ts添加明确的类型定义，解决隐式any类型错误
+> **Reason for Change**: 提高代码质量和类型安全性，消除编译警告
+> **Impact Scope**: 主进程入口文件
+> **API Changes**: 无
+> **Configuration Changes**: 无
+> **Performance Impact**: 无
+
+   ```
+   root
+   - src
+     - main
+       - index.ts // update 添加完整的TypeScript类型声明
+   ```

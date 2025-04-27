@@ -59,14 +59,14 @@
 </template>
 
 <script setup>
-import { useAppStore } from '../store';
+import { useAppStore } from '../../store';
 import { ElMessage } from 'element-plus';
 
 // 导入子组件
-import GeneralSettings from '@/components/settings/GeneralSettings.vue';
-import IdeSettings from '@/components/settings/IdeSettings.vue';
-import DatabaseSettings from '@/components/settings/DatabaseSettings.vue';
-import AboutSection from '@/components/settings/AboutSection.vue';
+import GeneralSettings from '@/views/settings/components/GeneralSettings.vue';
+import IdeSettings from '@/views/settings/components/IdeSettings.vue';
+import DatabaseSettings from '@/views/settings/components/DatabaseSettings.vue';
+import AboutSection from '@/views/settings/components/AboutSection.vue';
 
 // Store
 const store = useAppStore();
@@ -83,7 +83,8 @@ const settingsSections = [
 const activeSection = ref('general');
 const settingsData = ref({
   theme: 'light',
-  dbPath: ''
+  dbPath: '',
+  githubProjectsPath: ''
 });
 
 // IDE管理状态
@@ -91,11 +92,18 @@ const ideLoading = ref(false);
 const ideConfigs = ref([]);
 
 // 加载当前设置
-const loadCurrentSettings = () => {
-  settingsData.value = {
-    theme: store.theme,
-    dbPath: store.dbPath
-  };
+const loadCurrentSettings = async () => {
+  try {
+    const appSettings = await window.api.getAppSettings();
+    settingsData.value = {
+      theme: appSettings.theme || 'light',
+      dbPath: appSettings.dbPath || '',
+      githubProjectsPath: appSettings.githubProjectsPath || ''
+    };
+  } catch (error) {
+    console.error('加载应用设置失败:', error);
+    ElMessage.error('加载设置失败');
+  }
 };
 
 // 加载IDE配置列表
@@ -121,13 +129,20 @@ const handleSettingsUpdate = async (updatedSettings) => {
       settingsData.value.theme = updatedSettings.theme;
     }
 
-    // 保存其他设置
+    // 保存GitHub项目路径
+    if (updatedSettings.githubProjectsPath !== settingsData.value.githubProjectsPath) {
+      settingsData.value.githubProjectsPath = updatedSettings.githubProjectsPath;
+    }
+
+    // 保存所有设置
     await window.api.saveAppSettings({
-      theme: updatedSettings.theme
+      theme: updatedSettings.theme,
+      githubProjectsPath: updatedSettings.githubProjectsPath
     });
 
     ElMessage.success('设置已保存');
   } catch (error) {
+    console.error('保存设置失败:', error);
     ElMessage.error('保存设置失败');
   }
 };
@@ -155,8 +170,6 @@ onMounted(() => {
   document.documentElement.setAttribute('data-theme', theme);
   document.documentElement.classList.toggle('dark', theme === 'dark');
 });
-
-
 </script>
 
 <style scoped>
@@ -248,18 +261,14 @@ onMounted(() => {
 .settings-section {
   background-color: var(--card-bg);
   border-radius: 8px;
-  box-shadow: var(--shadow-sm);
   padding: 20px;
-  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
 }
 
 .settings-section h3 {
   margin-top: 0;
-  margin-bottom: 16px;
-  font-size: 16px;
+  margin-bottom: 20px;
+  font-size: 18px;
   font-weight: 500;
-  color: var(--text-color);
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color);
 }
 </style>

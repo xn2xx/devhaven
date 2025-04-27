@@ -1,61 +1,70 @@
 <template>
-  <div class="app-container" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
+  <el-container  :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
     <!-- 侧边栏 -->
-    <Sidebar
-      :loading="loading"
-      :current-folder="currentFolder"
-      @search="handleSearch"
-      @select-folder="selectFolder"
-      @add-folder="showAddFolderDialog"
-      @toggle-collapse="handleSidebarCollapse"
-    />
+    <el-aside width="auto">
+      <Sidebar
+        :loading="loading"
+        :current-folder="currentFolder"
+        @search="handleSearch"
+        @select-folder="selectFolder"
+        @add-folder="showAddFolderDialog"
+        @toggle-collapse="handleSidebarCollapse"
+      />
+    </el-aside>
 
     <!-- 主内容区 -->
-    <div class="main-content">
-      <div class="content-header">
-        <div style="display: flex; align-items: center">
-          <div class="breadcrumb">
-            <div class="breadcrumb-item">
-              <a href="#" class="breadcrumb-link">
-                <i class="i-fa-solid:home breadcrumb-icon"></i>
-                <span>首页</span>
-              </a>
-            </div>
-            <template v-if="currentFolder">
-              <template v-for="(folder, index) in getFolderPath" :key="folder.id">
-                <div class="breadcrumb-item">
-                  <a href="#" class="breadcrumb-link" @click.prevent="selectFolder(folder)">
-                    <span>{{ folder.name }}</span>
-                  </a>
-                </div>
+    <el-container>
+      <el-header height="auto">
+        <div class="content-header">
+          <div style="display: flex; align-items: center">
+            <div class="breadcrumb">
+              <div class="breadcrumb-item">
+                <a href="#" class="breadcrumb-link">
+                  <i class="i-fa-solid:home breadcrumb-icon"></i>
+                  <span>首页</span>
+                </a>
+              </div>
+              <template v-if="currentFolder">
+                <template v-for="(folder) in getFolderPath" :key="folder.id">
+                  <div class="breadcrumb-item">
+                    <a href="#" class="breadcrumb-link" @click.prevent="selectFolder(folder)">
+                      <span>{{ folder.name }}</span>
+                    </a>
+                  </div>
+                </template>
               </template>
-            </template>
+            </div>
+          </div>
+
+          <div class="page-actions">
+            <el-button class="action-btn secondary" @click="showProjectDialog">
+              <i class="i-fa-solid:plus action-btn-icon"></i>
+              添加项目
+            </el-button>
+            <button class="theme-toggle" @click="toggleTheme">
+              <i :class="isDarkMode ? 'i-fa-solid:sun' : 'i-fa-solid:moon'"></i>
+            </button>
+            <el-button class="theme-toggle" @click="goToGithubStars">
+              <i class="i-fa-brands:github"></i>
+            </el-button>
+            <el-button class="theme-toggle" @click="goToSettings">
+              <i class="i-fa-solid:cog"></i>
+            </el-button>
           </div>
         </div>
+      </el-header>
 
-        <div class="page-actions">
-          <el-button class="action-btn secondary" @click="showProjectDialog">
-            <i class="i-fa-solid:plus action-btn-icon"></i>
-            添加项目
-          </el-button>
-          <button class="theme-toggle" @click="toggleTheme">
-            <i :class="isDarkMode ? 'i-fa-solid:sun' : 'i-fa-solid:moon'"></i>
-          </button>
-          <el-button class="theme-toggle" @click="goToSettings">
-            <i class="i-fa-solid:cog"></i>
-          </el-button>
-        </div>
-      </div>
-
-      <ProjectList
-        :loading="loading"
-        :search-input="searchInput"
-        @add-project="showProjectDialog"
-        :current-folder-id="currentFolder?.id"
-        @edit-project="editProject"
-        @select-folder="selectFolder"
-      />
-    </div>
+      <el-main>
+        <ProjectList
+          :loading="loading"
+          :search-input="searchInput"
+          @add-project="showProjectDialog"
+          :current-folder-id="currentFolder?.id"
+          @edit-project="editProject"
+          @select-folder="selectFolder"
+        />
+      </el-main>
+    </el-container>
 
     <!-- 弹窗 -->
     <ProjectDialog
@@ -64,17 +73,17 @@
       :current-folder-id="currentFolder?.id"
       @save="addProject"
     />
-  </div>
+  </el-container>
 </template>
 
 <script setup>
-import { useAppStore } from "../store";
+import { useAppStore } from "@/store";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
 // 导入组件
-import Sidebar from "@/components/Sidebar.vue";
-import ProjectList from "@/components/ProjectList.vue";
-import ProjectDialog from "@/components/ProjectDialog.vue";
+import Sidebar from "@/views/home/components/Sidebar.vue";
+import ProjectList from "@/views/home/components/ProjectList.vue";
+import ProjectDialog from "@/views/home/components/ProjectDialog.vue";
 
 // Store
 const store = useAppStore();
@@ -87,7 +96,6 @@ const currentFolder = ref(null);
 const isSidebarCollapsed = ref(false);
 
 // 计算属性
-const folders = computed(() => store.folders);
 const isDarkMode = computed(() => store.theme === "dark");
 
 // 对话框可见性
@@ -99,27 +107,6 @@ const toggleTheme = async () => {
   const newTheme = isDarkMode.value ? "light" : "dark";
   await store.changeTheme(newTheme);
 };
-
-// 表单数据
-const newProject = ref({
-  name: "",
-  folder_id: null,
-  description: "",
-  path: "",
-  preferred_ide: ["vscode"],
-  icon: "code"
-});
-
-const editingProject = ref({
-  id: null,
-  name: "",
-  folder_id: null,
-  description: "",
-  path: "",
-  preferred_ide: ["vscode"],
-  icon: "code"
-});
-
 // 方法
 const selectFolder = (folder) => {
   currentFolder.value = folder;
@@ -245,6 +232,10 @@ const goToSettings = () => {
   router.push("/settings");
 };
 
+const goToGithubStars = () => {
+  router.push("/github-stars");
+};
+
 // 生命周期钩子
 onMounted(async () => {
   loading.value = true;
@@ -263,7 +254,7 @@ const getFolderPath = computed(() => {
   if (!currentFolder.value) return [];
 
   const path = [];
-  let currentFolderObj = {...currentFolder.value};
+  let currentFolderObj = { ...currentFolder.value };
 
   // 先添加当前文件夹
   path.unshift(currentFolderObj);
@@ -318,11 +309,6 @@ const getFolderPath = computed(() => {
 
 .breadcrumb-link:hover {
   color: var(--primary-color);
-}
-
-.breadcrumb-current {
-  font-weight: 500;
-  color: var(--text-color);
 }
 
 .page-actions {
@@ -380,5 +366,29 @@ const getFolderPath = computed(() => {
 .theme-toggle:hover {
   background-color: var(--bg-color);
   color: var(--text-color);
+}
+
+/* Element Container 样式调整 */
+.el-aside {
+  transition: width 0.3s;
+  overflow: hidden;
+}
+
+.el-header {
+  padding: 0;
+  height: auto !important;
+}
+
+.el-main {
+  padding: 16px;
+  overflow-x: hidden;
+}
+
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
 }
 </style>

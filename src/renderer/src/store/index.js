@@ -24,6 +24,13 @@ export const useAppStore = defineStore("app", {
     // Theme state
     theme: "light",
 
+    // Settings
+    settings: {
+      dbPath: "",
+      theme: "light",
+      githubProjectsPath: ""
+    },
+
     // Folders and projects
     folders: [],
     currentFolder: null,
@@ -81,12 +88,11 @@ export const useAppStore = defineStore("app", {
       this.loading = true;
       try {
         const api = getAPI();
-        if (!api) throw new Error("API未初始化");
-
         // Get settings from electron store
         const settings = await api.getAppSettings();
         this.dbPath = settings.dbPath;
         this.theme = settings.theme;
+        this.settings = settings;
         // Load initial data
         await this.loadFolders();
 
@@ -104,8 +110,6 @@ export const useAppStore = defineStore("app", {
     async loadFolders() {
       try {
         const api = getAPI();
-        if (!api) throw new Error("API未初始化");
-
         this.folders = await api.getFolders();
       } catch (error) {
         console.error("Failed to load folders:", error);
@@ -116,8 +120,6 @@ export const useAppStore = defineStore("app", {
     async loadProjects(folderId = null) {
       try {
         const api = getAPI();
-        if (!api) throw new Error("API未初始化");
-
         this.projects = await api.getProjects(folderId);
         return this.projects;
       } catch (error) {
@@ -145,8 +147,6 @@ export const useAppStore = defineStore("app", {
     async createProject(project) {
       try {
         const api = getAPI();
-        if (!api) throw new Error("API未初始化");
-
         // 处理preferred_ide，确保它是JSON字符串
         const projectToCreate = { ...project };
         if (Array.isArray(projectToCreate.preferred_ide)) {
@@ -206,8 +206,6 @@ export const useAppStore = defineStore("app", {
     async updateProject(id, data) {
       try {
         const api = getAPI();
-        if (!api) throw new Error("API未初始化");
-
         // 处理preferred_ide，确保它是JSON字符串
         const dataToUpdate = { ...data };
 
@@ -234,8 +232,6 @@ export const useAppStore = defineStore("app", {
     async deleteFolder(folder) {
       try {
         const api = getAPI();
-        if (!api) throw new Error("API未初始化");
-
         await api.deleteFolder(folder.id);
         await this.loadFolders();
         return true;
