@@ -742,10 +742,6 @@ watch(() => props.currentFolderId, async () => {
   color: var(--text-color);
 }
 
-.ide-dropdown {
-  position: relative;
-}
-
 @media (max-width: 1200px) {
   .projects-grid {
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

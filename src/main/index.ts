@@ -61,11 +61,11 @@ function createTrayWindow() {
   trayWindow = new BrowserWindow({
     width: 280,
     height: 300,
-    frame: false,
-    resizable: false,
-    show: false,
-    skipTaskbar: true,
+    frame: true, // 无边框
+    show: false, // 初始不显示
     alwaysOnTop: true,
+    skipTaskbar: true, // 不在任务栏显示
+    movable:true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -86,49 +86,51 @@ function createTrayWindow() {
     });
   }
 
-  // 当窗口失去焦点时隐藏
-  trayWindow.on("blur", () => {
-    if (trayWindow) {
-      trayWindow.hide();
-    }
-  });
+  // 设置窗口始终在最前面 (最高级别的置顶)
+  trayWindow.setAlwaysOnTop(true, "screen-saver", 1); // 使用level 1表示最高层级
 
-  // 在 macOS 上设置窗口级别为浮动窗口
-  if (process.platform === "darwin") {
-    trayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // 设置窗口在所有工作区都可见
+  trayWindow.setVisibleOnAllWorkspaces(true, {visibleOnFullScreen: true});
+  // 在macOS上，设置窗口层级为浮动面板，这有助于在全屏应用上方显示
+  if (process.platform === 'darwin') {
+    trayWindow.setWindowButtonVisibility(false); // 隐藏窗口按钮
+    // 确保窗口可以显示在全屏应用的上方
+    trayWindow.setAlwaysOnTop(true, "floating", 1);
   }
+
+  trayWindow.show();
 }
 
 /**
  * 创建系统托盘
  */
-function createTray() {
-  // 创建托盘图标
-  const iconPath = path.join(__dirname, "../../resources/icon.png");
-  tray = new Tray(iconPath);
-  tray.setToolTip("DevHaven");
-
-  // 创建托盘窗口
-  createTrayWindow();
-
-  // 点击托盘图标时显示托盘窗口
-  tray.on("click", () => {
-    if (!tray || !trayWindow) return;
-
-    const trayBounds = tray.getBounds();
-    const windowBounds = trayWindow.getBounds();
-
-    // 计算窗口位置，使其显示在托盘图标上方
-    const x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
-    const y = Math.round(trayBounds.y - windowBounds.height);
-
-    trayWindow.setPosition(x, y);
-    trayWindow.show();
-
-    // 通知托盘窗口刷新项目列表
-    trayWindow.webContents.send("refresh-tray-projects");
-  });
-}
+// function createTray() {
+//   // 创建托盘图标
+//   const iconPath = path.join(__dirname, "../../resources/icon.png");
+//   tray = new Tray(iconPath);
+//   tray.setToolTip("DevHaven");
+//
+//   // 创建托盘窗口
+//   createTrayWindow();
+//
+//   // 点击托盘图标时显示托盘窗口
+//   tray.on("click", () => {
+//     if (!tray || !trayWindow) return;
+//
+//     const trayBounds = tray.getBounds();
+//     const windowBounds = trayWindow.getBounds();
+//
+//     // 计算窗口位置，使其显示在托盘图标上方
+//     const x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
+//     const y = Math.round(trayBounds.y - windowBounds.height);
+//
+//     trayWindow.setPosition(x, y);
+//     trayWindow.show();
+//
+//     // 通知托盘窗口刷新项目列表
+//     trayWindow.webContents.send("refresh-tray-projects");
+//   });
+// }
 
 /**
  * 初始化应用程序
@@ -160,7 +162,7 @@ app.whenReady().then(async () => {
   // 创建主窗口
   createWindow();
   // 创建系统托盘
-  createTray();
+  createTrayWindow();
 
   // 处理在 Windows 上的协议激活
   if (process.platform === "win32") {
@@ -213,17 +215,25 @@ if (process.platform === "win32") {
 // 当所有窗口关闭时退出应用，除了在macOS上
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    if (tray) {
-      tray.destroy();
-    }
     app.quit();
   }
 });
 
-// 在应用退出前清理托盘
+// 在应用退出前清理资源
 app.on("before-quit", () => {
-  if (tray) {
-    tray.destroy();
+  // 关闭托盘窗口
+  if (trayWindow) {
+    trayWindow.destroy();
+    trayWindow = null;
+  }
+
+  // 关闭服务器
+  if (server) {
+    try {
+      server.close();
+    } catch (error) {
+      console.error("关闭服务器失败:", error);
+    }
   }
 });
 
