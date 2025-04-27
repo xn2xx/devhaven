@@ -101,7 +101,7 @@
 </template>
 
 <script setup>
-import { useAppStore } from "../store";
+import { useAppStore } from "../../../store";
 import { Setting } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import RecursiveFolderTree from "./RecursiveFolderTree.vue";

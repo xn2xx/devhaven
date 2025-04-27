@@ -59,14 +59,14 @@
 </template>
 
 <script setup>
-import { useAppStore } from '../store';
+import { useAppStore } from '../../store';
 import { ElMessage } from 'element-plus';
 
 // 导入子组件
-import GeneralSettings from '@/components/settings/GeneralSettings.vue';
-import IdeSettings from '@/components/settings/IdeSettings.vue';
-import DatabaseSettings from '@/components/settings/DatabaseSettings.vue';
-import AboutSection from '@/components/settings/AboutSection.vue';
+import GeneralSettings from '@/views/settings/components/GeneralSettings.vue';
+import IdeSettings from '@/views/settings/components/IdeSettings.vue';
+import DatabaseSettings from '@/views/settings/components/DatabaseSettings.vue';
+import AboutSection from '@/views/settings/components/AboutSection.vue';
 
 // Store
 const store = useAppStore();

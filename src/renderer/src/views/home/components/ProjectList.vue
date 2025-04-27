@@ -164,7 +164,7 @@
 </template>
 
 <script setup>
-import { useAppStore } from "../store";
+import { useAppStore } from "../../../store";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 const props = defineProps({

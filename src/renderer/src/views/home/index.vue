@@ -22,7 +22,7 @@
               </a>
             </div>
             <template v-if="currentFolder">
-              <template v-for="(folder, index) in getFolderPath" :key="folder.id">
+              <template v-for="(folder) in getFolderPath" :key="folder.id">
                 <div class="breadcrumb-item">
                   <a href="#" class="breadcrumb-link" @click.prevent="selectFolder(folder)">
                     <span>{{ folder.name }}</span>
@@ -71,13 +71,13 @@
 </template>
 
 <script setup>
-import { useAppStore } from "../store";
+import { useAppStore } from "@/store";
 import { ElMessage } from "element-plus";
 import { useRouter } from "vue-router";
 // 导入组件
-import Sidebar from "@/components/Sidebar.vue";
-import ProjectList from "@/components/ProjectList.vue";
-import ProjectDialog from "@/components/ProjectDialog.vue";
+import Sidebar from "@/views/home/components/Sidebar.vue";
+import ProjectList from "@/views/home/components/ProjectList.vue";
+import ProjectDialog from "@/views/home/components/ProjectDialog.vue";
 
 // Store
 const store = useAppStore();
@@ -102,27 +102,6 @@ const toggleTheme = async () => {
   const newTheme = isDarkMode.value ? "light" : "dark";
   await store.changeTheme(newTheme);
 };
-
-// 表单数据
-const newProject = ref({
-  name: "",
-  folder_id: null,
-  description: "",
-  path: "",
-  preferred_ide: ["vscode"],
-  icon: "code"
-});
-
-const editingProject = ref({
-  id: null,
-  name: "",
-  folder_id: null,
-  description: "",
-  path: "",
-  preferred_ide: ["vscode"],
-  icon: "code"
-});
-
 // 方法
 const selectFolder = (folder) => {
   currentFolder.value = folder;
@@ -270,7 +249,7 @@ const getFolderPath = computed(() => {
   if (!currentFolder.value) return [];
 
   const path = [];
-  let currentFolderObj = {...currentFolder.value};
+  let currentFolderObj = { ...currentFolder.value };
 
   // 先添加当前文件夹
   path.unshift(currentFolderObj);
@@ -325,11 +304,6 @@ const getFolderPath = computed(() => {
 
 .breadcrumb-link:hover {
   color: var(--primary-color);
-}
-
-.breadcrumb-current {
-  font-weight: 500;
-  color: var(--text-color);
 }
 
 .page-actions {

@@ -5,12 +5,12 @@ const routes = [
   {
     path: "/",
     name: "Home",
-    component: () => import("../views/HomeView.vue"),
+    component: () => import("../views/home/index.vue"),
   },
   {
     path: "/settings",
     name: "Settings",
-    component: () => import("../views/SettingsView.vue"),
+    component: () => import("../views/settings/index.vue"),
   },
   {
     path: '/tray',

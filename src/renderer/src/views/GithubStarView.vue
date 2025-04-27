@@ -173,7 +173,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useAppStore } from '../store';
-import ProjectDialog from '../components/ProjectDialog.vue';
+import ProjectDialog from './home/components/ProjectDialog.vue';
 
 // Store
 const store = useAppStore();

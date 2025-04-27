@@ -97,7 +97,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick, watch, reactive } from 'vue';
-import { useAppStore } from '../store';
+import { useAppStore } from '../../../store';
 import { FolderAdd, Folder, Edit, Delete } from '@element-plus/icons-vue';
 
 const props = defineProps({
