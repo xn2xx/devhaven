@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, Tray } from "electron";
 import path from "path";
 import { enable, initialize } from "@electron/remote/main";
-import { createWindow, getMainWindow } from "./window";
+import { createWindow, getMainWindow, setTrayWindow } from "./window";
 import { initDatabase } from "./db-service";
 import { registerIpcHandlers } from "./ipc-handlers";
 import * as settingsService from "./settings-service";
@@ -60,7 +60,10 @@ app.on("open-url", (event, url) => {
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
     width: 280,
-    height: 300,
+    // 移除固定高度，使用其他配置实现自适应
+    height: 0, // 初始高度很小，后面会根据内容动态调整
+    minHeight: 100, // 最小高度
+    useContentSize: true, // 使用内容大小而不是窗口大小
     frame: false, // 无边框
     show: true, // 初始不显示
     alwaysOnTop: true,
@@ -80,6 +83,10 @@ function createTrayWindow() {
 
   // 为该窗口启用远程模块
   enable(trayWindow.webContents);
+
+  // 在window模块中设置托盘窗口引用
+  setTrayWindow(trayWindow);
+
   // 加载托盘窗口的 HTML 文件
   if (process.env.NODE_ENV === "development") {
     trayWindow.loadURL("http://localhost:5173/#/tray");
@@ -91,6 +98,23 @@ function createTrayWindow() {
     });
   }
 
+  // 监听内容大小变化，调整窗口高度
+  trayWindow.webContents.on('did-finish-load', () => {
+    // 等待DOM渲染完成后获取内容高度并调整窗口大小
+    setTimeout(() => {
+      trayWindow?.webContents.executeJavaScript(`
+        document.body.offsetHeight;
+      `).then(height => {
+        // 根据内容高度调整窗口
+        if (trayWindow && height > 0) {
+          const [width] = trayWindow.getSize();
+          // 给高度添加一些边距
+          trayWindow.setSize(width, Math.min(Math.max(height, 100), 600));
+        }
+      }).catch(err => console.error('获取内容高度失败:', err));
+    }, 300);
+  });
+
   // 设置窗口始终在最前面 (最高级别的置顶)
   trayWindow.setAlwaysOnTop(true, "screen-saver", 1); // 使用level 1表示最高层级
 
@@ -101,6 +125,7 @@ function createTrayWindow() {
     trayWindow.setWindowButtonVisibility(true); // 显示窗口按钮以便于拖动
     // 确保窗口可以显示在全屏应用的上方
     trayWindow.setAlwaysOnTop(true, "floating", 1);
+
     // 确保窗口背景透明
     trayWindow.setBackgroundColor('#00000000');
     trayWindow.setOpacity(1.0); // 设置完全不透明度（透明由backgroundColor控制）

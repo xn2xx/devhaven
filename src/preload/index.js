@@ -54,7 +54,8 @@ const electronAPI = {
   // IPC事件监听
   ipcRenderer: {
     on: (channel, listener) => ipcRenderer.on(channel, (event, ...args) => listener(...args)),
-    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener)
+    removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
+    send: (channel, ...args) => ipcRenderer.send(channel, ...args)
   }
 };
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed, watch } from "vue";
 import { ElIcon } from "element-plus";
 
 const projects = ref<DevHaven.Project[]>([]);
@@ -14,6 +14,8 @@ const fetchOpenProjects = async () => {
     console.log("获取已打开的项目列表");
     projects.value = await window.api.getOpenProjects();
     console.log("projects", projects.value);
+    // 延迟一段时间后更新窗口大小，确保DOM已经渲染
+    setTimeout(updateWindowSize, 100);
   } catch (error) {
     console.error("获取已打开项目失败:", error);
   }
@@ -53,18 +55,50 @@ const handleRefreshProjects = () => {
   fetchOpenProjects();
 };
 
+// 更新窗口大小的函数
+const updateWindowSize = () => {
+  try {
+    // 获取当前内容高度
+    const contentHeight = document.body.offsetHeight;
+    console.log('当前内容高度:', contentHeight);
+
+    // 通知主进程更新窗口大小
+    if (window.api.ipcRenderer) {
+      window.api.ipcRenderer.send('update-tray-height', contentHeight);
+    }
+  } catch (error) {
+    console.error('更新窗口大小失败:', error);
+  }
+};
+
+// 监听项目列表变化，自动调整窗口大小
+watch(projects, () => {
+  // 当项目列表变化时，延迟更新窗口大小
+  setTimeout(updateWindowSize, 100);
+}, { deep: true });
+
 // 组件挂载时设置事件监听和初始获取项目列表
 onMounted(() => {
   fetchOpenProjects();
   // 添加事件监听
   window.api.ipcRenderer.on("refresh-tray-projects", handleRefreshProjects);
+
+  // 延迟一段时间后初始化窗口大小
+  setTimeout(updateWindowSize, 300);
+
+  // 添加窗口大小变化监听
+  window.addEventListener('resize', updateWindowSize);
 });
 
 // 组件卸载时移除事件监听
 onUnmounted(() => {
   // 移除事件监听
   window.api.ipcRenderer.removeListener("refresh-tray-projects", handleRefreshProjects);
+
+  // 移除窗口大小变化监听
+  window.removeEventListener('resize', updateWindowSize);
 });
+
 // 因为窗口始终置顶，所以需要定时刷新项目列表保证数据是同步的
 setInterval(() => {
   fetchOpenProjects();

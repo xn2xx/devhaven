@@ -7,6 +7,7 @@ import * as openProjectService from "./open-project-service";
 import * as githubService from "./github-service";
 import path from "path";
 import { app, shell } from "electron";
+import { getMainWindow, getTrayWindow } from "./window";
 
 /**
  * 注册所有IPC处理程序
@@ -350,6 +351,17 @@ function registerIpcHandlers() {
     } catch (error) {
       console.error("检查路径失败:", error);
       throw error;
+    }
+  });
+
+  // 注册调整悬浮窗高度的处理程序
+  ipcMain.on('update-tray-height', (_, height) => {
+    const trayWindow = getTrayWindow();
+    if (trayWindow) {
+      const [width] = trayWindow.getSize();
+      // 适当添加一些边距，并限制最大高度
+      const newHeight = Math.min(Math.max(height + 16, 100), 600);
+      trayWindow.setSize(width, newHeight);
     }
   });
 }

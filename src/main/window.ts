@@ -4,6 +4,7 @@ import { enable } from '@electron/remote/main';
 
 // 全局窗口引用，避免垃圾回收
 let mainWindow: BrowserWindow | null = null;
+let trayWindow: BrowserWindow | null = null;
 
 /**
  * 创建主窗口
@@ -53,4 +54,20 @@ function getMainWindow() {
   return mainWindow;
 }
 
-export { createWindow, getMainWindow };
+/**
+ * 设置托盘窗口实例
+ * @param {BrowserWindow} window 托盘窗口实例
+ */
+function setTrayWindow(window: BrowserWindow) {
+  trayWindow = window;
+}
+
+/**
+ * 获取托盘窗口实例
+ * @returns {BrowserWindow|null} 托盘窗口实例或null
+ */
+function getTrayWindow() {
+  return trayWindow;
+}
+
+export { createWindow, getMainWindow, getTrayWindow, setTrayWindow };
