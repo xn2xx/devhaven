@@ -11,15 +11,12 @@ import cursorIcon from "../../../../resources/ide/cursor.png?asset";
 import vscodeIcon from "../../../../resources/ide/vscode.svg?asset";
 
 const fetchOpenProjects = async () => {
-  isLoading.value = true;
   try {
     console.log("获取已打开的项目列表");
     projects.value = await window.api.getOpenProjects();
     console.log("projects", projects.value);
   } catch (error) {
     console.error("获取已打开项目失败:", error);
-  } finally {
-    isLoading.value = false;
   }
 };
 
@@ -69,16 +66,15 @@ onUnmounted(() => {
   // 移除事件监听
   window.api.ipcRenderer.removeListener("refresh-tray-projects", handleRefreshProjects);
 });
+// 因为窗口始终置顶，所以需要定时刷新项目列表保证数据是同步的
+setInterval(() => {
+  fetchOpenProjects();
+}, 1000);
 </script>
 
 <template>
   <div class="tray-window">
-    <div v-if="isLoading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <div class="loading-text">加载中...</div>
-    </div>
-
-    <div v-else-if="projects.length === 0" class="empty-container">
+    <div v-if="projects.length === 0" class="empty-container">
       <div class="empty-icon i-mdi-folder-open-outline"></div>
       <div class="empty-text">暂无打开的项目</div>
       <div class="empty-description">当您打开项目后，将会在此处显示</div>
