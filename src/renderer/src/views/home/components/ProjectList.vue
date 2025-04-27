@@ -81,14 +81,17 @@
             </div>
             <div class="stat-item">
               <i @click.stop="handleProjectAction('favorite', project)">
-                <i :class="[project.is_favorite ===1? 'i-fa-solid:star' : 'i-fa-solid:star', 'card-action-icon']" :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
+                <i :class="[project.is_favorite ===1? 'i-fa-solid:star' : 'i-fa-solid:star', 'card-action-icon']"
+                   :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
               </i>
             </div>
             <div class="stat-item">
-              <i :class="[project.source_type === 'github' ? 'i-fa-brands:github' : 'i-fa-solid:folder', 'stat-icon']"></i>
+              <i
+                :class="[project.source_type === 'github' ? 'i-fa-brands:github' : 'i-fa-solid:folder', 'stat-icon']"></i>
               <span class="project-path">{{ project.path }}</span>
               <span v-if="project.source_type === 'github'" class="github-badge">GitHub</span>
-              <span v-if="project.source_type === 'github' && project.is_cloned === 0" class="not-cloned-badge">未克隆</span>
+              <span v-if="project.source_type === 'github' && project.is_cloned === 0"
+                    class="not-cloned-badge">未克隆</span>
             </div>
           </div>
           <div class="project-tags">
@@ -164,7 +167,7 @@
 </template>
 
 <script setup>
-import { useAppStore } from "../../../store";
+import { useAppStore } from "@/store";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 const props = defineProps({
@@ -189,7 +192,7 @@ const cloneConfirmDialogVisible = ref(false);
 const projectToClone = ref(null);
 const cloningProject = ref(null);
 const cloneProgress = ref(0);
-const cloneStatus = ref('');
+const cloneStatus = ref("");
 
 // Store
 const store = useAppStore();
@@ -200,7 +203,7 @@ const handleProjectAction = async (command, project) => {
   switch (command) {
     case "openFolder":
       try {
-        if (project.source_type === 'github' && project.is_cloned === 0) {
+        if (project.source_type === "github" && project.is_cloned === 0) {
           ElMessage.warning("项目尚未克隆到本地，请先克隆项目");
           return;
         }
@@ -286,10 +289,10 @@ const cloneRepository = async (project) => {
   try {
     cloningProject.value = project;
     cloneProgress.value = 0;
-    cloneStatus.value = 'cloning';
+    cloneStatus.value = "cloning";
 
     // 设置克隆进度监听器
-    window.api.ipcRenderer.on('clone-progress-update', handleCloneProgress);
+    window.api.ipcRenderer.on("clone-progress-update", handleCloneProgress);
 
     // 开始克隆
     const result = await window.api.cloneGithubRepo(project.github_url, project.path);
@@ -308,15 +311,15 @@ const cloneRepository = async (project) => {
       ElMessage.error(`克隆失败: ${result.message}`);
     }
   } catch (error) {
-    console.error('克隆仓库出错:', error);
-    ElMessage.error('克隆过程中发生错误');
+    console.error("克隆仓库出错:", error);
+    ElMessage.error("克隆过程中发生错误");
   } finally {
     // 清理
     setTimeout(() => {
-      window.api.ipcRenderer.removeListener('clone-progress-update', handleCloneProgress);
+      window.api.ipcRenderer.removeListener("clone-progress-update", handleCloneProgress);
       cloningProject.value = null;
       cloneProgress.value = 0;
-      cloneStatus.value = '';
+      cloneStatus.value = "";
     }, 2000);
   }
 };
@@ -330,12 +333,12 @@ const handleCloneProgress = (progress) => {
 // 获取克隆状态文本
 const getCloneStatusText = () => {
   switch (cloneStatus.value) {
-    case 'cloning':
+    case "cloning":
       return `正在克隆 (${cloneProgress.value}%)`;
-    case 'completed':
-      return '克隆完成';
+    case "completed":
+      return "克隆完成";
     default:
-      return '准备克隆...';
+      return "准备克隆...";
   }
 };
 
@@ -440,7 +443,7 @@ const getPreferredIdes = (project) => {
 const openProjectWithSpecificIde = async (project, ide) => {
   try {
     // 如果是GitHub项目且未克隆，提示先克隆
-    if (project.source_type === 'github' && project.is_cloned === 0) {
+    if (project.source_type === "github" && project.is_cloned === 0) {
       ElMessage.warning("项目尚未克隆到本地，请先克隆项目");
       return;
     }
@@ -455,7 +458,7 @@ const openProjectWithSpecificIde = async (project, ide) => {
     // 更新项目的最后打开时间
     const now = new Date();
     store.updateProject(project.id, { last_opened_at: now.toISOString() });
-
+    console.log("currentFolder", props.currentFolderId);
     // 打开项目
     await window.api.openWithIDE(project.path, ide);
   } catch (error) {
@@ -481,23 +484,16 @@ const navigateToFolder = (folderId) => {
 };
 
 const loadProjects = async () => {
+  console.log("loadProjects", props.currentFolderId);
   projects.value = await window.api.getProjects(props.currentFolderId);
 };
 
-// 监听 store 中的项目变化
-watch(() => store.projects, (newProjects) => {
-  // 当 store 中的项目发生变化时，刷新列表
-  if (newProjects && Array.isArray(newProjects)) {
-    projects.value = newProjects;
-  }
-});
-
 onMounted(async () => {
-  loadProjects();
+  await loadProjects();
 });
 
 watch(() => props.currentFolderId, async () => {
-  loadProjects();
+  await loadProjects();
 });
 
 </script>
@@ -506,7 +502,6 @@ watch(() => props.currentFolderId, async () => {
 .content-body {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
   scrollbar-width: thin;
 }
 
