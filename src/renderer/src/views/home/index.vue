@@ -90,7 +90,6 @@ const currentFolder = ref(null);
 const isSidebarCollapsed = ref(false);
 
 // 计算属性
-const folders = computed(() => store.folders);
 const isDarkMode = computed(() => store.theme === "dark");
 
 // 对话框可见性
