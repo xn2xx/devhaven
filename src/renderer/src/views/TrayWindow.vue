@@ -69,11 +69,14 @@ onUnmounted(() => {
 // 因为窗口始终置顶，所以需要定时刷新项目列表保证数据是同步的
 setInterval(() => {
   fetchOpenProjects();
-}, 1000);
+}, 5000);
 </script>
 
 <template>
   <div class="tray-window">
+    <!-- 添加可拖动区域 -->
+    <div class="drag-handle"></div>
+
     <div v-if="projects.length === 0" class="empty-container">
       <div class="empty-icon i-mdi-folder-open-outline"></div>
       <div class="empty-text">暂无打开的项目</div>
@@ -118,6 +121,18 @@ setInterval(() => {
   border-radius: 6px;
   max-height: 100vh;
   overflow-y: auto;
+  position: relative; /* 添加相对定位 */
+}
+
+/* 添加拖动区域样式 */
+.drag-handle {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  -webkit-app-region: drag; /* 使区域可拖动 */
+  cursor: move;
+  z-index: 10;
 }
 
 .loading-container {

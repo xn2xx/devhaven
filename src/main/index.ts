@@ -61,11 +61,18 @@ function createTrayWindow() {
   trayWindow = new BrowserWindow({
     width: 280,
     height: 300,
-    frame: true, // 无边框
-    show: false, // 初始不显示
+    frame: false, // 无边框
+    show: true, // 初始不显示
     alwaysOnTop: true,
     skipTaskbar: true, // 不在任务栏显示
-    movable:true,
+    movable: true,
+    // 在macOS上启用悬停时显示自定义按钮
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    // macOS平台特有配置
+    ...(process.platform === 'darwin' ? {
+      customButtonsOnHover: true, // 悬停时显示标题栏按钮
+      trafficLightPosition: { x: 10, y: 10 } // 设置交通灯按钮的位置
+    } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -93,12 +100,10 @@ function createTrayWindow() {
   trayWindow.setVisibleOnAllWorkspaces(true, {visibleOnFullScreen: true});
   // 在macOS上，设置窗口层级为浮动面板，这有助于在全屏应用上方显示
   if (process.platform === 'darwin') {
-    trayWindow.setWindowButtonVisibility(false); // 隐藏窗口按钮
+    trayWindow.setWindowButtonVisibility(true); // 显示窗口按钮以便于拖动
     // 确保窗口可以显示在全屏应用的上方
     trayWindow.setAlwaysOnTop(true, "floating", 1);
   }
-
-  trayWindow.show();
 }
 
 /**
