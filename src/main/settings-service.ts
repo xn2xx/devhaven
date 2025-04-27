@@ -8,7 +8,8 @@ const store = new Store({
   defaults: {
     dbPath: path.join(app.getPath("userData"), "devhaven.db"),
     theme: "light",
-    githubProjectsPath: path.join(app.getPath("home"), "DevHavenGitHub")
+    githubProjectsPath: path.join(app.getPath("home"), "DevHavenGitHub"),
+    showTrayWindow: true // 默认显示悬浮窗
   }
 });
 
@@ -20,7 +21,8 @@ function getSettings() {
   return {
     dbPath: store.get("dbPath"),
     theme: store.get("theme"),
-    githubProjectsPath: store.get("githubProjectsPath")
+    githubProjectsPath: store.get("githubProjectsPath"),
+    showTrayWindow: store.get("showTrayWindow")
   };
 }
 
@@ -33,6 +35,7 @@ function saveSettings(settings: any) {
   if (settings.dbPath) store.set("dbPath", settings.dbPath);
   if (settings.theme) store.set("theme", settings.theme);
   if (settings.githubProjectsPath) store.set("githubProjectsPath", settings.githubProjectsPath);
+  if (settings.showTrayWindow !== undefined) store.set("showTrayWindow", settings.showTrayWindow);
   return { success: true };
 }
 
@@ -100,6 +103,22 @@ function setTheme(theme: string) {
   store.set("theme", theme);
 }
 
+/**
+ * 获取悬浮窗显示设置
+ * @returns {boolean} 是否显示悬浮窗
+ */
+function getTrayWindowSetting() {
+  return store.get("showTrayWindow", true); // 默认为true
+}
+
+/**
+ * 保存悬浮窗显示设置
+ * @param {boolean} show 是否显示悬浮窗
+ */
+function saveTrayWindowSetting(show: boolean) {
+  store.set("showTrayWindow", show);
+}
+
 export {
   getSettings,
   saveSettings,
@@ -110,5 +129,7 @@ export {
   getDefaultIde,
   setDefaultIde,
   getTheme,
-  setTheme
+  setTheme,
+  getTrayWindowSetting,
+  saveTrayWindowSetting
 }
