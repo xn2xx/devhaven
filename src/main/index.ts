@@ -55,7 +55,7 @@ app.on("open-url", (event, url) => {
 });
 
 /**
- * 创建托盘窗口
+ * 创建悬浮窗
  */
 function createTrayWindow() {
   trayWindow = new BrowserWindow({
@@ -66,13 +66,11 @@ function createTrayWindow() {
     alwaysOnTop: true,
     skipTaskbar: true, // 不在任务栏显示
     movable: true,
-    // 在macOS上启用悬停时显示自定义按钮
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    // macOS平台特有配置
-    ...(process.platform === 'darwin' ? {
-      customButtonsOnHover: true, // 悬停时显示标题栏按钮
-      trafficLightPosition: { x: 10, y: 10 } // 设置交通灯按钮的位置
-    } : {}),
+    transparent: true, // 启用窗口透明
+    backgroundColor: '#00000000', // 完全透明背景
+    // macOS特定配置
+    titleBarStyle: 'hidden', // 统一使用hidden样式
+    hasShadow: false, // 禁用阴影以提高透明效果
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -103,6 +101,9 @@ function createTrayWindow() {
     trayWindow.setWindowButtonVisibility(true); // 显示窗口按钮以便于拖动
     // 确保窗口可以显示在全屏应用的上方
     trayWindow.setAlwaysOnTop(true, "floating", 1);
+    // 确保窗口背景透明
+    trayWindow.setBackgroundColor('#00000000');
+    trayWindow.setOpacity(1.0); // 设置完全不透明度（透明由backgroundColor控制）
   }
 }
 

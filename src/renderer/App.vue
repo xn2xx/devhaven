@@ -1,8 +1,21 @@
 <template>
-  <div id="app">
+  <div id="app" :class="{ 'transparent-bg': isTransparentRoute }">
     <router-view />
   </div>
 </template>
+
+<script>
+export default {
+  name: 'App',
+  computed: {
+    isTransparentRoute() {
+      // 判断当前路由是否需要透明背景
+      return this.$route && this.$route.path === '/tray';
+    }
+  }
+}
+</script>
+
 <style>
 /* 导入HTML模板样式 */
 :root {
@@ -56,5 +69,16 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease;
+}
+
+/* 透明背景样式 */
+.transparent-bg {
+  background-color: transparent !important;
+}
+
+/* 当路由是tray时，确保整个页面透明 */
+.transparent-bg + body,
+.transparent-bg + html {
+  background-color: transparent !important;
 }
 </style>

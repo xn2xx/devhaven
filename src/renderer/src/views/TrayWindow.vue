@@ -3,7 +3,6 @@ import { onMounted, onUnmounted, ref, computed } from "vue";
 import { ElIcon } from "element-plus";
 
 const projects = ref<DevHaven.Project[]>([]);
-const isLoading = ref(false);
 import ideaIcon from "../../../../resources/ide/intellij-idea.svg?asset";
 import pycharmIcon from "../../../../resources/ide/pycharm.svg?asset";
 import webstorm from "../../../../resources/ide/pycharm.svg?asset";
@@ -115,13 +114,25 @@ setInterval(() => {
 <style>
 .tray-window {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background-color: #1e1e1e;
+  background-color: transparent !important; /* 强制透明背景 */
   color: #f0f0f0;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: 8px;
   max-height: 100vh;
   overflow-y: auto;
-  position: relative; /* 添加相对定位 */
+  position: relative;
+  /* 确保无背景色 */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+html, body {
+  background: transparent !important; /* 确保HTML和body也是透明的 */
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* 防止滚动条 */
 }
 
 /* 添加拖动区域样式 */
@@ -130,9 +141,10 @@ setInterval(() => {
   left: 0;
   right: 0;
   height: 22px;
-  -webkit-app-region: drag; /* 使区域可拖动 */
+  -webkit-app-region: drag;
   cursor: move;
   z-index: 10;
+  background: transparent;
 }
 
 .loading-container {
@@ -175,6 +187,11 @@ setInterval(() => {
   height: 150px;
   text-align: center;
   padding: 0 16px;
+  background-color: rgba(30, 30, 30, 0.6);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .empty-icon {
@@ -204,12 +221,19 @@ setInterval(() => {
   display: flex;
   align-items: center;
   padding: 8px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  background-color: rgba(30, 30, 30, 0.7); /* 稍微增加透明度 */
+  backdrop-filter: blur(10px); /* 增加模糊效果 */
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .project-item:hover {
-  background-color: #2a2a2a;
+  background-color: rgba(42, 42, 42, 0.8);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 
 .project-icon {
