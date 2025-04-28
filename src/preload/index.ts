@@ -1,7 +1,65 @@
-const { contextBridge, ipcRenderer } = require("electron");
+import { contextBridge, ipcRenderer } from "electron";
+
+// 定义ElectronAPI接口
+interface ElectronAPI {
+  // 文件系统操作
+  selectDbPath: () => Promise<string>;
+  openFolder: (path: string) => Promise<void>;
+  openWithIDE: (path: string, ide: string) => Promise<void>;
+  resumeIde: (project: any) => Promise<void>;
+  selectFolder: () => Promise<string>;
+  openDirectoryDialog: () => Promise<string>;
+  openExecutableDialog: () => Promise<string>;
+  openExternalUrl: (url: string) => Promise<void>;
+  pathExists: (path: string) => Promise<boolean>;
+  cloneGithubRepo: (repoUrl: string, targetPath: string) => Promise<void>;
+
+  // 应用设置
+  getAppSettings: () => Promise<any>;
+  saveAppSettings: (settings: any) => Promise<void>;
+
+  // IDE配置
+  getIdeConfigs: () => Promise<any[]>;
+  getIdeConfig: (id: string) => Promise<any>;
+  createIdeConfig: (ideConfig: any) => Promise<any>;
+  updateIdeConfig: (id: string, data: any) => Promise<any>;
+  deleteIdeConfig: (id: string) => Promise<void>;
+  detectIdes: () => Promise<any[]>;
+
+  // 数据库操作 - 文件夹
+  getFolders: () => Promise<any[]>;
+  getFolderChildren: (parentId: string) => Promise<any[]>;
+  getFolderRoots: () => Promise<any[]>;
+  createFolder: (folder: any) => Promise<any>;
+  updateFolder: (id: string, data: any) => Promise<any>;
+  deleteFolder: (id: string) => Promise<void>;
+
+  // 数据库操作 - 项目
+  getProjects: (folderId: string) => Promise<any[]>;
+  createProject: (project: any) => Promise<any>;
+  updateProject: (id: string, data: any) => Promise<any>;
+  deleteProject: (id: string) => Promise<void>;
+  searchProjects: (query: string) => Promise<any[]>;
+  favoriteProjects: () => Promise<any[]>;
+
+  getOpenProjects: () => Promise<any[]>;
+
+  // GitHub相关操作
+  authenticateGithub: () => Promise<void>;
+  getGithubAuthStatus: () => Promise<any>;
+  logoutGithub: () => Promise<void>;
+  getGithubStarredRepos: () => Promise<any[]>;
+
+  // IPC事件监听
+  ipcRenderer: {
+    on: (channel: string, listener: (...args: any[]) => void) => void;
+    removeListener: (channel: string, listener: (...args: any[]) => void) => void;
+    send: (channel: string, ...args: any[]) => void;
+  }
+}
 
 // 创建API对象
-const electronAPI = {
+const electronAPI: ElectronAPI = {
   // 文件系统操作
   selectDbPath: () => ipcRenderer.invoke("select-db-path"),
   openFolder: (path) => ipcRenderer.invoke("open-folder", path),
@@ -66,7 +124,8 @@ contextBridge.exposeInMainWorld("api", electronAPI);
 
 // 监听导航到设置页面的消息
 ipcRenderer.on('navigate-to-settings', () => {
-  window.api.router.push('/settings');
+  // 假设window.api.router存在
+  (window as any).api.router.push('/settings');
 });
 
 // 暴露 Node.js 环境变量
@@ -75,3 +134,19 @@ contextBridge.exposeInMainWorld("process", {
     NODE_ENV: process.env.NODE_ENV || "production"
   }
 });
+
+// 为了全局类型定义，声明全局命名空间
+export {}; // 确保这个文件被视为模块
+
+// 全局类型声明，使Window接口包含我们的API
+declare global {
+  interface Window {
+    api: ElectronAPI;
+    electronAPI: ElectronAPI;
+    process: {
+      env: {
+        NODE_ENV: string;
+      }
+    }
+  }
+}

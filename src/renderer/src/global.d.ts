@@ -44,16 +44,3 @@ declare namespace DevHaven {
     args: string;
   }
 }
-
-// 扩展Window接口，添加api属性
-interface Window {
-  api: {
-    getOpenProjects: () => Promise<DevHaven.Project[]>;
-    resumeIde: (project: DevHaven.Project) => Promise<void>;
-    ipcRenderer: {
-      on: (channel: string, listener: (...args: any[]) => void) => void;
-      removeListener: (channel: string, listener: (...args: any[]) => void) => void;
-      send: (channel: string, ...args: any[]) => void;
-    };
-  };
-}

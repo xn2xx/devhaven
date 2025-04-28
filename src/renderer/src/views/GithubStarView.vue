@@ -109,7 +109,7 @@
                     </div>
                   </div>
 
-                  <p class="project-description">{{ project.description || '暂无描述' }}</p>
+                  <p class="project-description">{{ project.description || "暂无描述" }}</p>
 
                   <div class="project-stats">
                     <div class="stat-item">
@@ -117,7 +117,8 @@
                       <span>{{ project.stargazers_count }}</span>
                     </div>
                     <div class="stat-item" v-if="project.language">
-                      <span class="language-dot" :style="{ backgroundColor: getLanguageColor(project.language) }"></span>
+                      <span class="language-dot"
+                            :style="{ backgroundColor: getLanguageColor(project.language) }"></span>
                       <span>{{ project.language }}</span>
                     </div>
                     <div class="stat-item">
@@ -170,10 +171,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { ElMessage } from 'element-plus';
-import { useAppStore } from '../store';
-import ProjectDialog from './home/components/ProjectDialog.vue';
+import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
+import { useAppStore } from "../store";
+import ProjectDialog from "./home/components/ProjectDialog.vue";
 
 // Store
 const store = useAppStore();
@@ -190,9 +191,9 @@ const projectToImport = ref(null);
 const importedProjects = ref([]);
 
 // 筛选状态
-const languageSearch = ref('');
-const topicSearch = ref('');
-const projectSearch = ref('');
+const languageSearch = ref("");
+const topicSearch = ref("");
+const projectSearch = ref("");
 const selectedLanguages = ref([]);
 const selectedTopics = ref([]);
 
@@ -287,42 +288,27 @@ const filteredProjects = computed(() => {
 // 获取语言颜色
 const getLanguageColor = (language) => {
   const colors = {
-    'JavaScript': '#f1e05a',
-    'TypeScript': '#2b7489',
-    'Python': '#3572A5',
-    'Java': '#b07219',
-    'Go': '#00ADD8',
-    'C++': '#f34b7d',
-    'PHP': '#4F5D95',
-    'Ruby': '#701516',
-    'C#': '#178600',
-    'Rust': '#dea584',
-    'Swift': '#ffac45',
-    'Kotlin': '#F18E33',
-    'Vue': '#41b883',
-    'React': '#61dafb',
-    'HTML': '#e34c26',
-    'CSS': '#563d7c'
+    "JavaScript": "#f1e05a",
+    "TypeScript": "#2b7489",
+    "Python": "#3572A5",
+    "Java": "#b07219",
+    "Go": "#00ADD8",
+    "C++": "#f34b7d",
+    "PHP": "#4F5D95",
+    "Ruby": "#701516",
+    "C#": "#178600",
+    "Rust": "#dea584",
+    "Swift": "#ffac45",
+    "Kotlin": "#F18E33",
+    "Vue": "#41b883",
+    "React": "#61dafb",
+    "HTML": "#e34c26",
+    "CSS": "#563d7c"
   };
 
-  return colors[language] || '#8e8e8e';
+  return colors[language] || "#8e8e8e";
 };
 
-// 检查项目是否已导入
-const isProjectImported = (githubId) => {
-  return importedProjects.value.some(project => project.github_id === githubId);
-};
-
-// 获取已导入的项目
-const fetchImportedProjects = async () => {
-  try {
-    // 这里需要实现一个API来获取已导入的GitHub项目
-    // 暂时使用空数组
-    importedProjects.value = [];
-  } catch (error) {
-    console.error('获取已导入项目失败:', error);
-  }
-};
 
 // GitHub授权
 const handleLogin = async () => {
@@ -334,14 +320,13 @@ const handleLogin = async () => {
       isAuthenticated.value = true;
       githubUser.value = result.user;
       await fetchStarredRepos();
-      await fetchImportedProjects();
       ElMessage.success(`已连接到GitHub账号: ${result.user.login}`);
     } else {
-      ElMessage.error('GitHub连接失败');
+      ElMessage.error("GitHub连接失败");
     }
   } catch (error) {
-    console.error('GitHub认证错误:', error);
-    ElMessage.error('GitHub连接出错');
+    console.error("GitHub认证错误:", error);
+    ElMessage.error("GitHub连接出错");
   } finally {
     loading.value = false;
   }
@@ -354,10 +339,10 @@ const handleLogout = async () => {
     githubUser.value = null;
     starredProjects.value = [];
     importedProjects.value = [];
-    ElMessage.success('已断开GitHub连接');
+    ElMessage.success("已断开GitHub连接");
   } catch (error) {
-    console.error('GitHub登出错误:', error);
-    ElMessage.error('断开连接失败');
+    console.error("GitHub登出错误:", error);
+    ElMessage.error("断开连接失败");
   }
 };
 
@@ -368,8 +353,8 @@ const fetchStarredRepos = async () => {
     const repos = await window.api.getGithubStarredRepos();
     starredProjects.value = repos;
   } catch (error) {
-    console.error('获取GitHub收藏错误:', error);
-    ElMessage.error('获取GitHub收藏失败');
+    console.error("获取GitHub收藏错误:", error);
+    ElMessage.error("获取GitHub收藏失败");
   } finally {
     loading.value = false;
   }
@@ -386,12 +371,12 @@ const importProject = (project) => {
   projectToImport.value = {
     id: null,
     name: project.name,
-    description: project.description || '',
-    path: `${store.settings?.githubProjectsPath || ''}/${project.owner.login}/${project.name}`,
+    description: project.description || "",
+    path: `${store.settings?.githubProjectsPath || ""}/${project.owner.login}/${project.name}`,
     folder_id: null,
-    preferred_ide: ['vscode'],
-    icon: project.language ? getIconByLanguage(project.language) : 'code',
-    source_type: 'github',
+    preferred_ide: ["vscode"],
+    icon: project.language ? getIconByLanguage(project.language) : "code",
+    source_type: "github",
     github_url: project.html_url,
     is_cloned: 0 // 初始设置为未克隆
   };
@@ -403,29 +388,29 @@ const importProject = (project) => {
 // 根据语言获取图标
 const getIconByLanguage = (language) => {
   const langToIcon = {
-    'JavaScript': 'js',
-    'TypeScript': 'ts',
-    'Python': 'python',
-    'Java': 'java',
-    'Ruby': 'gem',
-    'PHP': 'php',
-    'HTML': 'html5',
-    'CSS': 'css3',
-    'C': 'code',
-    'C++': 'code',
-    'C#': 'code',
-    'Go': 'code',
-    'Rust': 'code'
+    "JavaScript": "js",
+    "TypeScript": "ts",
+    "Python": "python",
+    "Java": "java",
+    "Ruby": "gem",
+    "PHP": "php",
+    "HTML": "html5",
+    "CSS": "css3",
+    "C": "code",
+    "C++": "code",
+    "C#": "code",
+    "Go": "code",
+    "Rust": "code"
   };
 
-  return langToIcon[language] || 'code';
+  return langToIcon[language] || "code";
 };
 
 // 保存导入的项目
 const saveImportedProject = async (project) => {
   try {
     // 确保设置source_type和is_cloned
-    project.source_type = 'github';
+    project.source_type = "github";
     if (project.is_cloned === undefined) {
       project.is_cloned = 0;
     }
@@ -444,8 +429,8 @@ const saveImportedProject = async (project) => {
       });
     }
   } catch (error) {
-    console.error('导入项目失败:', error);
-    ElMessage.error('导入项目失败');
+    console.error("导入项目失败:", error);
+    ElMessage.error("导入项目失败");
   }
 };
 
@@ -461,7 +446,7 @@ const checkAuthStatus = async () => {
       await fetchImportedProjects();
     }
   } catch (error) {
-    console.error('检查GitHub认证状态错误:', error);
+    console.error("检查GitHub认证状态错误:", error);
   } finally {
     loading.value = false;
   }
