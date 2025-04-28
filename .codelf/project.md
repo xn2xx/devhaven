@@ -1,44 +1,52 @@
-## DevHaven - 项目管理工具
+## DevHaven - Project Management Tool / 项目管理工具
+
+> DevHaven is a desktop application designed specifically for developers to help organize and manage project folders scattered in various locations, offering a convenient one-click experience to open projects with your preferred IDE.
 
 > DevHaven是一款专为开发者设计的桌面应用，帮助组织和管理散落在各处的项目文件夹，实现一键用首选IDE打开项目的便捷体验。
 
+> The project aims to solve the pain point of developers having code repositories from multiple companies and projects scattered across different folders, providing a centralized platform that integrates all projects into a single interface for easy finding and access.
+
 > 项目旨在解决开发者在本地有多个公司、多个项目的代码仓库分散在不同文件夹的痛点，提供集中式平台将所有项目整合在一个界面中，方便查找和访问。
+
+> Currently in active development, with complete project management features and IDE plugin support.
 
 > 当前处于积极开发状态，包含完整的项目管理功能和IDE插件支持。
 
-> 个人项目
+> Personal project
+
+> Tech Stack: Electron, Vue.js 3, TypeScript, Element Plus, UnoCSS, Pinia, SQLite (better-sqlite3)
 
 > 技术栈：Electron, Vue.js 3, TypeScript, Element Plus, UnoCSS, Pinia, SQLite (better-sqlite3)
 
 
 
-## 依赖 (来自package.json)
+## Dependencies / 依赖 (来自package.json)
 
-* vue (^3.2.47): 前端框架
-* electron (^22.2.0): 桌面应用框架
-* element-plus (^2.9.7): UI组件库
-* pinia (^2.0.30): 状态管理库
-* vue-router (^4.1.6): 路由管理
-* better-sqlite3 (^8.3.0): SQLite数据库驱动
-* typescript (^5.8.3): 静态类型检查
-* unocss (66.1.0-beta.10): 原子化CSS框架
-* electron-store (^8.1.0): 持久化存储
-* @electron/remote (^2.0.9): Electron远程通信
-* keytar (^7.9.0): 系统密钥链访问
+* vue (^3.2.47): Frontend framework / 前端框架
+* electron (^22.2.0): Desktop application framework / 桌面应用框架
+* element-plus (^2.9.7): UI component library / UI组件库
+* pinia (^2.0.30): State management library / 状态管理库
+* vue-router (^4.1.6): Route management / 路由管理
+* better-sqlite3 (^8.3.0): SQLite database driver / SQLite数据库驱动
+* typescript (^5.8.3): Static type checking / 静态类型检查
+* unocss (66.1.0-beta.10): Atomic CSS framework / 原子化CSS框架
+* electron-store (^8.1.0): Persistent storage / 持久化存储
+* @electron/remote (^2.0.9): Electron remote communication / Electron远程通信
+* keytar (^7.9.0): System keychain access / 系统密钥链访问
 
 
-## 开发环境
+## Development Environment / 开发环境
 
-> 开发工具与环境
+> Development tools and environment / 开发工具与环境
 > - Node.js 14+
-> - pnpm (推荐) 或 npm
-> - 开发命令: `pnpm dev` 启动开发服务器
-> - 构建命令: `pnpm build` 构建当前平台版本，也支持特定平台构建如 `pnpm build:win`、`pnpm build:mac`、`pnpm build:linux`
+> - pnpm (recommended / 推荐) or/或 npm
+> - Development command / 开发命令: `pnpm dev` to start development server / 启动开发服务器
+> - Build command / 构建命令: `pnpm build` to build for current platform / 构建当前平台版本, also supports specific platform builds / 也支持特定平台构建 like/如 `pnpm build:win`, `pnpm build:mac`, `pnpm build:linux`
 
 
-## 结构 (基于项目目录)
+## Structure / 结构 (基于项目目录)
 
-> 文件结构解析，重点关注关键目录和文件
+> File structure analysis, focusing on key directories and files / 文件结构解析，重点关注关键目录和文件
 
 ```
 root
