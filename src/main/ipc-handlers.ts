@@ -271,11 +271,11 @@ function registerIpcHandlers() {
 
   // 获取打开的项目
   ipcMain.handle("get-open-projects", () => {
-    console.log('get-open-projects')
+    console.log("get-open-projects");
     return openProjectService.getOpenProjects();
   });
   ipcMain.handle("resume-ide", (_, project) => {
-    console.log('resume-ide', project)
+    console.log("resume-ide", project);
     return ideService.resumeIde(project);
   });
 
@@ -355,7 +355,7 @@ function registerIpcHandlers() {
   });
 
   // 注册调整悬浮窗高度的处理程序
-  ipcMain.on('update-tray-height', (_, height) => {
+  ipcMain.on("update-tray-height", (_, height) => {
     const trayWindow = getTrayWindow();
     if (trayWindow) {
       const [width] = trayWindow.getSize();
@@ -363,6 +363,25 @@ function registerIpcHandlers() {
       const newHeight = Math.min(Math.max(height + 16, 100), 600);
       trayWindow.setSize(width, newHeight);
     }
+  });
+
+  // 注册控制悬浮窗显示的处理程序
+  ipcMain.on("toggle-tray-window", (_, show) => {
+    const trayWindow = getTrayWindow();
+
+    if (show) {
+      // 如果窗口已经存在，确保它是可见的
+      if (!trayWindow.isVisible()) {
+        trayWindow.show();
+      }
+    } else {
+      // 如果设置为不显示，则隐藏窗口
+      trayWindow.hide();
+    }
+
+
+    // 保存到设置中，以便下次启动时使用
+    settingsService.saveTrayWindowSetting(show);
   });
 }
 

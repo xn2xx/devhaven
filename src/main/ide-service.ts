@@ -4,19 +4,26 @@ import * as ideDetector from "./ide-detector";
 import { dbService } from "./db-service";
 import { getCurrentEditFile, getOpenProjects } from "./open-project-service";
 
-// 自定义错误类型接口
+// 类型定义
 interface ErrorResponse {
   success: false;
   error: string;
 }
 
-// 成功响应接口
 interface SuccessResponse {
   success: true;
 }
 
-// 操作结果类型
 type OperationResult = ErrorResponse | SuccessResponse;
+
+// IDE类型常量映射
+const IDE_TYPES = {
+  WEBSTORM: "webstorm",
+  IDEA: "idea",
+  PYCHARM: "pycharm",
+  CURSOR: "cursor",
+  VSCODE: "vscode"
+} as const;
 
 /**
  * 检测并初始化IDE配置
@@ -32,14 +39,13 @@ async function initIdeConfigs(): Promise<DevHaven.IdeConfig[]> {
     const detectedIdes = await ideDetector.detectIdes();
     console.log(`检测到 ${detectedIdes.length} 个IDE`);
 
-    // 更新或添加检测到的IDE配置
-    for (const ide of detectedIdes) {
+    // 使用Promise.all批量处理IDE配置更新
+    await Promise.all(detectedIdes.map(async (ide) => {
       try {
-        // 检查IDE是否已存在
         const existingIde = existingIdes.find((existing) => existing.name === ide.name);
 
         if (existingIde) {
-          // 如果命令不同，则更新现有IDE
+          // 只在命令发生变化时更新
           if (existingIde.command !== ide.command) {
             console.log(`更新IDE配置: ${ide.name} (${ide.command})`);
             await dbService.ideConfigs.update(existingIde.id, {
@@ -62,7 +68,7 @@ async function initIdeConfigs(): Promise<DevHaven.IdeConfig[]> {
       } catch (error: any) {
         console.error(`处理IDE ${ide.name} 配置失败:`, error);
       }
-    }
+    }));
 
     console.log("IDE配置初始化完成");
     return dbService.ideConfigs.getAll() as DevHaven.IdeConfig[];
@@ -79,6 +85,7 @@ async function initIdeConfigs(): Promise<DevHaven.IdeConfig[]> {
  * @returns {Promise<OperationResult>} 操作结果
  */
 async function openWithIde(projectPath: string, ideName: string): Promise<OperationResult> {
+  // 验证项目路径
   if (!fs.existsSync(projectPath)) {
     return { success: false, error: "项目路径不存在" };
   }
@@ -89,86 +96,23 @@ async function openWithIde(projectPath: string, ideName: string): Promise<Operat
     if (!ideConfig) {
       return { success: false, error: `未找到IDE配置 "${ideName}"` };
     }
-    // 执行脚本类型的IDE
+
     if (!ideConfig.command) {
       return { success: false, error: "命令为空" };
     }
-    // 判断是否已经打开了项目
-    const openProjects = await getOpenProjects();
-    const openProject = openProjects.find((project) => project.projectPath === projectPath);
-    let currentEditFile = null;
-    if (openProject && ideName.includes(getIdeType(openProject.ide) || "")) {
-      currentEditFile = await getCurrentEditFile(projectPath);
-    }
-    // 处理命令参数
-    let args: string[];
-    if (ideConfig.args) {
-      // 替换参数中的占位符
-      const processedArgs = ideConfig.args.replace(/{projectPath}/g, projectPath);
-      args = processedArgs.split(" ").filter((arg: string) => arg.trim());
-    } else {
-      args = [projectPath];
-    }
-    console.log(`使用IDE打开: ${ideConfig.command} ${args.join(" ")}`);
-    // 处理macOS上特殊的情况
-    if (process.platform === "darwin" && ideConfig.command.endsWith(".app")) {
-      // 处理.app应用程序
-      if (ideConfig.name.includes("vscode") || ideConfig.name.includes("cursor")) {
-        // 需要先打开应用，再进行切换
-        if (currentEditFile && currentEditFile.filePath) {
-          return openWithMacCommand("open", [
-            "-a",
-            ideConfig.command,
-            `cursor://file${currentEditFile.filePath}:${currentEditFile.line}:${currentEditFile.column}`
-          ]);
-        } else {
-          return openWithMacCommand("open", [
-            "-a",
-            ideConfig.command,
-            `cursor://file${projectPath}?windowId=_blank`
-          ]);
-        }
-      } else if (ideConfig.command.includes("Xcode.app")) {
-        // 对于Xcode，使用open命令
-        return openWithMacCommand("open", ["-a", "Xcode", projectPath]);
-      } else if (
-        ideConfig.name.includes("idea") ||
-        ideConfig.name.includes("webstorm") ||
-        ideConfig.name.includes("pycharm")
-      ) {
-        // 对于idea、webstorm、pycharm，使用open命令
-        // idea://open?file={projectPath}
-        if (currentEditFile && currentEditFile.filePath) {
-          return openWithMacCommand("open", [
-            "-a",
-            ideConfig.command,
-            `idea://open?file=${currentEditFile.filePath}&line=${currentEditFile.line}&column=${currentEditFile.column}`
-          ]);
-        } else {
-          return openWithMacCommand("open", [
-            "-a",
-            ideConfig.command,
-            `idea://open?file=${projectPath}`
-          ]);
-        }
-      } else {
-        // 其他.app应用使用open命令
-        return openWithMacCommand("open", ["-a", ideConfig.command, ...args]);
-      }
-    } else {
-      // 其他平台或常规命令
-      const child = spawn(ideConfig.command, args, {
-        detached: true,
-        stdio: "ignore"
-      });
 
-      child.on("error", (error) => {
-        console.error("打开IDE失败:", error);
-      });
+    // 获取当前编辑文件信息
+    const currentEditFile = await getCurrentEditFileInfo(projectPath);
 
-      child.unref();
-      return { success: true };
-    }
+    // 处理打开项目或文件的命令参数
+    const { command, args } = await prepareCommandAndArgs(
+      ideConfig,
+      projectPath,
+      currentEditFile
+    );
+
+    // 执行命令打开IDE
+    return executeCommand(command, args);
   } catch (error: any) {
     console.error("使用IDE打开时出错:", error);
     return { success: false, error: error.message };
@@ -176,13 +120,150 @@ async function openWithIde(projectPath: string, ideName: string): Promise<Operat
 }
 
 /**
- * 使用macOS命令打开应用
+ * 获取当前编辑文件信息
+ * @param {string} projectPath 项目路径
+ * @returns {Promise<any>} 当前编辑文件信息或null
+ */
+async function getCurrentEditFileInfo(projectPath: string): Promise<any> {
+  // 判断是否已经打开了项目
+  const openProjects = await getOpenProjects();
+  const openProject = openProjects.find((project) => project.projectPath === projectPath);
+
+  if (!openProject) {
+    return null;
+  }
+
+  const currentEditFile = await getCurrentEditFile(projectPath);
+
+  // 验证文件是否存在
+  if (currentEditFile?.filePath && !fs.existsSync(currentEditFile.filePath)) {
+    return null;
+  }
+
+  return currentEditFile;
+}
+
+/**
+ * 准备命令和参数
+ * @param {DevHaven.IdeConfig} ideConfig IDE配置
+ * @param {string} projectPath 项目路径
+ * @param {any} currentEditFile 当前编辑文件信息
+ * @returns {Promise<{command: string, args: string[]}>} 命令和参数
+ */
+async function prepareCommandAndArgs(
+  ideConfig: DevHaven.IdeConfig,
+  projectPath: string,
+  currentEditFile: any
+): Promise<{command: string, args: string[]}> {
+  // 处理命令参数
+  let args: string[];
+  if (ideConfig.args) {
+    // 替换参数中的占位符
+    const processedArgs = ideConfig.args.replace(/{projectPath}/g, projectPath);
+    args = processedArgs.split(" ").filter((arg: string) => arg.trim());
+  } else {
+    args = [projectPath];
+  }
+
+  console.log(`使用IDE打开: ${ideConfig.command} ${args.join(" ")}`);
+
+  // 处理macOS上特殊的情况
+  if (process.platform === "darwin" && ideConfig.command.endsWith(".app")) {
+    return prepareMacCommand(ideConfig, projectPath, currentEditFile);
+  }
+
+  // 其他平台或常规命令
+  return { command: ideConfig.command, args };
+}
+
+/**
+ * 为macOS准备命令和参数
+ * @param {DevHaven.IdeConfig} ideConfig IDE配置
+ * @param {string} projectPath 项目路径
+ * @param {any} currentEditFile 当前编辑文件信息
+ * @returns {{command: string, args: string[]}} 命令和参数
+ */
+function prepareMacCommand(
+  ideConfig: DevHaven.IdeConfig,
+  projectPath: string,
+  currentEditFile: any
+): {command: string, args: string[]} {
+  const command = "open";
+
+  // VS Code或Cursor
+  if (ideConfig.name.includes("vscode") || ideConfig.name.includes("cursor")) {
+    if (currentEditFile?.filePath) {
+      return {
+        command,
+        args: [
+          "-a",
+          ideConfig.command,
+          `cursor://file${currentEditFile.filePath}:${currentEditFile.line}:${currentEditFile.column}`
+        ]
+      };
+    } else {
+      return {
+        command,
+        args: [
+          "-a",
+          ideConfig.command,
+          `cursor://file${projectPath}?windowId=_blank`
+        ]
+      };
+    }
+  }
+
+  // Xcode
+  if (ideConfig.command.includes("Xcode.app")) {
+    return {
+      command,
+      args: ["-a", "Xcode", projectPath]
+    };
+  }
+
+  // JetBrains IDEs (IntelliJ IDEA, WebStorm, PyCharm)
+  if (
+    ideConfig.name.includes("idea") ||
+    ideConfig.name.includes("webstorm") ||
+    ideConfig.name.includes("pycharm")
+  ) {
+    if (currentEditFile?.filePath) {
+      return {
+        command,
+        args: [
+          "-a",
+          ideConfig.command,
+          `idea://open?file=${currentEditFile.filePath}&line=${currentEditFile.line}&column=${currentEditFile.column}`
+        ]
+      };
+    } else {
+      return {
+        command,
+        args: [
+          "-a",
+          ideConfig.command,
+          `idea://open?file=${projectPath}`
+        ]
+      };
+    }
+  }
+
+  // 其他.app应用
+  return {
+    command,
+    args: ["-a", ideConfig.command, projectPath]
+  };
+}
+
+/**
+ * 执行命令
  * @param {string} command 命令
  * @param {string[]} args 命令参数
  * @returns {OperationResult} 操作结果
  */
-function openWithMacCommand(command: string, args: string[]): OperationResult {
-  console.log(`使用macOS命令打开应用: ${command} ${args.join(" ")}`);
+function executeCommand(command: string, args: string[]): OperationResult {
+  console.log(`执行命令: ${command} ${args.join(" ")}`);
+
   try {
     // 确保文件有执行权限
     if (command.startsWith("/") && fs.existsSync(command)) {
@@ -199,13 +280,13 @@ function openWithMacCommand(command: string, args: string[]): OperationResult {
     });
 
     child.on("error", (error) => {
-      console.error("打开应用失败:", error);
+      console.error("执行命令失败:", error);
     });
 
     child.unref();
     return { success: true };
   } catch (error: any) {
-    console.error("使用macOS命令打开应用时出错:", error);
+    console.error("执行命令时出错:", error);
     return { success: false, error: error.message };
   }
 }
@@ -216,23 +297,23 @@ function openWithMacCommand(command: string, args: string[]): OperationResult {
  * @returns {Promise<OperationResult>} 操作结果
  */
 async function resumeIde(project: DevHaven.Project): Promise<OperationResult> {
-  // 项目是debHavenProject原始信息
-  // 通过路径获取ide类型
+  // 获取IDE类型
   const ideType = getIdeType(project.ide);
+
   if (!ideType) {
     console.error("未找到IDE类型", project.ide);
     return { success: false, error: "未找到IDE类型" };
   }
-  // 通过ideType获取ide配置
+
+  // 获取IDE配置
   const ideConfig = await dbService.ideConfigs.getByName(ideType) as DevHaven.IdeConfig;
   if (!ideConfig) {
     console.error("未找到IDE配置", ideType);
     return { success: false, error: "未找到IDE配置" };
   }
-  // 打开ide
-  await openWithIde(project.projectPath, ideConfig.name);
 
-  return { success: true };
+  // 打开IDE
+  return openWithIde(project.projectPath, ideConfig.name);
 }
 
 /**
@@ -242,20 +323,23 @@ async function resumeIde(project: DevHaven.Project): Promise<OperationResult> {
  */
 const getIdeType = (ide: string): string | null => {
   ide = ide.toLowerCase();
+
   if (ide.includes("webstorm")) {
-    return "webstorm";
+    return IDE_TYPES.WEBSTORM;
   } else if (ide.includes("idea")) {
-    return "idea";
+    return IDE_TYPES.IDEA;
   } else if (ide.includes("pycharm")) {
-    return "pycharm";
+    return IDE_TYPES.PYCHARM;
   } else if (ide.includes("cursor")) {
-    return "cursor";
+    return IDE_TYPES.CURSOR;
   } else if (ide.includes("visual")) {
-    return "vscode";
+    return IDE_TYPES.VSCODE;
   }
+
   return null;
 };
 
+// 导出API
 export {
   initIdeConfigs,
   openWithIde,

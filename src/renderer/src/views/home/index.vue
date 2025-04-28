@@ -371,7 +371,7 @@ const getFolderPath = computed(() => {
 /* Element Container 样式调整 */
 .el-aside {
   transition: width 0.3s;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .el-header {

@@ -84,7 +84,8 @@ const activeSection = ref('general');
 const settingsData = ref({
   theme: 'light',
   dbPath: '',
-  githubProjectsPath: ''
+  githubProjectsPath: '',
+  showTrayWindow: true
 });
 
 // IDE管理状态
@@ -98,7 +99,8 @@ const loadCurrentSettings = async () => {
     settingsData.value = {
       theme: appSettings.theme || 'light',
       dbPath: appSettings.dbPath || '',
-      githubProjectsPath: appSettings.githubProjectsPath || ''
+      githubProjectsPath: appSettings.githubProjectsPath || '',
+      showTrayWindow: appSettings.showTrayWindow !== false
     };
   } catch (error) {
     console.error('加载应用设置失败:', error);
@@ -134,10 +136,18 @@ const handleSettingsUpdate = async (updatedSettings) => {
       settingsData.value.githubProjectsPath = updatedSettings.githubProjectsPath;
     }
 
+    // 更新悬浮窗设置
+    if (updatedSettings.showTrayWindow !== settingsData.value.showTrayWindow) {
+      settingsData.value.showTrayWindow = updatedSettings.showTrayWindow;
+      // 通知主进程更新悬浮窗显示状态
+      window.api.ipcRenderer.send('toggle-tray-window', updatedSettings.showTrayWindow);
+    }
+
     // 保存所有设置
     await window.api.saveAppSettings({
       theme: updatedSettings.theme,
-      githubProjectsPath: updatedSettings.githubProjectsPath
+      githubProjectsPath: updatedSettings.githubProjectsPath,
+      showTrayWindow: updatedSettings.showTrayWindow
     });
 
     ElMessage.success('设置已保存');

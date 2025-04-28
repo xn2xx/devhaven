@@ -24,6 +24,17 @@
         </div>
         <div class="form-helper">GitHub项目将默认克隆到该目录</div>
       </el-form-item>
+
+      <el-form-item label="悬浮窗">
+        <div class="display-flex align-items-center">
+          <el-switch
+            v-model="showTrayWindow"
+            @change="handleTrayWindowChange"
+          />
+          <span class="ml-2">{{ showTrayWindow ? '启用' : '禁用' }}</span>
+        </div>
+        <div class="form-helper">启用后将显示项目悬浮窗，可快速切换打开的项目</div>
+      </el-form-item>
     </el-form>
   </div>
 </template>
@@ -41,17 +52,24 @@ const emit = defineEmits(['settings-updated']);
 // 本地状态
 const themeValue = ref(props.settings?.theme || 'light');
 const githubProjectsPath = ref(props.settings?.githubProjectsPath || '');
+const showTrayWindow = ref(props.settings?.showTrayWindow !== false); // 默认为true
 
 // 监听设置变化
 watch(() => props.settings, (newSettings) => {
   if (newSettings) {
     themeValue.value = newSettings.theme;
     githubProjectsPath.value = newSettings.githubProjectsPath || '';
+    showTrayWindow.value = newSettings.showTrayWindow !== false; // 默认为true
   }
 }, { immediate: true });
 
 // 主题变更处理
 const handleThemeChange = () => {
+  updateSettings();
+};
+
+// 悬浮窗显示状态变更处理
+const handleTrayWindowChange = () => {
   updateSettings();
 };
 
@@ -74,7 +92,8 @@ const updateSettings = () => {
   emit('settings-updated', {
     ...props.settings,
     theme: themeValue.value,
-    githubProjectsPath: githubProjectsPath.value
+    githubProjectsPath: githubProjectsPath.value,
+    showTrayWindow: showTrayWindow.value
   });
 };
 </script>
@@ -97,5 +116,17 @@ const updateSettings = () => {
 
 .mr-1 {
   margin-right: 4px;
+}
+
+.ml-2 {
+  margin-left: 8px;
+}
+
+.display-flex {
+  display: flex;
+}
+
+.align-items-center {
+  align-items: center;
 }
 </style>

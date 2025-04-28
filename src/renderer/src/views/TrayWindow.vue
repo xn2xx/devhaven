@@ -59,7 +59,7 @@ const handleRefreshProjects = () => {
 const updateWindowSize = () => {
   try {
     // 获取当前内容高度
-    const contentHeight = document.body.offsetHeight;
+    const contentHeight = projects.value.length * (80);
     console.log('当前内容高度:', contentHeight);
 
     // 通知主进程更新窗口大小
