@@ -145,4 +145,5 @@ function getTrayWindow() {
   return trayWindow;
 }
 
+
 export { createWindow, getMainWindow, getTrayWindow, createTrayWindow };

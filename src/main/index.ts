@@ -84,7 +84,6 @@ app.whenReady().then(async () => {
   registerIpcHandlers();
   // 创建主窗口
   createWindow();
-
   // 创建悬浮窗，但根据设置决定是否显示
   createTrayWindow();
 

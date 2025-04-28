@@ -1,7 +1,8 @@
-import { shell } from "electron";
+import { shell, BrowserWindow } from "electron";
 import axios from "axios";
 import keytar from "keytar";
 import Store from "electron-store";
+import { getMainWindow } from "./window";
 
 // 用于存储GitHub认证相关信息
 const store = new Store({
@@ -241,7 +242,14 @@ const handleCallback = async (url: string): Promise<AuthResult | undefined> => {
 
     if (state !== savedState) {
       console.error("State参数不匹配，可能是CSRF攻击");
-      return { success: false, error: "State参数不匹配" };
+      const result = { success: false, error: "State参数不匹配" };
+
+      // 发送结果到渲染进程
+
+      getMainWindow()?.webContents.send("github-auth-callback", result);
+
+
+      return result;
     }
 
     // 清除保存的state
@@ -258,15 +266,32 @@ const handleCallback = async (url: string): Promise<AuthResult | undefined> => {
       const user = await getCurrentUser(token);
       console.log("用户信息获取成功:", user.login);
 
-      return { success: true, user };
+      const result = { success: true, user };
+
+      // 发送结果到渲染进程
+
+      getMainWindow()?.webContents.send("github-auth-callback", result);
+      return result;
     } else {
       // 没有收到授权码
       console.error("未从回调URL中获取到授权码");
-      return { success: false, error: "No authorization code received" };
+      const result = { success: false, error: "No authorization code received" };
+
+      // 发送结果到渲染进程
+      getMainWindow()?.webContents.send("github-auth-callback", result);
+
+
+      return result;
     }
   } catch (error: any) {
     console.error("认证回调处理出错:", error);
-    return { success: false, error: error.message };
+    const result = { success: false, error: error.message };
+
+    // 发送结果到渲染进程
+    getMainWindow()?.webContents.send("github-auth-callback", result);
+
+
+    return result;
   }
 };
 

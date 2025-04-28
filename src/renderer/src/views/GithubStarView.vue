@@ -171,7 +171,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, onBeforeUnmount } from "vue";
 import { ElMessage } from "element-plus";
 import { useAppStore } from "../store";
 import ProjectDialog from "./home/components/ProjectDialog.vue";
@@ -184,6 +184,7 @@ const loading = ref(false);
 const isAuthenticated = ref(false);
 const starredProjects = ref([]);
 const githubUser = ref(null);
+const waitingForAuth = ref(false);
 
 // 项目导入相关
 const projectDialogVisible = ref(false);
@@ -313,20 +314,47 @@ const getLanguageColor = (language) => {
 // GitHub授权
 const handleLogin = async () => {
   loading.value = true;
+  waitingForAuth.value = true;
   try {
-    // 调用Electron主进程进行GitHub OAuth认证
+    // 在调用认证前，先设置一个监听器
+    window.api.ipcRenderer.on("github-auth-callback", handleAuthCallback);
+
+    // 调用Electron主进程进行GitHub OAuth认证（这只是打开浏览器）
     const result = await window.api.authenticateGithub();
-    if (result.success) {
-      isAuthenticated.value = true;
-      githubUser.value = result.user;
-      await fetchStarredRepos();
-      ElMessage.success(`已连接到GitHub账号: ${result.user.login}`);
+    if (!result.success) {
+      ElMessage.error("启动GitHub认证失败");
+      waitingForAuth.value = false;
+      loading.value = false;
     } else {
-      ElMessage.error("GitHub连接失败");
+      ElMessage.info("请在浏览器中完成GitHub授权");
     }
   } catch (error) {
     console.error("GitHub认证错误:", error);
     ElMessage.error("GitHub连接出错");
+    waitingForAuth.value = false;
+    loading.value = false;
+  }
+};
+
+// 处理OAuth回调结果
+const handleAuthCallback = async (authResult) => {
+  try {
+    // 移除监听器，避免重复处理
+    window.api.ipcRenderer.removeListener("github-auth-callback", handleAuthCallback);
+
+    waitingForAuth.value = false;
+
+    if (authResult && authResult.success) {
+      isAuthenticated.value = true;
+      githubUser.value = authResult.user;
+      await fetchStarredRepos();
+      ElMessage.success(`已连接到GitHub账号: ${authResult.user.login}`);
+    } else {
+      ElMessage.error("GitHub授权失败: " + (authResult?.error || "未知错误"));
+    }
+  } catch (error) {
+    console.error("处理GitHub回调错误:", error);
+    ElMessage.error("GitHub连接处理出错");
   } finally {
     loading.value = false;
   }
@@ -443,7 +471,6 @@ const checkAuthStatus = async () => {
     if (status.isAuthenticated) {
       githubUser.value = status.user;
       await fetchStarredRepos();
-      await fetchImportedProjects();
     }
   } catch (error) {
     console.error("检查GitHub认证状态错误:", error);
@@ -455,6 +482,16 @@ const checkAuthStatus = async () => {
 // 生命周期钩子
 onMounted(() => {
   checkAuthStatus();
+
+  // 如果页面加载时正在等待认证，设置监听器
+  if (waitingForAuth.value) {
+    window.api.ipcRenderer.on("github-auth-callback", handleAuthCallback);
+  }
+});
+
+onBeforeUnmount(() => {
+  // 确保在组件卸载时移除事件监听
+  window.api.ipcRenderer.removeListener("github-auth-callback", handleAuthCallback);
 });
 </script>
 
