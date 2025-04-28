@@ -235,3 +235,22 @@
      - main
        - ide-service.ts // update 改进错误处理和日志记录
    ```
+
+## 2024-07-18 18:00:00
+
+### 1. 更新项目README，添加英文版本
+
+**Change Type**: enhancement
+
+> **Purpose**: 提供双语版本的项目说明文档，以支持更广泛的用户群体
+> **Detailed Description**: 将原有的中文README改为双语版本（英文和中文），并将英文版设为默认版本（置于文档顶部）
+> **Reason for Change**: 提升项目的国际化程度，方便非中文用户浏览和使用
+> **Impact Scope**: 项目文档
+> **API Changes**: 无
+> **Configuration Changes**: 无
+> **Performance Impact**: 无
+
+   ```
+   root
+   - README.md // update 添加英文版项目说明并设为默认版本
+   ```

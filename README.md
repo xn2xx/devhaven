@@ -1,79 +1,79 @@
-# DevHaven - 项目管理工具
+# DevHaven - Project Management Tool
 
-[![构建状态](https://github.com/用户名/devhaven/actions/workflows/build.yml/badge.svg)](https://github.com/用户名/devhaven/actions/workflows/build.yml)
+[中文版](./README_zh.md)
 
-一款专为开发者设计的桌面应用，帮助您组织和管理散落在各处的项目文件夹，实现一键用首选IDE打开项目的便捷体验。
+A desktop application designed specifically for developers to help you organize and manage project folders scattered in various locations, offering a convenient one-click experience to open projects with your preferred IDE.
 
-## 项目痛点与解决方案
+## Pain Points & Solutions
 
-### 痛点
-- 开发者往往在本地有多个公司、多个项目的代码仓库，分散在不同文件夹
-- 寻找特定项目需要记忆或搜索路径，费时费力
-- 不同项目可能需要使用不同的IDE打开
-- 项目相关信息（如分支、文档等）缺乏集中管理
+### Pain Points
+- Developers often have code repositories from multiple companies and projects scattered across different folders
+- Finding specific projects requires remembering or searching for paths, which is time-consuming
+- Different projects may need to be opened with different IDEs
+- Project-related information (such as branches, documentation, etc.) lacks centralized management
 
-### 解决方案
-DevHaven提供了一个集中式平台，将所有项目整合在一个界面中，方便查找和访问，并支持一键用对应IDE打开项目，大大提高了开发效率。
+### Solutions
+DevHaven provides a centralized platform that integrates all projects into a single interface, making it easy to find and access them, and supports opening projects with the corresponding IDE with just one click, greatly improving development efficiency.
 
-## 核心功能
+## Core Features
 
-- **项目组织**：按公司/文件夹层级组织项目
-- **快速访问**：一键使用首选IDE（VS Code、IntelliJ IDEA、WebStorm等）打开项目
-- **项目详情**：查看项目路径、Git分支、最后打开时间等信息
-- **标签分类**：为项目添加标签和分类
-- **数据库位置自定义**：便于备份和同步
-- **深色/浅色主题**：支持切换界面主题
-- **搜索功能**：快速查找项目
+- **Project Organization**: Organize projects by company/folder hierarchy
+- **Quick Access**: Open projects with preferred IDEs (VS Code, IntelliJ IDEA, WebStorm, etc.) in one click
+- **Project Details**: View project path, Git branch, last opened time, and other information
+- **Tag Classification**: Add tags and categories to projects
+- **Custom Database Location**: Easy to backup and synchronize
+- **Dark/Light Theme**: Switch interface themes
+- **Search Function**: Quickly find projects
 
-## 插件支持
-为了提供更流畅的开发体验，DevHaven提供了配套的IDE插件，可自动同步IDE中打开的项目到DevHaven应用：
-- [**VS Code插件**](https://github.com/zxcvbnmzsedr/devhaven-vs-plugin) - 自动同步VS Code中打开的项目
-- [**IntelliJ IDEA插件**](https://github.com/zxcvbnmzsedr/devhaven-idea-plugin) - 适用于IntelliJ平台的所有IDE（包括WebStorm、PyCharm等）
-这些插件可以实现：
-- 自动检测IDE中打开的项目
-- 将项目信息同步到DevHaven
-- 无需手动添加项目，提高工作效率
-详细信息请查看[插件目录](./plugin)。
+## Plugin Support
+To provide a smoother development experience, DevHaven offers companion IDE plugins that automatically synchronize projects opened in IDEs to the DevHaven application:
+- [**VS Code Plugin**](https://github.com/zxcvbnmzsedr/devhaven-vs-plugin) - Automatically synchronize projects opened in VS Code
+- [**IntelliJ IDEA Plugin**](https://github.com/zxcvbnmzsedr/devhaven-idea-plugin) - For all IDEs on the IntelliJ platform (including WebStorm, PyCharm, etc.)
+These plugins can:
+- Automatically detect projects opened in the IDE
+- Synchronize project information to DevHaven
+- Eliminate the need to manually add projects, improving work efficiency
+For more information, please check the [plugin directory](./plugin).
 
-## 技术栈
+## Tech Stack
 
-- **前端**：Vue.js 3（组合式API）、Element Plus
-- **样式**：UnoCSS
-- **状态管理**：Pinia
-- **数据库**：SQLite better-sqlite3
-- **桌面集成**：Electron
+- **Frontend**: Vue.js 3 (Composition API), Element Plus
+- **Styling**: UnoCSS
+- **State Management**: Pinia
+- **Database**: SQLite with better-sqlite3
+- **Desktop Integration**: Electron
 
-## 开发指南
+## Development Guide
 
-### 环境要求
+### Requirements
 
 - Node.js 14+
-- pnpm（推荐）或npm
+- pnpm (recommended) or npm
 
-### 安装与启动
+### Installation & Launch
 
-1. 克隆仓库
-2. 安装依赖：
+1. Clone the repository
+2. Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-3. 启动开发服务器：
+3. Start the development server:
 
 ```bash
 pnpm dev
 ```
 
-### 构建应用
+### Building the Application
 
-构建当前平台版本：
+Build for current platform:
 
 ```bash
 pnpm build
 ```
 
-构建特定平台版本：
+Build for specific platforms:
 
 ```bash
 # Windows
@@ -86,6 +86,6 @@ pnpm build:mac
 pnpm build:linux
 ```
 
-# 预览
+# Preview
 ![img](doc/image.png)
 ![img](doc/setting.png)
