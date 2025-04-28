@@ -97,8 +97,18 @@ async function openWithIde(projectPath: string, ideName: string): Promise<Operat
     const openProjects = await getOpenProjects();
     const openProject = openProjects.find((project) => project.projectPath === projectPath);
     let currentEditFile = null;
-    if (openProject && ideName.includes(getIdeType(openProject.ide) || "")) {
+    console.log("openProject", openProject);
+    if (openProject) {
       currentEditFile = await getCurrentEditFile(projectPath);
+      console.log("currentEditFile", currentEditFile);
+      // 判断当前文件是否存在
+      if (currentEditFile && currentEditFile.filePath) {
+        // 判断当前文件是否存在
+        if (!fs.existsSync(currentEditFile.filePath)) {
+          currentEditFile = null;
+        }
+
+      }
     }
     // 处理命令参数
     let args: string[];
