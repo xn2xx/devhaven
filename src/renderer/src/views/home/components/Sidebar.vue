@@ -588,7 +588,8 @@ const getIconClass = (icon) => {
   flex-direction: column;
   transition: all 0.3s ease;
   z-index: 10;
-  height: 100%;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .sidebar.collapsed {
@@ -716,6 +717,22 @@ const getIconClass = (icon) => {
 
 .favorites-list {
   padding: 0 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.favorites-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.favorites-list::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 3px;
+}
+
+.favorites-list::-webkit-scrollbar-track {
+  background-color: transparent;
 }
 
 .collapsed .favorites-list {
@@ -800,6 +817,7 @@ const getIconClass = (icon) => {
   overflow-y: auto;
   padding: 12px 0;
   scrollbar-width: thin;
+  max-height: calc(100vh - 200px); /* 减去上方组件的大致高度 */
 }
 
 .sidebar-content::-webkit-scrollbar {
