@@ -1,13 +1,12 @@
-import { ipcMain } from "electron";
-import { dbService, initDatabase } from "./db-service";
-import * as fileService from "./file-service";
-import * as ideService from "./ide-service";
-import * as settingsService from "./settings-service";
-import * as openProjectService from "./open-project-service";
-import * as githubService from "./github-service";
-import path from "path";
-import { app, shell } from "electron";
-import { getMainWindow, getTrayWindow } from "./window";
+import { app, ipcMain, shell } from 'electron'
+import { dbService, initDatabase } from './db-service'
+import * as fileService from './file-service'
+import * as ideService from './ide-service'
+import * as settingsService from './settings-service'
+import * as openProjectService from './open-project-service'
+import * as githubService from './github-service'
+import path from 'path'
+import { getTrayWindow } from './window'
 
 /**
  * 注册所有IPC处理程序
@@ -320,6 +319,15 @@ function registerIpcHandlers() {
       throw error;
     }
   });
+  ipcMain.handle("github:syncStarredRepositories", async () => {
+    try {
+      return await githubService.syncStarredRepositories();
+    } catch (error) {
+      console.error("获取GitHub已加星标的仓库失败:", error);
+      throw error;
+    }
+  });
+
 
   // 克隆GitHub仓库
   ipcMain.handle("clone-github-repo", async (event, repoUrl, targetPath) => {
@@ -328,16 +336,10 @@ function registerIpcHandlers() {
       const { sender } = event;
 
       // 开始克隆过程
-      const result = await fileService.cloneGitRepository(
-        repoUrl,
-        targetPath,
-        (progress) => {
-          // 通过IPC发送进度更新
-          sender.send("clone-progress-update", progress);
-        }
-      );
-
-      return result;
+      return await fileService.cloneGitRepository(repoUrl, targetPath, (progress) => {
+        // 通过IPC发送进度更新
+        sender.send('clone-progress-update', progress)
+      })
     } catch (error) {
       console.error("克隆GitHub仓库失败:", error);
       throw error;
@@ -371,12 +373,12 @@ function registerIpcHandlers() {
 
     if (show) {
       // 如果窗口已经存在，确保它是可见的
-      if (!trayWindow.isVisible()) {
-        trayWindow.show();
+      if (!trayWindow?.isVisible()) {
+        trayWindow?.show();
       }
     } else {
       // 如果设置为不显示，则隐藏窗口
-      trayWindow.hide();
+      trayWindow?.hide();
     }
 
 

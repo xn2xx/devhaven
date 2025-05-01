@@ -43,6 +43,30 @@
 > - Development command / 开发命令: `pnpm dev` to start development server / 启动开发服务器
 > - Build command / 构建命令: `pnpm build` to build for current platform / 构建当前平台版本, also supports specific platform builds / 也支持特定平台构建 like/如 `pnpm build:win`, `pnpm build:mac`, `pnpm build:linux`
 
+## Debugging / 调试
+
+> The project supports TypeScript source code debugging in development mode / 项目支持在开发模式下进行TypeScript源码调试
+
+### VSCode Debugging / VSCode调试
+- Press F5 or click the debug button / 按F5或点击调试按钮
+- Select "Electron: Main" configuration / 选择"Electron: Main"配置
+- Set breakpoints in TypeScript source files / 在TypeScript源文件中设置断点
+
+### Chrome DevTools Debugging / Chrome开发者工具调试
+- Run `pnpm dev` to start the application / 运行`pnpm dev`启动应用
+- Open Chrome browser and visit `chrome://inspect` / 打开Chrome浏览器并访问`chrome://inspect`
+- Find your Electron application under "Remote Target" / 在"Remote Target"下找到你的Electron应用
+- Click "inspect" to start debugging / 点击"inspect"开始调试
+
+### Debug Configuration / 调试配置
+- Source maps enabled for main and preload processes / 主进程和预加载进程启用源码映射
+- Remote debugging port: 9222 / 远程调试端口：9222
+- Node inspector port: 5858 / Node检查器端口：5858
+- Development debug environment variables / 开发调试环境变量:
+  * NODE_ENV=development
+  * VITE_DEV_DEBUG=true
+  * ELECTRON_ENABLE_SOURCE_MAPS=true
+
 
 ## Structure / 结构 (基于项目目录)
 

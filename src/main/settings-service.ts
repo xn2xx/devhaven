@@ -43,7 +43,7 @@ function saveSettings(settings: any) {
  * 获取数据库路径
  * @returns {string} 数据库路径
  */
-function getDbPath() {
+function getDbPath() :string{
   return store.get("dbPath");
 }
 

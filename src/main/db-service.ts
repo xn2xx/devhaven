@@ -1,12 +1,12 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
-import { app } from "electron";
+import Database from 'better-sqlite3'
+import path from 'path'
+import fs from 'fs'
+import { app } from 'electron'
 
 let db: Database.Database | null = null
 
 // 初始化数据库
-const initDatabase = async (customDbPath = null) => {
+const initDatabase = async (customDbPath: string | null = null) => {
   try {
     // 获取数据库路径
     const dbPath = customDbPath || path.join(app.getPath('userData'), 'devhaven.db')
@@ -155,6 +155,21 @@ const createTables = () => {
       icon         TEXT,
       created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+  // 创建github仓库表, 使用github的id作为主键，GitHub.Repository
+  getDb().exec(`
+    CREATE TABLE IF NOT EXISTS github_repositories
+    (
+      id               INTEGER PRIMARY KEY,
+      name             TEXT NOT NULL,
+      full_name        TEXT NOT NULL,
+      html_url         TEXT,
+      description      TEXT,
+      stargazers_count INTEGER,
+      forks_count      INTEGER,
+      language         TEXT,
+      topics           TEXT
     )
   `)
 }
@@ -557,6 +572,128 @@ const dbService = {
       const stmt = getDb().prepare('DELETE FROM ide_configs WHERE id = ?')
       const result = stmt.run(id)
       return result.changes > 0
+    }
+  },
+  // github仓库相关操作
+  githubRepositories: {
+    // 获取所有github仓库
+    getAll: (): GitHub.Repository[] => {
+      const stmt = getDb().prepare('SELECT * FROM github_repositories ORDER BY name ')
+      const result = stmt.all() as unknown as GitHub.Repository[]
+      // 将topics从json字符串转换为数组
+      result.forEach((repo: GitHub.Repository) => {
+        repo.topics = JSON.parse(repo.topics)
+      })
+      return result
+    },
+    clear: () => {
+      const stmt = getDb().prepare('DELETE FROM github_repositories where true')
+      const result = stmt.run()
+      return result.changes > 0
+    },
+    // 同步仓库
+    sync: (repositories: GitHub.Repository[]) => {
+      const db = getDb()
+      const BATCH_SIZE = 500 // SQLite 参数限制是 999，我们使用 500 作为安全值
+
+      try {
+        // 开始事务
+        db.exec('BEGIN TRANSACTION')
+
+        // 1. 获取现有记录的ID列表
+        const rows = db.prepare('SELECT id FROM github_repositories').all() as Array<{ id: number }>
+        const existingIds = rows.map((row) => row.id)
+
+        // 2. 分类处理：需要更新的和需要插入的
+        const toUpdate = repositories.filter((repo) => existingIds.includes(repo.id))
+        const toInsert = repositories.filter((repo) => !existingIds.includes(repo.id))
+
+        // 3. 分批删除不再存在的记录
+        if (repositories.length > 0) {
+          // 将repositories分成多个批次
+          for (let i = 0; i < repositories.length; i += BATCH_SIZE) {
+            const batch = repositories.slice(i, i + BATCH_SIZE)
+            const placeholders = batch.map(() => '?').join(',')
+            const deleteStmt = db.prepare(`DELETE
+                                           FROM github_repositories
+                                           WHERE id NOT IN (${placeholders})`)
+            deleteStmt.run(batch.map((repo) => repo.id))
+          }
+        }
+
+        // 4. 更新现有记录
+        const updateStmt = db.prepare(`
+          UPDATE github_repositories
+          SET name             = ?,
+              full_name        = ?,
+              html_url         = ?,
+              description      = ?,
+              stargazers_count = ?,
+              forks_count      = ?,
+              language         = ?,
+              topics           = ?
+          WHERE id = ?
+        `)
+
+        // 分批处理更新
+        for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
+          const batch = toUpdate.slice(i, i + BATCH_SIZE)
+          for (const repo of batch) {
+            updateStmt.run(
+              repo.name,
+              repo.full_name,
+              repo.html_url,
+              repo.description,
+              repo.stargazers_count,
+              repo.forks_count,
+              repo.language,
+              JSON.stringify(repo.topics),
+              repo.id
+            )
+          }
+        }
+
+        // 5. 插入新记录
+        const insertStmt = db.prepare(`
+          INSERT INTO github_repositories (id, name, full_name, html_url, description,
+                                           stargazers_count, forks_count, language, topics)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `)
+
+        // 分批处理插入
+        for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+          const batch = toInsert.slice(i, i + BATCH_SIZE)
+          for (const repo of batch) {
+            insertStmt.run(
+              repo.id,
+              repo.name,
+              repo.full_name,
+              repo.html_url,
+              repo.description,
+              repo.stargazers_count,
+              repo.forks_count,
+              repo.language,
+              JSON.stringify(repo.topics)
+            )
+          }
+        }
+
+        // 提交事务
+        db.exec('COMMIT')
+
+        return {
+          updated: toUpdate.length,
+          inserted: toInsert.length,
+          deleted: existingIds.length - toUpdate.length,
+          hasUpdated:
+            toUpdate.length > 0 || toInsert.length > 0 || existingIds.length - toUpdate.length > 0
+        }
+      } catch (error) {
+        // 发生错误时回滚事务
+        db.exec('ROLLBACK')
+        console.error('同步GitHub仓库失败:', error)
+        throw error
+      }
     }
   }
 }

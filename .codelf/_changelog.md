@@ -236,6 +236,55 @@
        - ide-service.ts // update 改进错误处理和日志记录
    ```
 
+## 2024-07-10 16:00:00
+
+### 1. 优化GitHub仓库同步逻辑
+
+**Change Type**: improvement
+
+> **Purpose**: 优化GitHub仓库同步功能的可靠性和性能
+> **Detailed Description**: 重构数据库同步逻辑，添加事务支持，改进错误处理，优化SQL查询
+> **Reason for Change**: 提高数据同步的可靠性，避免数据不一致问题
+> **Impact Scope**: GitHub仓库同步功能
+> **API Changes**: 添加同步操作结果返回值
+> **Configuration Changes**: 无
+> **Performance Impact**: 提升数据同步的可靠性和性能
+
+   ```
+   root
+   - src
+     - main
+       - db-service.ts // update GitHub仓库同步逻辑
+         - 添加事务支持
+         - 优化SQL查询
+         - 改进错误处理
+         - 添加操作结果返回
+   ```
+
+## 2024-07-10 16:30:00
+
+### 1. 优化GitHub仓库同步批处理
+
+**Change Type**: fix
+
+> **Purpose**: 修复GitHub仓库同步时的参数数量限制问题
+> **Detailed Description**: 实现批处理机制，解决SQLite参数数量限制导致的同步失败问题
+> **Reason for Change**: 修复大量仓库同步时的错误，提高同步可靠性
+> **Impact Scope**: GitHub仓库同步功能
+> **API Changes**: 无
+> **Configuration Changes**: 无
+> **Performance Impact**: 优化大量数据处理性能，减少内存使用
+
+   ```
+   root
+   - src
+     - main
+       - db-service.ts // update GitHub仓库同步逻辑
+         - 添加批处理机制
+         - 优化内存使用
+         - 改进错误日志
+   ```
+
 ## 2024-07-18 18:00:00
 
 ### 1. 更新项目README，添加英文版本

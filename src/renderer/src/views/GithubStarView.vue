@@ -11,6 +11,9 @@
       <el-button v-else size="small" @click="handleLogout">
         <i class="i-fa-solid:sign-out-alt mr-1"></i> 断开连接
       </el-button>
+      <el-button v-if="isAuthenticated" size="small" @click="syncStarredRepos">
+        <i class="i-fa-solid:sync mr-1"></i> 同步
+      </el-button>
     </div>
 
     <div class="github-content" v-loading="loading">
@@ -93,23 +96,19 @@
 
             <div class="projects-grid">
               <template v-if="filteredProjects.length > 0">
-                <div
-                  v-for="project in filteredProjects"
-                  :key="project.id"
-                  class="project-card"
-                >
+                <div v-for="project in filteredProjects" :key="project.id" class="project-card">
                   <div class="project-header">
                     <h4 class="project-name">
                       <a :href="project.html_url" target="_blank">{{ project.name }}</a>
                     </h4>
                     <div class="project-owner">
-                      <a :href="project.owner.html_url" target="_blank">
-                        <span>{{ project.owner.login }}</span>
+                      <a :href="project?.owner?.html_url" target="_blank">
+                        <span>{{ project?.owner?.login }}</span>
                       </a>
                     </div>
                   </div>
 
-                  <p class="project-description">{{ project.description || "暂无描述" }}</p>
+                  <p class="project-description">{{ project.description || '暂无描述' }}</p>
 
                   <div class="project-stats">
                     <div class="stat-item">
@@ -117,8 +116,10 @@
                       <span>{{ project.stargazers_count }}</span>
                     </div>
                     <div class="stat-item" v-if="project.language">
-                      <span class="language-dot"
-                            :style="{ backgroundColor: getLanguageColor(project.language) }"></span>
+                      <span
+                        class="language-dot"
+                        :style="{ backgroundColor: getLanguageColor(project.language) }"
+                      ></span>
                       <span>{{ project.language }}</span>
                     </div>
                     <div class="stat-item">
@@ -144,7 +145,7 @@
                     <el-button type="primary" size="small" @click="openProject(project)">
                       <i class="i-fa-solid:external-link-alt mr-1"></i> 打开
                     </el-button>
-                    <el-button type="default" size="small" @click="importProject(project)">
+                    <el-button size="small" @click="importProject(project)">
                       <i class="i-fa-solid:download mr-1"></i> 导入
                     </el-button>
                   </div>
@@ -171,227 +172,240 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, onBeforeUnmount } from "vue";
-import { ElMessage } from "element-plus";
-import { useAppStore } from "../store";
-import ProjectDialog from "./home/components/ProjectDialog.vue";
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { useAppStore } from '@/store'
+import ProjectDialog from './home/components/ProjectDialog.vue'
 
 // Store
-const store = useAppStore();
+const store = useAppStore()
 
 // 状态
-const loading = ref(false);
-const isAuthenticated = ref(false);
-const starredProjects = ref([]);
-const githubUser = ref(null);
-const waitingForAuth = ref(false);
+const loading = ref(false)
+const isAuthenticated = ref(false)
+const starredProjects = ref([])
+const githubUser = ref(null)
+const waitingForAuth = ref(false)
 
 // 项目导入相关
-const projectDialogVisible = ref(false);
-const projectToImport = ref(null);
-const importedProjects = ref([]);
+const projectDialogVisible = ref(false)
+const projectToImport = ref(null)
+const importedProjects = ref([])
 
 // 筛选状态
-const languageSearch = ref("");
-const topicSearch = ref("");
-const projectSearch = ref("");
-const selectedLanguages = ref([]);
-const selectedTopics = ref([]);
+const languageSearch = ref('')
+const topicSearch = ref('')
+const projectSearch = ref('')
+const selectedLanguages = ref([])
+const selectedTopics = ref([])
 
 // 计算语言列表
 const languageList = computed(() => {
-  const languages = {};
+  const languages = {}
 
-  starredProjects.value.forEach(project => {
+  starredProjects.value.forEach((project) => {
     if (project.language) {
       if (!languages[project.language]) {
-        languages[project.language] = 0;
+        languages[project.language] = 0
       }
-      languages[project.language]++;
+      languages[project.language]++
     }
-  });
+  })
 
   return Object.entries(languages)
     .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
-});
+    .sort((a, b) => b.count - a.count)
+})
 
 // 筛选语言
 const filteredLanguages = computed(() => {
-  if (!languageSearch.value) return languageList.value;
+  if (!languageSearch.value) return languageList.value
 
-  return languageList.value.filter(lang =>
+  return languageList.value.filter((lang) =>
     lang.name.toLowerCase().includes(languageSearch.value.toLowerCase())
-  );
-});
+  )
+})
+const syncStarredRepos = () => {
+  loading.value = true
+  window.api
+    .syncStarredRepositories()
+    .then(() => {
+      loading.value = false
+    })
+    .catch(() => {
+      loading.value = false
+      ElMessage.error('同步失败')
+    })
+}
 
 // 计算话题列表
 const topicList = computed(() => {
-  const topics = {};
+  const topics = {}
 
-  starredProjects.value.forEach(project => {
+  starredProjects.value.forEach((project) => {
     if (project.topics && project.topics.length > 0) {
-      project.topics.forEach(topic => {
+      project.topics.forEach((topic) => {
         if (!topics[topic]) {
-          topics[topic] = 0;
+          topics[topic] = 0
         }
-        topics[topic]++;
-      });
+        topics[topic]++
+      })
     }
-  });
+  })
 
   return Object.entries(topics)
     .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
-});
+    .sort((a, b) => b.count - a.count)
+})
 
 // 筛选话题
 const filteredTopics = computed(() => {
-  if (!topicSearch.value) return topicList.value;
+  if (!topicSearch.value) return topicList.value
 
-  return topicList.value.filter(topic =>
+  return topicList.value.filter((topic) =>
     topic.name.toLowerCase().includes(topicSearch.value.toLowerCase())
-  );
-});
+  )
+})
 
 // 筛选项目
 const filteredProjects = computed(() => {
-  let result = [...starredProjects.value];
+  let result = [...starredProjects.value]
 
   // 按名称筛选
   if (projectSearch.value) {
-    const searchTerm = projectSearch.value.toLowerCase();
-    result = result.filter(project =>
-      project.name.toLowerCase().includes(searchTerm) ||
-      (project.description && project.description.toLowerCase().includes(searchTerm)) ||
-      project.owner.login.toLowerCase().includes(searchTerm)
-    );
+    const searchTerm = projectSearch.value.toLowerCase()
+    result = result.filter(
+      (project) =>
+        project.name.toLowerCase().includes(searchTerm) ||
+        (project.description && project.description.toLowerCase().includes(searchTerm)) ||
+        project.owner.login.toLowerCase().includes(searchTerm)
+    )
   }
 
   // 按语言筛选
   if (selectedLanguages.value.length > 0) {
-    result = result.filter(project =>
-      project.language && selectedLanguages.value.includes(project.language)
-    );
+    result = result.filter(
+      (project) => project.language && selectedLanguages.value.includes(project.language)
+    )
   }
 
   // 按话题筛选
   if (selectedTopics.value.length > 0) {
-    result = result.filter(project => {
-      if (!project.topics || project.topics.length === 0) return false;
-      return selectedTopics.value.some(topic => project.topics.includes(topic));
-    });
+    result = result.filter((project) => {
+      if (!project.topics || project.topics.length === 0) return false
+      return selectedTopics.value.some((topic) => project.topics.includes(topic))
+    })
   }
 
-  return result;
-});
+  return result
+})
 
 // 获取语言颜色
 const getLanguageColor = (language) => {
   const colors = {
-    "JavaScript": "#f1e05a",
-    "TypeScript": "#2b7489",
-    "Python": "#3572A5",
-    "Java": "#b07219",
-    "Go": "#00ADD8",
-    "C++": "#f34b7d",
-    "PHP": "#4F5D95",
-    "Ruby": "#701516",
-    "C#": "#178600",
-    "Rust": "#dea584",
-    "Swift": "#ffac45",
-    "Kotlin": "#F18E33",
-    "Vue": "#41b883",
-    "React": "#61dafb",
-    "HTML": "#e34c26",
-    "CSS": "#563d7c"
-  };
+    JavaScript: '#f1e05a',
+    TypeScript: '#2b7489',
+    Python: '#3572A5',
+    Java: '#b07219',
+    Go: '#00ADD8',
+    'C++': '#f34b7d',
+    PHP: '#4F5D95',
+    Ruby: '#701516',
+    'C#': '#178600',
+    Rust: '#dea584',
+    Swift: '#ffac45',
+    Kotlin: '#F18E33',
+    Vue: '#41b883',
+    React: '#61dafb',
+    HTML: '#e34c26',
+    CSS: '#563d7c'
+  }
 
-  return colors[language] || "#8e8e8e";
-};
-
+  return colors[language] || '#8e8e8e'
+}
 
 // GitHub授权
 const handleLogin = async () => {
-  loading.value = true;
-  waitingForAuth.value = true;
+  loading.value = true
+  waitingForAuth.value = true
   try {
     // 在调用认证前，先设置一个监听器
-    window.api.ipcRenderer.on("github-auth-callback", handleAuthCallback);
-
+    window.api.ipcRenderer.on('github-auth-callback', handleAuthCallback)
     // 调用Electron主进程进行GitHub OAuth认证（这只是打开浏览器）
-    const result = await window.api.authenticateGithub();
+    const result = await window.api.authenticateGithub()
     if (!result.success) {
-      ElMessage.error("启动GitHub认证失败");
-      waitingForAuth.value = false;
-      loading.value = false;
+      ElMessage.error('启动GitHub认证失败')
+      waitingForAuth.value = false
+      loading.value = false
     } else {
-      ElMessage.info("请在浏览器中完成GitHub授权");
+      ElMessage.info('请在浏览器中完成GitHub授权')
     }
   } catch (error) {
-    console.error("GitHub认证错误:", error);
-    ElMessage.error("GitHub连接出错");
-    waitingForAuth.value = false;
-    loading.value = false;
+    console.error('GitHub认证错误:', error)
+    ElMessage.error('GitHub连接出错')
+    waitingForAuth.value = false
+    loading.value = false
   }
-};
-
+}
+const handleStarredReposUpdated = async (result) => {
+  debugger
+  console.log('仓库信息存储到数据库之中', result)
+  await fetchStarredRepos()
+  window.api.ipcRenderer.removeListener('github-starred-repos-updated', handleStarredReposUpdated)
+}
 // 处理OAuth回调结果
 const handleAuthCallback = async (authResult) => {
   try {
     // 移除监听器，避免重复处理
-    window.api.ipcRenderer.removeListener("github-auth-callback", handleAuthCallback);
-
-    waitingForAuth.value = false;
+    window.api.ipcRenderer.removeListener('github-auth-callback', handleAuthCallback)
+    window.api.ipcRenderer.on('github-starred-repos-updated', handleStarredReposUpdated)
+    waitingForAuth.value = false
 
     if (authResult && authResult.success) {
-      isAuthenticated.value = true;
-      githubUser.value = authResult.user;
-      await fetchStarredRepos();
-      ElMessage.success(`已连接到GitHub账号: ${authResult.user.login}`);
+      isAuthenticated.value = true
+      githubUser.value = authResult.user
+      // await fetchStarredRepos()
+      ElMessage.success(`已连接到GitHub账号: ${authResult.user.login}`)
     } else {
-      ElMessage.error("GitHub授权失败: " + (authResult?.error || "未知错误"));
+      ElMessage.error('GitHub授权失败: ' + (authResult?.error || '未知错误'))
     }
   } catch (error) {
-    console.error("处理GitHub回调错误:", error);
-    ElMessage.error("GitHub连接处理出错");
-  } finally {
-    loading.value = false;
+    console.error('处理GitHub回调错误:', error)
+    ElMessage.error('GitHub连接处理出错')
   }
-};
+}
 
 const handleLogout = async () => {
   try {
-    await window.api.logoutGithub();
-    isAuthenticated.value = false;
-    githubUser.value = null;
-    starredProjects.value = [];
-    importedProjects.value = [];
-    ElMessage.success("已断开GitHub连接");
+    await window.api.logoutGithub()
+    isAuthenticated.value = false
+    githubUser.value = null
+    starredProjects.value = []
+    importedProjects.value = []
+    ElMessage.success('已断开GitHub连接')
   } catch (error) {
-    console.error("GitHub登出错误:", error);
-    ElMessage.error("断开连接失败");
+    console.error('GitHub登出错误:', error)
+    ElMessage.error('断开连接失败')
   }
-};
+}
 
 // 获取已收藏的仓库
 const fetchStarredRepos = async () => {
-  loading.value = true;
+  loading.value = true
   try {
-    const repos = await window.api.getGithubStarredRepos();
-    starredProjects.value = repos;
+    starredProjects.value = await window.api.getGithubStarredRepos()
   } catch (error) {
-    console.error("获取GitHub收藏错误:", error);
-    ElMessage.error("获取GitHub收藏失败");
+    console.error('获取GitHub收藏错误:', error)
+    ElMessage.error('获取GitHub收藏失败')
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 // 打开项目
 const openProject = (project) => {
-  window.api.openExternalUrl(project.html_url);
-};
+  window.api.openExternalUrl(project.html_url)
+}
 
 // 导入项目到DevHaven
 const importProject = (project) => {
@@ -399,100 +413,102 @@ const importProject = (project) => {
   projectToImport.value = {
     id: null,
     name: project.name,
-    description: project.description || "",
-    path: `${store.settings?.githubProjectsPath || ""}/${project.owner.login}/${project.name}`,
+    description: project.description || '',
+    path: `${store.settings?.githubProjectsPath || ''}/${project.owner.login}/${project.name}`,
     folder_id: null,
-    preferred_ide: ["vscode"],
-    icon: project.language ? getIconByLanguage(project.language) : "code",
-    source_type: "github",
+    preferred_ide: ['vscode'],
+    icon: project.language ? getIconByLanguage(project.language) : 'code',
+    source_type: 'github',
     github_url: project.html_url,
     is_cloned: 0 // 初始设置为未克隆
-  };
+  }
 
   // 打开项目对话框
-  projectDialogVisible.value = true;
-};
+  projectDialogVisible.value = true
+}
 
 // 根据语言获取图标
 const getIconByLanguage = (language) => {
   const langToIcon = {
-    "JavaScript": "js",
-    "TypeScript": "ts",
-    "Python": "python",
-    "Java": "java",
-    "Ruby": "gem",
-    "PHP": "php",
-    "HTML": "html5",
-    "CSS": "css3",
-    "C": "code",
-    "C++": "code",
-    "C#": "code",
-    "Go": "code",
-    "Rust": "code"
-  };
+    JavaScript: 'js',
+    TypeScript: 'ts',
+    Python: 'python',
+    Java: 'java',
+    Ruby: 'gem',
+    PHP: 'php',
+    HTML: 'html5',
+    CSS: 'css3',
+    C: 'code',
+    'C++': 'code',
+    'C#': 'code',
+    Go: 'code',
+    Rust: 'code'
+  }
 
-  return langToIcon[language] || "code";
-};
+  return langToIcon[language] || 'code'
+}
 
 // 保存导入的项目
 const saveImportedProject = async (project) => {
   try {
     // 确保设置source_type和is_cloned
-    project.source_type = "github";
+    project.source_type = 'github'
     if (project.is_cloned === undefined) {
-      project.is_cloned = 0;
+      project.is_cloned = 0
     }
 
     // 创建项目
-    const newProject = await store.createProject(project);
+    const newProject = await store.createProject(project)
 
     if (newProject) {
-      ElMessage.success(`项目 ${project.name} 已导入`);
+      ElMessage.success(`项目 ${project.name} 已导入`)
 
       // 添加到已导入项目列表
       importedProjects.value.push({
         id: newProject.id,
         github_id: project.id,
         name: project.name
-      });
+      })
     }
   } catch (error) {
-    console.error("导入项目失败:", error);
-    ElMessage.error("导入项目失败");
+    console.error('导入项目失败:', error)
+    ElMessage.error('导入项目失败')
   }
-};
+}
 
 // 检查认证状态
 const checkAuthStatus = async () => {
-  loading.value = true;
+  loading.value = true
   try {
-    const status = await window.api.getGithubAuthStatus();
-    isAuthenticated.value = status.isAuthenticated;
+    const status = await window.api.getGithubAuthStatus()
+    isAuthenticated.value = status.isAuthenticated
     if (status.isAuthenticated) {
-      githubUser.value = status.user;
-      await fetchStarredRepos();
+      githubUser.value = status.user
+      await fetchStarredRepos()
     }
   } catch (error) {
-    console.error("检查GitHub认证状态错误:", error);
+    console.error('检查GitHub认证状态错误:', error)
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 // 生命周期钩子
 onMounted(() => {
-  checkAuthStatus();
+  checkAuthStatus()
 
   // 如果页面加载时正在等待认证，设置监听器
   if (waitingForAuth.value) {
-    window.api.ipcRenderer.on("github-auth-callback", handleAuthCallback);
+    window.api.ipcRenderer.on('github-auth-callback', handleAuthCallback)
   }
-});
+  // 进来的时候执行同步
+  window.api.syncStarredRepositories()
+})
 
 onBeforeUnmount(() => {
   // 确保在组件卸载时移除事件监听
-  window.api.ipcRenderer.removeListener("github-auth-callback", handleAuthCallback);
-});
+  window.api.ipcRenderer.removeListener('github-auth-callback', handleAuthCallback)
+})
 </script>
 
 <style scoped>
@@ -707,12 +723,6 @@ onBeforeUnmount(() => {
   gap: 6px;
   color: var(--text-secondary);
   text-decoration: none;
-}
-
-.owner-avatar {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
 }
 
 .project-description {
