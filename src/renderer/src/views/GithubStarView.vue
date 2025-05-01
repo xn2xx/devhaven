@@ -99,10 +99,10 @@
                 <div v-for="project in filteredProjects" :key="project.id" class="project-card">
                   <div class="project-header">
                     <h4 class="project-name">
-                      <a :href="project.html_url" target="_blank">{{ project.name }}</a>
+                      <a href="javascript:void(0);" @click="openUrl(project.html_url)">{{ project.name }}</a>
                     </h4>
                     <div class="project-owner">
-                      <a :href="project?.owner?.html_url" target="_blank">
+                      <a href="javascript:void(0);" @click="openUrl(project?.owner?.html_url)">
                         <span>{{ project?.owner?.login }}</span>
                       </a>
                     </div>
@@ -142,11 +142,14 @@
                   </div>
 
                   <div class="project-actions">
-                    <el-button type="primary" size="small" @click="openProject(project)">
+                    <el-button type="primary" size="small" @click="openUrl(project.html_url)">
                       <i class="i-fa-solid:external-link-alt mr-1"></i> 打开
                     </el-button>
                     <el-button size="small" @click="importProject(project)">
                       <i class="i-fa-solid:download mr-1"></i> 导入
+                    </el-button>
+                    <el-button size="small" @click="openUrl(`https://deepwiki.com/${project.full_name}`)">
+                      DeepWiki
                     </el-button>
                   </div>
                 </div>
@@ -171,8 +174,7 @@
   </div>
 </template>
 
-<script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+<script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { useAppStore } from '@/store'
 import ProjectDialog from './home/components/ProjectDialog.vue'
@@ -183,7 +185,7 @@ const store = useAppStore()
 // 状态
 const loading = ref(false)
 const isAuthenticated = ref(false)
-const starredProjects = ref([])
+const starredProjects = ref<GitHub.Repository[]>([])
 const githubUser = ref(null)
 const waitingForAuth = ref(false)
 
@@ -402,9 +404,10 @@ const fetchStarredRepos = async () => {
   }
 }
 
-// 打开项目
-const openProject = (project) => {
-  window.api.openExternalUrl(project.html_url)
+const openUrl = (url?: string) => {
+  if (url) {
+    window.api.openExternalUrl(url)
+  }
 }
 
 // 导入项目到DevHaven

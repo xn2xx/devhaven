@@ -292,7 +292,7 @@ const syncStarredRepositories = async () => {
     let hasMore = true
 
     while (hasMore) {
-      console.log("获取仓库开始----")
+      console.log('获取仓库开始----')
       const response = await axios.get(
         `https://api.github.com/user/starred?page=${page}&per_page=${perPage}`,
         {
@@ -301,7 +301,7 @@ const syncStarredRepositories = async () => {
           }
         }
       )
-      console.log("获取仓库结束----")
+      console.log('获取仓库结束----', JSON.stringify(response.data))
       if (response.data.length === 0) {
         hasMore = false
       } else {

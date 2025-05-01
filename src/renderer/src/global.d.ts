@@ -49,33 +49,40 @@ declare namespace DevHaven {
 }
 declare namespace GitHub {
   interface GitHubUser {
-    login: string;
-    id: number;
-    avatar_url: string;
-    name?: string;
-    email?: string;
+    login: string
+    id: number
+    avatar_url: string
+    name?: string
+    email?: string
 
-    [key: string]: any;
+    [key: string]: any
   }
 
   interface AuthStatus {
-    isAuthenticated: boolean;
-    user?: GitHubUser;
+    isAuthenticated: boolean
+    user?: GitHubUser
   }
 
   interface AuthResult {
-    success: boolean;
-    user?: GitHubUser;
-    error?: string;
+    success: boolean
+    user?: GitHubUser
+    error?: string
   }
 
   interface Repository {
-    id: number;
-    name: string;
-    full_name: string;
-    html_url: string;
-    description: string | null;
+    id: number
+    name: string
+    full_name: string
+    html_url: string
+    description: string | null
+    forks_count: number | null
+    owner: Owner
 
-    [key: string]: any;
+    [key: string]: any
+  }
+
+  interface Owner {
+    login: string
+    html_url: string
   }
 }

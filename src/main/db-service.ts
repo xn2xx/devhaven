@@ -169,7 +169,8 @@ const createTables = () => {
       stargazers_count INTEGER,
       forks_count      INTEGER,
       language         TEXT,
-      topics           TEXT
+      topics           TEXT,
+      owner            TEXT
     )
   `)
 }
@@ -583,6 +584,7 @@ const dbService = {
       // 将topics从json字符串转换为数组
       result.forEach((repo: GitHub.Repository) => {
         repo.topics = JSON.parse(repo.topics)
+        repo.owner = JSON.parse(repo.owner)
       })
       return result
     },
@@ -631,7 +633,8 @@ const dbService = {
               stargazers_count = ?,
               forks_count      = ?,
               language         = ?,
-              topics           = ?
+              topics           = ?,
+              owner            = ?
           WHERE id = ?
         `)
 
@@ -648,6 +651,7 @@ const dbService = {
               repo.forks_count,
               repo.language,
               JSON.stringify(repo.topics),
+              JSON.stringify(repo.owner),
               repo.id
             )
           }
@@ -656,8 +660,8 @@ const dbService = {
         // 5. 插入新记录
         const insertStmt = db.prepare(`
           INSERT INTO github_repositories (id, name, full_name, html_url, description,
-                                           stargazers_count, forks_count, language, topics)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                           stargazers_count, forks_count, language, topics, owner)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
 
         // 分批处理插入
@@ -673,7 +677,8 @@ const dbService = {
               repo.stargazers_count,
               repo.forks_count,
               repo.language,
-              JSON.stringify(repo.topics)
+              JSON.stringify(repo.topics),
+              JSON.stringify(repo.owner)
             )
           }
         }
