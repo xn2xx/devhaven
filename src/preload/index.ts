@@ -49,6 +49,7 @@ interface ElectronAPI {
   getGithubAuthStatus: () => Promise<any>;
   logoutGithub: () => Promise<void>;
   getGithubStarredRepos: () => Promise<any[]>;
+  syncStarredRepositories: () => Promise<any[]>;
 
   // IPC事件监听
   ipcRenderer: {
@@ -108,6 +109,7 @@ const electronAPI: ElectronAPI = {
   getGithubAuthStatus: () => ipcRenderer.invoke("github:auth-status"),
   logoutGithub: () => ipcRenderer.invoke("github:logout"),
   getGithubStarredRepos: () => ipcRenderer.invoke("github:get-starred-repos"),
+  syncStarredRepositories: () => ipcRenderer.invoke("github:syncStarredRepositories"),
 
   // IPC事件监听
   ipcRenderer: {

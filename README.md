@@ -24,6 +24,7 @@ DevHaven provides a centralized platform that integrates all projects into a sin
 - **Custom Database Location**: Easy to backup and synchronize
 - **Dark/Light Theme**: Switch interface themes
 - **Search Function**: Quickly find projects
+- **Cross-IDE File Switching**: Quickly switch between different IDEs for the same file through a floating window, allowing you to edit the same file in different IDEs without manual navigation
 
 ## Plugin Support
 To provide a smoother development experience, DevHaven offers companion IDE plugins that automatically synchronize projects opened in IDEs to the DevHaven application:
@@ -89,3 +90,4 @@ pnpm build:linux
 # Preview
 ![img](doc/image.png)
 ![img](doc/setting.png)
+![img](doc/switch.png)
