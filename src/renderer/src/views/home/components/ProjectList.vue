@@ -99,10 +99,6 @@
 
           </div>
 
-          <div class="project-description" v-if="project.description">
-            {{ project.description || "该项目暂无描述信息。" }}
-          </div>
-
           <!-- 克隆进度条 -->
           <div v-if="cloningProject && cloningProject.id === project.id" class="clone-progress">
             <el-progress

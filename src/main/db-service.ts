@@ -359,7 +359,7 @@ const dbService = {
   // 项目相关操作
   projects: {
     // 获取所有项目或指定文件夹的项目
-    getAll: (folderId = null) => {
+    getAll: (folderId: string | null = null): DevHaven.Project[] => {
       let stmt
       if (folderId) {
         // 查询当前文件夹以及所有子文件夹的项目
@@ -371,10 +371,10 @@ const dbService = {
              or f.id = ?
           ORDER BY p.name
         `)
-        return stmt.all(folderId, folderId)
+        return stmt.all(folderId, folderId) as DevHaven.Project[]
       } else {
         stmt = getDb().prepare('SELECT * FROM projects ORDER BY name ')
-        return stmt.all()
+        return stmt.all() as DevHaven.Project[]
       }
     },
 

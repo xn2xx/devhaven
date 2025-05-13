@@ -7,7 +7,7 @@ import * as openProjectService from './open-project-service'
 import * as githubService from './github-service'
 import path from 'path'
 import { getTrayWindow } from './window'
-
+import * as projectService from './project-service'
 /**
  * 注册所有IPC处理程序
  */
@@ -47,7 +47,7 @@ function registerIpcHandlers() {
   // 获取项目
   ipcMain.handle("db:getProjects", async (_, folderId = null) => {
     try {
-      return dbService.projects.getAll(folderId);
+      return projectService.getProjects(folderId);
     } catch (error) {
       console.error("获取项目失败:", error);
       throw error;
