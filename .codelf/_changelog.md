@@ -303,3 +303,31 @@
    root
    - README.md // update 添加英文版项目说明并设为默认版本
    ```
+
+## 2024-07-19 10:30:00
+
+### 1. 添加跨IDE文件切换功能
+
+**Change Type**: feature
+
+> **Purpose**: 实现在不同IDE之间快速切换同一文件的功能
+> **Detailed Description**: 添加悬浮窗功能，允许用户在编辑文件时快速切换到其他IDE打开同一文件，无需手动导航
+> **Reason for Change**: 提升开发效率，满足开发者在不同IDE间无缝切换的需求
+> **Impact Scope**: 核心功能
+> **API Changes**: 添加跨IDE文件切换API
+> **Configuration Changes**: 无
+> **Performance Impact**: 低，仅在用户请求切换时执行
+
+   ```
+   root
+   - README.md // update 添加跨IDE文件切换功能描述
+   - README_zh.md // update 添加跨IDE文件切换功能描述
+   - src
+     - main
+       - open-project-service.ts // update 添加文件级别的IDE打开支持
+       - ipc-handlers.js // update 添加跨IDE文件切换的IPC处理
+     - renderer
+       - src
+         - components
+           - FloatingIdeSelector.vue // add 悬浮IDE选择器组件
+   ```
