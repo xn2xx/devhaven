@@ -17,6 +17,7 @@
         v-for="project in projects"
         :key="project.id"
         class="project-card"
+        @click="handleProjectAction('openFolder', project)"
       >
         <div class="card-header">
           <div :class="`project-icon ${getIconClass(project.icon)}`">
@@ -95,16 +96,10 @@
             </div>
           </div>
           <div class="project-tags">
-            <span class="project-tag" :class="getTagClass(project.icon)">{{ getProjectType(project.icon) }}</span>
-            <span class="project-tag" v-if="getPreferredIdes(project).length === 1">
-              {{ getIdeName(getPreferredIdes(project)[0]) }}
-            </span>
-            <span class="project-tag" v-else>
-              多IDE支持
-            </span>
+
           </div>
 
-          <div class="project-description">
+          <div class="project-description" v-if="project.description">
             {{ project.description || "该项目暂无描述信息。" }}
           </div>
 
@@ -127,10 +122,6 @@
             >
               <i class="i-fa-solid:external-link-alt card-action-icon"></i>
               {{ getIdeName(ide) }}
-            </button>
-            <button class="card-action-btn secondary" @click.stop="handleProjectAction('openFolder', project)">
-              <i class="i-fa-solid:folder-open card-action-icon"></i>
-              文件夹
             </button>
             <button
               v-if="project.source_type === 'github' && project.is_cloned === 0"
