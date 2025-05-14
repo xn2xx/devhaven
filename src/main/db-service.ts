@@ -29,7 +29,9 @@ const initDatabase = async (customDbPath: string | null = null) => {
     // 应用数据库迁移
     const migrationService = new MigrationService()
     const migrationResult = await migrationService.migrate()
-    console.log(`数据库迁移完成，应用了 ${migrationResult.applied} 个迁移，当前版本: ${migrationResult.current}`)
+    console.log(
+      `数据库迁移完成，应用了 ${migrationResult.applied} 个迁移，当前版本: ${migrationResult.current}`
+    )
 
     console.log('Database connection established successfully.')
     return db
@@ -49,6 +51,22 @@ const getDb = () => {
 
 // 数据库操作函数
 const dbService = {
+  tags: {
+    create: (tag: DevHaven.Tag): DevHaven.Tag => {
+      const stmt = getDb().prepare('INSERT INTO tags (name, color, created_at) VALUES (?,?,?)')
+      const result = stmt.run(tag.name, tag.color, new Date().toISOString())
+      return dbService.tags.getById(result.lastInsertRowid as number)
+    },
+    getById: (id: number): DevHaven.Tag => {
+      const stmt = getDb().prepare('SELECT * FROM tags WHERE id =?')
+      return stmt.get(id) as DevHaven.Tag
+    },
+
+    getAll(): DevHaven.Tag[] {
+      const stmt = getDb().prepare('SELECT * FROM tags')
+      return stmt.all() as DevHaven.Tag[]
+    }
+  },
   // 文件夹相关操作
   folders: {
     // 获取所有文件夹
@@ -257,7 +275,7 @@ const dbService = {
     },
 
     // 创建项目
-    create: (project: DevHaven.Project) => {
+    create: (project: DevHaven.Project): DevHaven.Project | null => {
       const now = new Date().toISOString()
       const stmt = getDb().prepare(`
         INSERT INTO projects (folder_id, name, description, path,
@@ -278,9 +296,13 @@ const dbService = {
       )
 
       if (result.changes > 0) {
-        return dbService.projects.getById(result.lastInsertRowid as number)
+        return dbService.projects.getById(result.lastInsertRowid as number) as DevHaven.Project
       }
       return null
+    },
+    getProjectTags: (projectId: number): DevHaven.Tag[] => {
+      const stmt = getDb().prepare('SELECT t.* FROM tags t JOIN project_tags pt ON t.id = pt.tag_id WHERE pt.project_id = ?')
+      return stmt.all(projectId) as DevHaven.Tag[]
     },
 
     // 更新项目
@@ -362,6 +384,19 @@ const dbService = {
     getByPath: (path: string) => {
       const stmt = getDb().prepare('SELECT * FROM projects WHERE path = ? ORDER BY name limit 1')
       return stmt.get(path)
+    },
+    saveProjectTag: (projectId: number, tags: DevHaven.Tag[]) => {
+      // 清空原有tag
+      let stmt = getDb().prepare('DELETE FROM project_tags WHERE project_id = ?')
+      stmt.run(projectId)
+      // 保存项目标签到project_tags表中
+      stmt = getDb().prepare(`
+        INSERT INTO project_tags (project_id, tag_id)
+        VALUES (?, ?)
+      `)
+      tags.forEach((tag: DevHaven.Tag) => {
+        stmt.run(projectId, tag.id)
+      })
     }
   },
   // IDE配置相关操作

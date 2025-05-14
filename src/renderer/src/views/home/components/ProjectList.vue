@@ -27,9 +27,9 @@
             <h3 class="project-title">{{ project.name }}</h3>
             <div class="project-subtitle">{{ project.description || "暂无描述" }}</div>
           </div>
-          <div class="card-menu">
+          <div class="card-menu" @click.stop>
             <el-dropdown trigger="click" @command="handleProjectAction($event, project)">
-              <i class="i-fa-solid:ellipsis-v"></i>
+              <i class="i-fa-solid:ellipsis-v" @click.stop></i>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="openFolder">
@@ -62,7 +62,6 @@
               </template>
             </el-dropdown>
           </div>
-
         </div>
 
         <div class="card-body">
@@ -96,7 +95,7 @@
             </div>
           </div>
           <div class="project-tags">
-
+            <span class="project-tag" v-for="tag in project.tags" :key="tag">{{ tag }}</span>
           </div>
 
           <!-- 克隆进度条 -->
@@ -374,16 +373,6 @@ const getIdeName = (ide) => {
   return ideConfig ? ideConfig.display_name : ide;
 };
 
-// 加载IDE配置列表
-const loadIdeConfigs = async () => {
-  try {
-    ideConfigs.value = await window.api.getIdeConfigs();
-  } catch (error) {
-    console.error(error);
-    ElMessage.error("加载IDE配置失败");
-  }
-};
-
 const formatDate = (dateString) => {
   if (!dateString) return "";
   const now = new Date();
@@ -474,6 +463,9 @@ const loadProjects = async () => {
   console.log("loadProjects", props.currentFolderId);
   projects.value = await window.api.getProjects(props.currentFolderId);
 };
+watch(()=>store.projects, async () => {
+  await loadProjects();
+});
 
 onMounted(async () => {
   await loadProjects();

@@ -66,6 +66,11 @@
         </div>
       </div>
 
+      <el-form-item label="项目标签" prop="tags">
+        <el-input-tag v-model="form.tags" />
+      </el-form-item>
+
+
       <el-form-item label="项目路径" prop="path">
         <el-input
           v-model="form.path"

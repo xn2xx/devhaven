@@ -11,8 +11,8 @@ interface MigrationInfo {
 }
 
 class MigrationService {
-  private migrationsDir: string
-  private sqlDir: string
+  private readonly migrationsDir: string
+  private readonly sqlDir: string
 
   constructor() {
     // 使用app.getAppPath()获取应用程序路径
