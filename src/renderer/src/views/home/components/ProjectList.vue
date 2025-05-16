@@ -17,6 +17,7 @@
         v-for="project in projects"
         :key="project.id"
         class="project-card"
+        @click="handleProjectAction('openFolder', project)"
       >
         <div class="card-header">
           <div :class="`project-icon ${getIconClass(project.icon)}`">
@@ -26,9 +27,9 @@
             <h3 class="project-title">{{ project.name }}</h3>
             <div class="project-subtitle">{{ project.description || "暂无描述" }}</div>
           </div>
-          <div class="card-menu">
+          <div class="card-menu" @click.stop>
             <el-dropdown trigger="click" @command="handleProjectAction($event, project)">
-              <i class="i-fa-solid:ellipsis-v"></i>
+              <i class="i-fa-solid:ellipsis-v" @click.stop></i>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="openFolder">
@@ -61,7 +62,6 @@
               </template>
             </el-dropdown>
           </div>
-
         </div>
 
         <div class="card-body">
@@ -95,17 +95,7 @@
             </div>
           </div>
           <div class="project-tags">
-            <span class="project-tag" :class="getTagClass(project.icon)">{{ getProjectType(project.icon) }}</span>
-            <span class="project-tag" v-if="getPreferredIdes(project).length === 1">
-              {{ getIdeName(getPreferredIdes(project)[0]) }}
-            </span>
-            <span class="project-tag" v-else>
-              多IDE支持
-            </span>
-          </div>
-
-          <div class="project-description">
-            {{ project.description || "该项目暂无描述信息。" }}
+            <span class="project-tag" v-for="tag in project.tags" :key="tag">{{ tag }}</span>
           </div>
 
           <!-- 克隆进度条 -->
@@ -127,10 +117,6 @@
             >
               <i class="i-fa-solid:external-link-alt card-action-icon"></i>
               {{ getIdeName(ide) }}
-            </button>
-            <button class="card-action-btn secondary" @click.stop="handleProjectAction('openFolder', project)">
-              <i class="i-fa-solid:folder-open card-action-icon"></i>
-              文件夹
             </button>
             <button
               v-if="project.source_type === 'github' && project.is_cloned === 0"
@@ -387,16 +373,6 @@ const getIdeName = (ide) => {
   return ideConfig ? ideConfig.display_name : ide;
 };
 
-// 加载IDE配置列表
-const loadIdeConfigs = async () => {
-  try {
-    ideConfigs.value = await window.api.getIdeConfigs();
-  } catch (error) {
-    console.error(error);
-    ElMessage.error("加载IDE配置失败");
-  }
-};
-
 const formatDate = (dateString) => {
   if (!dateString) return "";
   const now = new Date();
@@ -487,6 +463,9 @@ const loadProjects = async () => {
   console.log("loadProjects", props.currentFolderId);
   projects.value = await window.api.getProjects(props.currentFolderId);
 };
+watch(()=>store.projects, async () => {
+  await loadProjects();
+});
 
 onMounted(async () => {
   await loadProjects();

@@ -90,3 +90,4 @@ pnpm build:linux
 # 预览
 ![img](doc/image.png)
 ![img](doc/setting.png)
+![img](doc/switch.png)

@@ -153,6 +153,11 @@ export const useAppStore = defineStore("app", {
           projectToCreate.preferred_ide = JSON.stringify(projectToCreate.preferred_ide);
         }
 
+        // 确保tag数组也是JSON字符串
+        if (Array.isArray(projectToCreate.tags)) {
+          projectToCreate.tags = JSON.stringify(projectToCreate.tags);
+        }
+
         const newProject = await api.createProject(projectToCreate);
         await this.loadProjects(project.folder_id);
         return newProject;
@@ -214,6 +219,10 @@ export const useAppStore = defineStore("app", {
           dataToUpdate.preferred_ide = JSON.stringify(dataToUpdate.preferred_ide);
         }
 
+        // 确保tag数组也是JSON字符串
+        if (Array.isArray(dataToUpdate.tags)) {
+          dataToUpdate.tags = JSON.stringify(dataToUpdate.tags);
+        }
         // 确保日期字段是ISO字符串
         if (dataToUpdate.last_opened_at instanceof Date) {
           dataToUpdate.last_opened_at = dataToUpdate.last_opened_at.toISOString();

@@ -1,5 +1,5 @@
 <template>
-  <el-container  :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
+  <el-container  :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'drag-active': isDragging }" @dragover.prevent="handleDragOver" @drop.prevent="handleDrop" @dragleave.prevent="handleDragLeave" @dragenter.prevent="handleDragEnter">
     <!-- 侧边栏 -->
     <el-aside width="auto">
       <Sidebar
@@ -54,7 +54,7 @@
         </div>
       </el-header>
 
-      <el-main>
+      <el-main @dragover.prevent="handleDragOver" @drop.prevent="handleDrop" @dragleave.prevent="handleDragLeave" @dragenter.prevent="handleDragEnter">
         <ProjectList
           :loading="loading"
           :search-input="searchInput"
@@ -63,6 +63,15 @@
           @edit-project="editProject"
           @select-folder="selectFolder"
         />
+
+        <!-- 拖拽提示 -->
+        <div v-if="isDragging" class="drag-overlay">
+          <div class="drag-hint">
+            <i class="i-fa-solid:folder-plus text-6xl mb-4"></i>
+            <h2>拖放文件夹以添加项目</h2>
+            <p>释放鼠标将自动创建新项目</p>
+          </div>
+        </div>
       </el-main>
     </el-container>
 
@@ -94,6 +103,7 @@ const loading = ref(false);
 const searchInput = ref("");
 const currentFolder = ref(null);
 const isSidebarCollapsed = ref(false);
+const isDragging = ref(false);
 
 // 计算属性
 const isDarkMode = computed(() => store.theme === "dark");
@@ -234,6 +244,76 @@ const goToSettings = () => {
 
 const goToGithubStars = () => {
   router.push("/github-stars");
+};
+
+// 处理拖拽事件
+const handleDragOver = (event) => {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+};
+
+// 处理拖拽进入
+const handleDragEnter = (event) => {
+  event.preventDefault();
+  isDragging.value = true;
+};
+
+// 处理拖拽离开
+const handleDragLeave = (event) => {
+  event.preventDefault();
+  // 检查是否真的离开了容器
+  const rect = event.currentTarget.getBoundingClientRect();
+  const x = event.clientX;
+  const y = event.clientY;
+
+  // 如果鼠标位置在容器外部，则认为拖拽已离开
+  if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+    isDragging.value = false;
+  }
+};
+
+// 处理拖放事件
+const handleDrop = async (event) => {
+  event.preventDefault();
+  isDragging.value = false;
+
+  // 获取拖拽的文件项
+  const items = event.dataTransfer.items;
+  if (!items || items.length === 0) return;
+
+  // 检查是否有文件夹
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+
+    // 检查是否是文件系统项目
+    if (item.kind === 'file') {
+      const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+
+      if (entry && entry.isDirectory) {
+        // 获取文件夹路径
+        const file = event.dataTransfer.files[i];
+        const folderPath = file.path;
+
+        if (folderPath) {
+          // 创建新项目对象
+          const folderName = folderPath.split('/').pop() || folderPath.split('\\').pop() || '未命名项目';
+
+          // 设置当前项目并打开项目对话框
+          currentProject.value = {
+            name: folderName,
+            folder_id: currentFolder.value?.id || null,
+            description: "",
+            path: folderPath,
+            preferred_ide: ["vscode"],
+            icon: "code"
+          };
+
+          projectDialogVisible.value = true;
+          break;
+        }
+      }
+    }
+  }
 };
 
 // 生命周期钩子
@@ -382,6 +462,7 @@ const getFolderPath = computed(() => {
 .el-main {
   padding: 16px;
   overflow-x: hidden;
+  position: relative;
 }
 
 .content-header {
@@ -390,5 +471,52 @@ const getFolderPath = computed(() => {
   align-items: center;
   padding: 16px;
   border-bottom: 1px solid var(--border-color);
+}
+
+/* 拖拽相关样式 */
+.drag-active {
+  position: relative;
+}
+
+.drag-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(var(--primary-rgb), 0.1);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  border: 2px dashed var(--primary-color);
+  border-radius: 8px;
+}
+
+.drag-hint {
+  background-color: var(--card-bg);
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.drag-hint h2 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  color: var(--text-color);
+}
+
+.drag-hint p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.drag-hint i {
+  color: var(--primary-color);
 }
 </style>

@@ -22,6 +22,13 @@ declare namespace DevHaven {
     debHavenProject?: any
     editInfo?: EditInfo
     last_opened_at?: any
+    tags?: string[] | any
+  }
+  interface Tag {
+    id?: number
+    name: string
+    color?: string
+    created_at: string
   }
 
   interface EditInfo {
