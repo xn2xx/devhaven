@@ -248,86 +248,27 @@
 > **Impact Scope**: GitHub仓库同步功能
 > **API Changes**: 添加同步操作结果返回值
 > **Configuration Changes**: 无
-> **Performance Impact**: 提升数据同步的可靠性和性能
 
-   ```
-   root
-   - src
-     - main
-       - db-service.ts // update GitHub仓库同步逻辑
-         - 添加事务支持
-         - 优化SQL查询
-         - 改进错误处理
-         - 添加操作结果返回
-   ```
+## 2024-07-12 14:00:00
 
-## 2024-07-10 16:30:00
-
-### 1. 优化GitHub仓库同步批处理
-
-**Change Type**: fix
-
-> **Purpose**: 修复GitHub仓库同步时的参数数量限制问题
-> **Detailed Description**: 实现批处理机制，解决SQLite参数数量限制导致的同步失败问题
-> **Reason for Change**: 修复大量仓库同步时的错误，提高同步可靠性
-> **Impact Scope**: GitHub仓库同步功能
-> **API Changes**: 无
-> **Configuration Changes**: 无
-> **Performance Impact**: 优化大量数据处理性能，减少内存使用
-
-   ```
-   root
-   - src
-     - main
-       - db-service.ts // update GitHub仓库同步逻辑
-         - 添加批处理机制
-         - 优化内存使用
-         - 改进错误日志
-   ```
-
-## 2024-07-18 18:00:00
-
-### 1. 更新项目README，添加英文版本
-
-**Change Type**: enhancement
-
-> **Purpose**: 提供双语版本的项目说明文档，以支持更广泛的用户群体
-> **Detailed Description**: 将原有的中文README改为双语版本（英文和中文），并将英文版设为默认版本（置于文档顶部）
-> **Reason for Change**: 提升项目的国际化程度，方便非中文用户浏览和使用
-> **Impact Scope**: 项目文档
-> **API Changes**: 无
-> **Configuration Changes**: 无
-> **Performance Impact**: 无
-
-   ```
-   root
-   - README.md // update 添加英文版项目说明并设为默认版本
-   ```
-
-## 2024-07-19 10:30:00
-
-### 1. 添加跨IDE文件切换功能
+### 1. 添加拖拽文件夹功能
 
 **Change Type**: feature
 
-> **Purpose**: 实现在不同IDE之间快速切换同一文件的功能
-> **Detailed Description**: 添加悬浮窗功能，允许用户在编辑文件时快速切换到其他IDE打开同一文件，无需手动导航
-> **Reason for Change**: 提升开发效率，满足开发者在不同IDE间无缝切换的需求
-> **Impact Scope**: 核心功能
-> **API Changes**: 添加跨IDE文件切换API
+> **Purpose**: 实现拖拽文件夹到应用中快速创建项目的功能
+> **Detailed Description**: 在主页视图中添加文件夹拖拽支持，用户可以直接拖拽本地文件夹到应用中，自动填充项目信息并弹出项目创建对话框
+> **Reason for Change**: 提升用户体验，简化项目添加流程
+> **Impact Scope**: 项目创建功能
+> **API Changes**: 无
 > **Configuration Changes**: 无
-> **Performance Impact**: 低，仅在用户请求切换时执行
+> **Performance Impact**: 低，仅在拖拽操作时消耗资源
 
    ```
    root
-   - README.md // update 添加跨IDE文件切换功能描述
-   - README_zh.md // update 添加跨IDE文件切换功能描述
    - src
-     - main
-       - open-project-service.ts // update 添加文件级别的IDE打开支持
-       - ipc-handlers.js // update 添加跨IDE文件切换的IPC处理
      - renderer
        - src
-         - components
-           - FloatingIdeSelector.vue // add 悬浮IDE选择器组件
+         - views
+           - home
+             - index.vue // update 添加拖拽文件夹功能和视觉反馈
    ```

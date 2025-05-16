@@ -18,6 +18,29 @@
 
 > 技术栈：Electron, Vue.js 3, TypeScript, Element Plus, UnoCSS, Pinia, SQLite (better-sqlite3)
 
+## Key Features / 主要功能
+
+* Project Management / 项目管理
+  * Add, edit, and delete projects / 添加、编辑和删除项目
+  * Organize projects in folders / 在文件夹中组织项目
+  * Search projects by name or path / 按名称或路径搜索项目
+  * Favorite projects for quick access / 收藏项目以便快速访问
+  * Drag and drop folders to add new projects / 拖放文件夹添加新项目
+
+* IDE Integration / IDE集成
+  * Open projects with preferred IDEs / 使用首选IDE打开项目
+  * Support for multiple IDEs (VS Code, WebStorm, PyCharm, etc.) / 支持多种IDE（VS Code、WebStorm、PyCharm等）
+  * Auto-detect installed IDEs / 自动检测已安装的IDE
+
+* GitHub Integration / GitHub集成
+  * Browse and manage starred repositories / 浏览和管理星标仓库
+  * Clone repositories directly from GitHub / 直接从GitHub克隆仓库
+  * Track cloning progress / 跟踪克隆进度
+
+* User Experience / 用户体验
+  * Dark/Light theme support / 支持深色/浅色主题
+  * System tray integration / 系统托盘集成
+  * Drag and drop interface / 拖放界面
 
 
 ## Dependencies / 依赖 (来自package.json)
@@ -121,12 +144,12 @@ root
     - .DS_Store                     // macOS系统生成的文件
     - main                          // 主进程代码
         - db-service.ts             // 数据库服务，处理数据存储和查询
-        - file-service.js           // 文件服务，处理文件操作
+        - file-service.ts           // 文件服务，处理文件操作
         - github-service.js         // GitHub相关服务，处理GitHub API交互
         - ide-detector.js           // IDE检测器，识别系统中安装的IDE
         - ide-service.ts            // IDE服务，提供IDE检测、配置和启动功能，采用模块化设计提高可维护性
         - index.ts                  // 主进程入口
-        - ipc-handlers.js           // IPC通信处理，主进程与渲染进程之间的通信
+        - ipc-handlers.ts           // IPC通信处理，主进程与渲染进程之间的通信
         - open-project-service.ts   // 项目打开服务，使用特定IDE打开项目
         - register-ts.js            // TypeScript注册，支持在主进程中使用TypeScript
         - settings-service.js       // 设置服务，处理应用配置
@@ -156,7 +179,12 @@ root
                 - index.ts          // Pinia存储配置
             - views                 // 视图组件
                 - GithubStarView.vue // GitHub星标视图
-                - HomeView.vue      // 主页视图，展示项目列表
+                - home              // 主页相关组件
+                    - index.vue     // 主页视图，支持拖拽文件夹添加项目
+                    - components    // 主页子组件
+                        - ProjectList.vue // 项目列表组件
+                        - ProjectDialog.vue // 项目对话框组件
+                        - Sidebar.vue // 侧边栏组件
                 - SettingsView.vue  // 设置视图
                 - TrayWindow.vue    // 托盘窗口视图
 - tsconfig.json                     // TypeScript主配置
