@@ -96,8 +96,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch, reactive } from 'vue';
-import { useAppStore } from '../../../store';
+import { useAppStore } from '@/store';
 import { FolderAdd, Folder, Edit, Delete } from '@element-plus/icons-vue';
 
 const props = defineProps({
@@ -152,14 +151,14 @@ const handleNodeCollapse = (data) => {
 };
 
 // 处理文件夹选择
-const handleSelectFolder = (data, node) => {
+const handleSelectFolder = (data, _) => {
   if (editingId.value === data.id) return; // 编辑时不触发选择
 
   emit('select-folder', data);
 };
 
 // 处理右键点击节点
-const handleNodeRightClick = (event, node) => {
+const handleNodeRightClick = (event, _) => {
   // 阻止默认的右键菜单
   event.preventDefault();
 };
@@ -250,7 +249,7 @@ const allowDrop = (draggingNode, dropNode, type) => {
 };
 
 // 处理节点拖拽放置
-const handleElTreeDrop = (draggingNode, dropNode, dropType, event) => {
+const handleElTreeDrop = (draggingNode, dropNode, dropType, _) => {
   console.log(`拖放操作: 节点=${draggingNode.data.id}, 位置=${dropType}, 目标=${dropNode?.data?.id || '根级别'}`);
 
   // 如果是放置到根级别
@@ -402,7 +401,7 @@ onMounted(() => {
 .folder-actions {
   margin-left: 8px;
   display: flex;
-  gap: 0px;
+  gap: 0;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.2s, visibility 0.2s;
