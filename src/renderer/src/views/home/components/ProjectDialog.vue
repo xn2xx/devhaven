@@ -20,24 +20,65 @@
         </div>
         <div class="form-col">
           <el-form-item label="所属文件夹" prop="folder_id">
-            <el-select
-              v-model="form.folder_id"
-              placeholder="选择所属文件夹"
-              clearable
-              style="width: 100%;"
+            <el-popover
+              placement="bottom-start"
+              :width="320"
+              trigger="manual"
+              v-model:visible="folderTreeVisible"
+              :hide-after="0"
+              :popper-options="{ modifiers: [{ name: 'eventListeners', enabled: true }] }"
             >
-              <el-option
-                v-for="folder in sortedFolders"
-                :key="folder.id"
-                :label="getFolderPathName(folder)"
-                :value="folder.id"
-              >
-                <span class="folder-option">
-                  <i class="i-fa-solid:folder folder-icon"></i>
-                  <span>{{ getFolderPathName(folder) }}</span>
-                </span>
-              </el-option>
-            </el-select>
+              <template #reference>
+                <el-input
+                  v-model="selectedFolderPath"
+                  placeholder="选择所属文件夹"
+                  readonly
+                  @click="toggleFolderTree"
+                >
+                  <template #prefix>
+                    <i class="i-fa-solid:folder folder-icon"></i>
+                  </template>
+                  <template #suffix v-if="form.folder_id">
+                    <el-button
+                      type="text"
+                      @click.stop="clearSelectedFolder"
+                    >
+                      <i class="i-fa-solid:times"></i>
+                    </el-button>
+                  </template>
+                </el-input>
+              </template>
+
+              <div class="folder-tree-container">
+                <el-input
+                  v-model="folderSearchKeyword"
+                  placeholder="搜索文件夹..."
+                  prefix-icon="i-fa-solid:search"
+                  clearable
+                  class="mb-2"
+                />
+                <el-scrollbar height="250px">
+                  <el-tree
+                    ref="folderTree"
+                    :data="folderTreeData"
+                    :props="{ label: 'name', children: 'children' }"
+                    :filter-node-method="filterFolderNode"
+                    node-key="id"
+                    :expand-on-click-node="false"
+                    :default-expanded-keys="defaultExpandedKeys"
+                    highlight-current
+                    @node-click="handleFolderSelect"
+                  >
+                    <template #default="{ node, data }">
+                      <span class="folder-node">
+                        <i class="i-fa-solid:folder folder-icon"></i>
+                        <span>{{ data.name }}</span>
+                      </span>
+                    </template>
+                  </el-tree>
+                </el-scrollbar>
+              </div>
+            </el-popover>
           </el-form-item>
         </div>
       </div>
@@ -98,6 +139,7 @@
 <script setup>
 import { useAppStore } from "@/store";
 import { ElMessage } from "element-plus";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 
 const props = defineProps({
   visible: Boolean,
@@ -240,21 +282,119 @@ const getFolderPathName = (folder) => {
   return pathArray.join(' / ');
 };
 
-// 加入计算属性，按层级排序文件夹
-const sortedFolders = computed(() => {
-  // 复制一份文件夹列表
-  const folders = [...store.folders];
+// 文件夹树相关
+const folderTreeVisible = ref(false);
+const folderTree = ref(null);
+const folderSearchKeyword = ref('');
+const selectedFolderPath = ref('');
+const defaultExpandedKeys = ref([]);
 
-  // 按照路径排序
-  return folders.sort((a, b) => {
-    const pathA = getFolderPathName(a);
-    const pathB = getFolderPathName(b);
-    return pathA.localeCompare(pathB);
+// 将平铺数据转换为树形结构
+const folderTreeData = computed(() => {
+  // 复制文件夹列表
+  const folders = JSON.parse(JSON.stringify(store.folders));
+
+  // 创建结果数组和映射表
+  const result = [];
+  const map = {};
+
+  // 创建id到节点的映射
+  folders.forEach(folder => {
+    folder.children = [];
+    map[folder.id] = folder;
   });
+
+  // 构建树形结构
+  folders.forEach(folder => {
+    const parent = map[folder.parent_id];
+    if (parent) {
+      // 如果存在父节点，添加到父节点的children中
+      parent.children.push(folder);
+    } else {
+      // 如果不存在父节点，则为顶级节点
+      result.push(folder);
+    }
+  });
+
+  return result;
 });
+
+// 文件夹选择
+const handleFolderSelect = (data) => {
+  form.value.folder_id = data.id;
+  selectedFolderPath.value = getFolderPathName(data);
+  folderTreeVisible.value = false;
+};
+
+// 清除选择的文件夹
+const clearSelectedFolder = (event) => {
+  event.stopPropagation();
+  form.value.folder_id = null;
+  selectedFolderPath.value = '';
+};
+
+// 筛选文件夹节点
+const filterFolderNode = (value, data) => {
+  if (!value) return true;
+  return data.name.toLowerCase().includes(value.toLowerCase());
+};
+
+// 监听搜索关键词变化
+watch(folderSearchKeyword, (val) => {
+  folderTree.value?.filter(val);
+});
+
+// 监听选中文件夹变化，更新显示路径
+watch(() => form.value.folder_id, (newValue) => {
+  if (newValue) {
+    const folder = store.folders.find(f => f.id === newValue);
+    if (folder) {
+      selectedFolderPath.value = getFolderPathName(folder);
+
+      // 设置默认展开的节点
+      const pathArray = [];
+      let currentId = folder.id;
+
+      // 向上查找所有父节点ID
+      while (currentId) {
+        pathArray.push(currentId);
+        const currentFolder = store.folders.find(f => f.id === currentId);
+        currentId = currentFolder?.parent_id;
+      }
+
+      defaultExpandedKeys.value = pathArray;
+    }
+  } else {
+    selectedFolderPath.value = '';
+  }
+}, { immediate: true });
+
+// 切换文件夹树的显示/隐藏
+const toggleFolderTree = (event) => {
+  event.stopPropagation();
+  folderTreeVisible.value = !folderTreeVisible.value;
+};
+
+// 点击外部关闭文件夹树
+const handleClickOutside = (event) => {
+  const popoverEl = document.querySelector('.folder-tree-container')?.parentNode;
+  const inputEl = document.querySelector('.el-form-item[label="所属文件夹"] .el-input');
+
+  if (popoverEl && inputEl &&
+      !popoverEl.contains(event.target) &&
+      !inputEl.contains(event.target) &&
+      folderTreeVisible.value) {
+    folderTreeVisible.value = false;
+  }
+};
 
 onMounted(() => {
   loadIdeConfigs();
+  document.addEventListener('click', handleClickOutside);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside);
 });
 </script>
 
@@ -313,7 +453,7 @@ onMounted(() => {
   background-color: var(--primary-dark);
 }
 
-.folder-option {
+.folder-node {
   display: flex;
   align-items: center;
 }
@@ -337,5 +477,18 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.folder-tree-container {
+  padding: 8px;
+}
+
+.folder-tree-container .el-scrollbar {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.mb-2 {
+  margin-bottom: 8px;
 }
 </style>
