@@ -278,19 +278,22 @@ const dbService = {
     create: (project: DevHaven.Project): DevHaven.Project | null => {
       const now = new Date().toISOString()
       const stmt = getDb().prepare(`
-        INSERT INTO projects (folder_id, name, description, path,
-                              preferred_ide, icon, branch, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO projects (folder_id, type, name, description, path, preferred_ide, icon, branch, prompt_arguments,
+                              prompt_messages, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       const result: any = stmt.run(
         project.folder_id,
+        project.type,
         project.name,
         project.description || null,
         project.path,
         project.preferred_ide || '["vscode"]',
         project.icon || 'code',
         project.branch || null,
+        project.prompt_arguments || null,
+        project.prompt_messages || null,
         now,
         now
       )
@@ -301,7 +304,9 @@ const dbService = {
       return null
     },
     getProjectTags: (projectId: number): DevHaven.Tag[] => {
-      const stmt = getDb().prepare('SELECT t.* FROM tags t JOIN project_tags pt ON t.id = pt.tag_id WHERE pt.project_id = ?')
+      const stmt = getDb().prepare(
+        'SELECT t.* FROM tags t JOIN project_tags pt ON t.id = pt.tag_id WHERE pt.project_id = ?'
+      )
       return stmt.all(projectId) as DevHaven.Tag[]
     },
 
@@ -335,7 +340,10 @@ const dbService = {
             branch         = ?,
             last_opened_at = ?,
             updated_at     = ?,
-            is_favorite    = ?
+            is_favorite    = ?,
+            type           =?,
+            prompt_arguments =?,
+            prompt_messages =?
         WHERE id = ?
       `)
 
@@ -350,6 +358,9 @@ const dbService = {
         lastOpenedAt,
         now,
         data.is_favorite !== undefined ? data.is_favorite : project.is_favorite,
+        data.type || project.type,
+        data.prompt_arguments || project.prompt_arguments,
+        data.prompt_messages || project.prompt_messages,
         id
       )
 

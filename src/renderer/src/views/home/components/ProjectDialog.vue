@@ -1,8 +1,8 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="projectData?.id ? '编辑项目' : '添加新项目'"
-    width="600px"
+    :title="getDialogTitle()"
+    width="800px"
     :close-on-click-modal="false"
     class="project-dialog"
   >
@@ -12,10 +12,18 @@
       :rules="rules"
       label-width="100px"
     >
+      <!-- 类型选择 -->
+      <el-form-item label="类型" prop="type">
+        <el-radio-group v-model="form.type" @change="handleTypeChange">
+          <el-radio value="project">项目</el-radio>
+          <el-radio value="prompt">提示词</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
       <div class="form-row">
         <div class="form-col">
-          <el-form-item label="项目名称" prop="name">
-            <el-input v-model="form.name" placeholder="例如: 电商平台前端" />
+          <el-form-item label="名称" prop="name">
+            <el-input v-model="form.name" :placeholder="form.type === 'prompt' ? '例如: code_review' : '例如: 电商平台前端'" />
           </el-form-item>
         </div>
         <div class="form-col">
@@ -83,7 +91,7 @@
         </div>
       </div>
 
-      <el-form-item label="项目描述" prop="description">
+      <el-form-item v-if="form.type === 'project'" label="项目描述" prop="description">
         <el-input
           v-model="form.description"
           type="textarea"
@@ -92,45 +100,66 @@
         />
       </el-form-item>
 
-      <div class="form-row">
-        <div class="form-col">
-          <el-form-item label="可用IDE" prop="preferred_ide">
-            <el-select
-              v-model="form.preferred_ide"
-              placeholder="选择IDE"
-              style="width: 100%;"
-              multiple
-            >
-              <el-option v-for="ide in ideConfigs" :label="ide.display_name" :value="ide.name" :key="ide" />
-            </el-select>
-          </el-form-item>
+      <!-- 项目相关字段 -->
+      <template v-if="form.type === 'project'">
+        <div class="form-row">
+          <div class="form-col">
+            <el-form-item label="可用IDE" prop="preferred_ide">
+              <el-select
+                v-model="form.preferred_ide"
+                placeholder="选择IDE"
+                style="width: 100%;"
+                multiple
+              >
+                <el-option v-for="ide in ideConfigs" :label="ide.display_name" :value="ide.name" :key="ide" />
+              </el-select>
+            </el-form-item>
+          </div>
         </div>
-      </div>
 
-      <el-form-item label="项目标签" prop="tags">
-        <el-input-tag v-model="form.tags" />
-      </el-form-item>
+        <el-form-item label="项目标签" prop="tags">
+          <el-input-tag v-model="form.tags" />
+        </el-form-item>
 
+        <el-form-item label="项目路径" prop="path">
+          <el-input
+            v-model="form.path"
+            placeholder="/Users/username/Projects/your-project"
+          />
+          <div class="path-actions">
+            <el-button @click="selectDirectory">
+              <i class="i-fa-solid:folder-open"></i>
+              选择项目目录
+            </el-button>
+          </div>
+          <div class="form-helper">本地项目文件夹的绝对路径</div>
+        </el-form-item>
+      </template>
 
-      <el-form-item label="项目路径" prop="path">
-        <el-input
-          v-model="form.path"
-          placeholder="/Users/username/Projects/your-project"
-        />
-        <div class="path-actions">
-          <el-button @click="selectDirectory">
-            <i class="i-fa-solid:folder-open"></i>
-            选择项目目录
-          </el-button>
+      <!-- 提示词相关字段 -->
+      <template v-if="form.type === 'prompt'">
+        <el-form-item label="提示词标签" prop="tags">
+          <el-input-tag v-model="form.tags" />
+        </el-form-item>
+
+        <!-- Prompt 编辑器 -->
+        <div class="prompt-editor-container">
+          <PromptEditor
+            :arguments="form.prompt_arguments"
+            :messages="form.prompt_messages"
+            @update:arguments="form.prompt_arguments = $event"
+            @update:messages="form.prompt_messages = $event"
+          />
         </div>
-        <div class="form-helper">本地项目文件夹的绝对路径</div>
-      </el-form-item>
+      </template>
     </el-form>
 
     <template #footer>
       <div class="form-actions">
         <el-button class="button-cancel" @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" class="button-primary" @click="saveProject">保存项目</el-button>
+        <el-button type="primary" class="button-primary" @click="saveProject">
+          {{ form.type === 'prompt' ? '保存提示词' : '保存项目' }}
+        </el-button>
       </div>
     </template>
   </el-dialog>
@@ -140,6 +169,7 @@
 import { useAppStore } from "@/store";
 import { ElMessage } from "element-plus";
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import PromptEditor from "./PromptEditor.vue";
 
 const props = defineProps({
   visible: Boolean,
@@ -152,7 +182,16 @@ const props = defineProps({
       description: "",
       path: "",
       preferred_ide: ["vscode"],
-      icon: "code"
+      icon: "code",
+      type: "project",
+      prompt_arguments: [{ name: 'content', description: '内容', required: true }],
+      prompt_messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: '{{content}}'
+        }
+      }]
     })
   },
   currentFolderId: {
@@ -189,20 +228,61 @@ const form = ref({
   description: "",
   path: "",
   preferred_ide: ["vscode"],
-  icon: "code"
+  icon: "code",
+  type: "project",
+  prompt_arguments: [],
+  prompt_messages: [{
+    role: 'user',
+    content: {
+      type: 'text',
+      text: ''
+    }
+  }]
 });
 
-const rules = {
-  name: [
-    { required: true, message: "请输入项目名称", trigger: "blur" },
-    { min: 2, max: 50, message: "长度应为2到50个字符", trigger: "blur" }
-  ],
-  path: [
-    { required: true, message: "请输入项目路径", trigger: "blur" }
-  ],
-  folder_id: [
-    { required: true, message: "请选择所属文件夹", trigger: "blur" }
-  ]
+// 动态验证规则
+const rules = computed(() => {
+  const baseRules = {
+    name: [
+      { required: true, message: "请输入名称", trigger: "blur" },
+      { min: 2, max: 50, message: "长度应为2到50个字符", trigger: "blur" }
+    ],
+    folder_id: [
+      { required: true, message: "请选择所属文件夹", trigger: "blur" }
+    ],
+    type: [
+      { required: true, message: "请选择类型", trigger: "change" }
+    ]
+  };
+
+  // 只有项目类型才需要路径验证
+  if (form.value.type === 'project') {
+    baseRules.path = [
+      { required: true, message: "请输入项目路径", trigger: "blur" }
+    ];
+  }
+
+  return baseRules;
+});
+
+// 获取对话框标题
+const getDialogTitle = () => {
+  if (props.projectData?.id) {
+    return form.value.type === 'prompt' ? '编辑提示词' : '编辑项目';
+  } else {
+    return form.value.type === 'prompt' ? '添加新提示词' : '添加新项目';
+  }
+};
+
+// 处理类型变化
+const handleTypeChange = (newType) => {
+  // 根据类型设置默认图标
+  if (newType === 'prompt') {
+    form.value.icon = 'comments';
+    form.value.path = ''; // 提示词不需要路径
+  } else {
+    form.value.icon = 'code';
+  }
 };
 
 // 监听projectData变化，更新表单
@@ -213,15 +293,48 @@ watch(() => props.projectData, (newValue) => {
     // 处理preferred_ide字段，确保它是数组格式
     if (typeof data.preferred_ide === "string") {
       try {
-        // 尝试解析JSON字符串
         data.preferred_ide = JSON.parse(data.preferred_ide);
       } catch (e) {
-        // 如果解析失败，假设它是单个IDE字符串
         data.preferred_ide = [data.preferred_ide];
       }
     } else if (!Array.isArray(data.preferred_ide)) {
-      // 如果不是数组也不是字符串，设置默认值
       data.preferred_ide = ["vscode"];
+    }
+
+    // 处理prompt相关字段
+    if (data.type === 'prompt') {
+      try {
+        if (typeof data.prompt_arguments === 'string') {
+          data.prompt_arguments = JSON.parse(data.prompt_arguments);
+        }
+        if (typeof data.prompt_messages === 'string') {
+          data.prompt_messages = JSON.parse(data.prompt_messages);
+        }
+      } catch (e) {
+        console.error('解析prompt数据失败:', e);
+        data.prompt_arguments = [];
+        data.prompt_messages = [{
+          role: 'user',
+          content: {
+            type: 'text',
+            text: ''
+          }
+        }];
+      }
+    }
+
+    // 确保有默认值
+    if (!data.prompt_arguments) {
+      data.prompt_arguments = [];
+    }
+    if (!data.prompt_messages) {
+      data.prompt_messages = [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: ''
+        }
+      }];
     }
 
     form.value = data;
@@ -251,10 +364,24 @@ const selectDirectory = async () => {
 const saveProject = async () => {
   try {
     await projectForm.value.validate();
-    emit("save", { ...form.value });
+
+    // 准备要保存的数据
+    const projectData = { ...form.value };
+
+    // 对于prompt类型，将数据序列化为JSON字符串
+    if (projectData.type === 'prompt') {
+      projectData.prompt_arguments = JSON.stringify(projectData.prompt_arguments);
+      projectData.prompt_messages = JSON.stringify(projectData.prompt_messages);
+      // 提示词不需要路径和IDE配置
+      projectData.path = projectData.path || '';
+      projectData.preferred_ide = [];
+    }
+
+    emit("save", projectData);
     dialogVisible.value = false;
   } catch (error) {
     // 表单验证失败
+    console.error('保存失败:', error);
   }
 };
 
@@ -490,5 +617,12 @@ onBeforeUnmount(() => {
 
 .mb-2 {
   margin-bottom: 8px;
+}
+
+.prompt-editor-container {
+  margin-top: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--card-bg);
 }
 </style>

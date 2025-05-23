@@ -1,274 +1,151 @@
-## 2023-11-15 16:30:00
+## 2024-12-19 15:30:00
 
-### 1. 初始化项目框架
-
-**Change Type**: feature
-
-> **Purpose**: 创建基于Electron+Vue3+TypeScript的桌面应用基础架构
-> **Detailed Description**: 设置Electron主进程和渲染进程架构，配置Vue3前端框架，添加TypeScript支持
-> **Reason for Change**: 项目启动，需要搭建基础开发环境
-> **Impact Scope**: 整个项目架构
-> **API Changes**: N/A
-> **Configuration Changes**: 添加electron.vite.config.ts, tsconfig.json, package.json等配置文件
-> **Performance Impact**: 无
-
-   ```
-   root
-   - electron.vite.config.ts // add 配置Electron和Vite构建选项
-   - package.json // add 项目依赖和脚本
-   - tsconfig.json // add TypeScript配置
-   - src // add 源代码目录
-     - main // add 主进程代码
-     - preload // add 预加载脚本
-     - renderer // add 渲染进程代码
-   ```
-
-### 2. 添加数据库功能
+### 1. DevHaven 项目初始化和核心架构搭建
 
 **Change Type**: feature
 
-> **Purpose**: 实现项目和公司信息的本地存储
-> **Detailed Description**: 使用better-sqlite3集成SQLite数据库，创建数据模型和服务
-> **Reason for Change**: 需要本地持久化存储用户项目和公司信息
-> **Impact Scope**: 数据管理相关功能
-> **API Changes**: 添加数据库CRUD API
-> **Configuration Changes**: 数据库初始化和配置
-> **Performance Impact**: 低，只在需要时访问数据库
+> **Purpose**: 建立 DevHaven 桌面应用的基础架构，实现项目管理的核心功能
+> **Detailed Description**: 搭建基于 Electron + Vue 3 + TypeScript 的桌面应用框架，实现项目组织、IDE 集成、GitHub 集成等核心功能
+> **Reason for Change**: 解决开发者多项目管理痛点，提供统一的项目访问入口
+> **Impact Scope**: 整个应用架构，包括主进程服务、渲染进程 UI、数据库设计
+> **API Changes**: 定义了完整的 IPC 通信接口，包括项目管理、设置配置、IDE 操作等
+> **Configuration Changes**:
+>   - 配置 electron-builder 支持多平台打包
+>   - 设置 UnoCSS 原子化 CSS 框架
+>   - 配置 TypeScript 严格模式
+>   - 集成 Element Plus UI 组件库
+> **Performance Impact**:
+>   - 使用 SQLite 本地数据库提升数据访问速度
+>   - Vue 3 Composition API 提升组件性能
+>   - UnoCSS 减少 CSS 包大小
 
    ```
    root
-   - db // add 数据库相关
-     - schema.js // add 数据库模式定义
-   - src
-     - main
-       - db-service.ts // add 数据库服务
+   - src/main/                  // add - Electron 主进程
+     - db-service.ts           // add - SQLite 数据库服务
+     - project-service.ts      // add - 项目管理核心业务逻辑
+     - ide-service.ts          // add - IDE 集成服务
+     - github-service.ts       // add - GitHub OAuth 和 API 集成
+     - settings-service.ts     // add - 应用配置管理
+     - window.ts              // add - 窗口管理（主窗口和托盘窗口）
+     - migrations/            // add - 数据库迁移系统
+   - src/renderer/             // add - Vue 3 渲染进程
+     - src/views/home/        // add - 主页模块（项目管理界面）
+     - src/views/settings/    // add - 设置模块
+     - src/components/        // add - 可复用组件库
+     - src/router/           // add - Vue Router 路由配置
+     - src/store/            // add - Pinia 状态管理
+   - build/                   // add - 应用图标和构建资源
+   - plugin/                  // add - IDE 插件文档
    ```
 
-### 3. 实现IDE集成
+### 2. 项目管理和文件夹组织功能
 
 **Change Type**: feature
 
-> **Purpose**: 支持用户使用首选IDE打开项目
-> **Detailed Description**: 开发IDE检测和启动功能，支持VS Code、WebStorm、PyCharm等常用IDE
-> **Reason for Change**: 核心功能，让用户能一键用喜欢的IDE打开项目
-> **Impact Scope**: IDE相关功能
-> **API Changes**: 添加IDE检测和启动API
-> **Configuration Changes**: IDE配置选项
-> **Performance Impact**: 中等，需要执行系统命令
+> **Purpose**: 实现按公司/文件夹层级组织项目的核心功能
+> **Detailed Description**:
+>   - 递归文件夹树组件支持无限层级展示
+>   - 项目 CRUD 操作和数据持久化
+>   - 侧边栏导航和项目列表展示
+>   - 项目搜索和过滤功能
+> **Reason for Change**: 解决开发者项目散落各处难以管理的问题
+> **Impact Scope**: 影响数据库设计、主页 UI 组件、项目服务层
+> **API Changes**: 新增项目管理相关 IPC 接口：
+>   - `project:getAll` - 获取所有项目
+>   - `project:create` - 创建新项目
+>   - `project:update` - 更新项目信息
+>   - `project:delete` - 删除项目
+> **Configuration Changes**: 无
+> **Performance Impact**: SQLite 索引优化，支持快速项目查询
 
    ```
    root
-   - resources
-     - ide // add IDE图标
-       - vscode.svg // add VS Code图标
-       - webstorm.svg // add WebStorm图标
-       - pycharm.svg // add PyCharm图标
-       - intellij-idea.svg // add IntelliJ IDEA图标
-       - cursor.png // add Cursor IDE图标
-   - src
-     - main
-       - ide-detector.js // add IDE检测器
-       - ide-service.js // add IDE服务
-       - open-project-service.ts // add 项目打开服务
+   - src/renderer/src/views/home/
+     - components/
+       - ProjectList.vue           // add - 项目列表组件，支持搜索过滤
+       - ProjectDialog.vue         // add - 项目添加/编辑对话框
+       - RecursiveFolderTree.vue   // add - 递归文件夹树组件
+       - Sidebar.vue               // add - 侧边栏导航组件
    ```
 
-## 2023-12-10 14:45:00
-
-### 1. 用户界面实现
+### 3. IDE 集成和自动检测功能
 
 **Change Type**: feature
 
-> **Purpose**: 开发用户友好的项目管理界面
-> **Detailed Description**: 使用Vue3和Element Plus构建项目列表、设置界面等UI组件
-> **Reason for Change**: 提供用户交互界面
-> **Impact Scope**: 前端UI
-> **API Changes**: N/A
-> **Configuration Changes**: N/A
-> **Performance Impact**: 中等，取决于渲染效率
+> **Purpose**: 实现一键打开项目到指定 IDE 的功能
+> **Detailed Description**:
+>   - 自动检测系统已安装的 IDE（VS Code、WebStorm、IntelliJ IDEA 等）
+>   - 支持为不同项目配置首选 IDE
+>   - 提供 IDE 切换快捷操作
+>   - 托盘窗口快速访问功能
+> **Reason for Change**: 提升开发效率，减少手动打开项目的时间成本
+> **Impact Scope**: 影响 IDE 检测服务、设置页面、托盘功能
+> **API Changes**: 新增 IDE 相关 IPC 接口：
+>   - `ide:detect` - 检测已安装 IDE
+>   - `ide:openProject` - 使用指定 IDE 打开项目
+>   - `ide:getConfigs` - 获取 IDE 配置
+> **Configuration Changes**: 添加 IDE 配置存储，支持自定义 IDE 路径
+> **Performance Impact**: IDE 检测采用缓存机制，避免重复扫描
 
    ```
    root
-   - src
-     - renderer // refact 渲染进程代码
-       - App.vue // add 应用主组件
-       - main.js // add 渲染进程入口
-       - src
-         - components // add UI组件
-           - ProjectList.vue // add 项目列表组件
-           - ProjectDialog.vue // add 项目对话框
-           - CompanyDialog.vue // add 公司对话框
-           - Sidebar.vue // add 侧边栏组件
-           - RecursiveFolderTree.vue // add 文件树组件
-         - views // add 视图组件
-           - HomeView.vue // add 主页视图
-           - SettingsView.vue // add 设置视图
+   - src/main/
+     - ide-detector.ts          // add - IDE 自动检测服务
+     - ide-service.ts           // add - IDE 操作服务
+   - src/renderer/src/views/
+     - TrayWindow.vue           // add - 系统托盘悬浮窗
+     - settings/components/
+       - IdeSettings.vue        // add - IDE 设置配置页面
+   - resources/ide/             // add - IDE 图标资源
    ```
 
-## 2024-02-18 09:15:00
-
-### 1. GitHub集成
+### 4. GitHub 集成和项目同步
 
 **Change Type**: feature
 
-> **Purpose**: 添加GitHub仓库管理功能
-> **Detailed Description**: 实现GitHub API集成，支持查看和管理用户的GitHub星标项目
-> **Reason for Change**: 扩展功能，方便用户管理GitHub项目
-> **Impact Scope**: GitHub相关功能
-> **API Changes**: 添加GitHub API
-> **Configuration Changes**: GitHub认证配置
-> **Performance Impact**: 中等，依赖GitHub API响应速度
+> **Purpose**: 集成 GitHub API，支持 OAuth 认证和星标项目导入
+> **Detailed Description**:
+>   - GitHub OAuth 2.0 认证流程
+>   - 获取用户星标仓库并导入为项目
+>   - 支持手动刷新和自动同步
+>   - 安全的 Token 存储（使用 keytar）
+> **Reason for Change**: 简化项目添加流程，自动发现感兴趣的项目
+> **Impact Scope**: 新增 GitHub 服务、认证流程、星标项目页面
+> **API Changes**: 新增 GitHub 相关 IPC 接口：
+>   - `github:auth` - 启动 OAuth 认证
+>   - `github:getStars` - 获取星标仓库
+>   - `github:importProjects` - 导入项目到本地
+> **Configuration Changes**:
+>   - 添加 GitHub 应用配置
+>   - 设置自定义协议处理 `devhaven://`
+> **Performance Impact**: 使用分页 API 避免一次性加载过多数据
 
    ```
    root
-   - src
-     - main
-       - github-service.js // add GitHub服务
-     - renderer
-       - src
-         - views
-           - GithubStarView.vue // add GitHub星标视图
+   - src/main/
+     - github-service.ts        // add - GitHub API 集成服务
+   - src/renderer/src/views/
+     - GithubStarView.vue       // add - GitHub 星标项目管理页面
    ```
 
-## 2024-05-22 10:30:00
+## 模板格式说明
 
-### 1. 系统托盘集成
+### 1. {功能简单描述}
 
-**Change Type**: improvement
+**Change Type**: {类型: feature/fix/improvement/refactor/docs/test/build}
 
-> **Purpose**: 实现系统托盘功能，允许应用在后台运行
-> **Detailed Description**: 添加系统托盘图标和菜单，支持快速访问常用功能
-> **Reason for Change**: 提升用户体验，方便用户快速访问应用
-> **Impact Scope**: 系统集成
-> **API Changes**: N/A
-> **Configuration Changes**: 托盘配置
-> **Performance Impact**: 低，只在系统托盘交互时消耗资源
+> **Purpose**: {功能目的}
+> **Detailed Description**: {功能详细描述}
+> **Reason for Change**: {为什么需要这个改变}
+> **Impact Scope**: {这个改变可能影响的其他模块或功能}
+> **API Changes**: {如果有API变化，详细说明新旧API}
+> **Configuration Changes**: {环境变量、配置文件等的变化}
+> **Performance Impact**: {改变对系统性能的影响}
 
    ```
    root
-   - src
-     - main
-       - window.js // refact 添加托盘功能
-     - renderer
-       - src
-         - views
-           - TrayWindow.vue // add 托盘窗口视图
-   ```
-
-## 2024-07-09 11:00:00
-
-### 1. 修复IDE服务的TypeScript类型错误
-
-**Change Type**: fix
-
-> **Purpose**: 修复IDE服务中的TypeScript类型错误
-> **Detailed Description**: 为ide-service.ts添加完整类型定义，解决类型不兼容问题
-> **Reason for Change**: 提高代码质量和类型安全性，消除编译警告
-> **Impact Scope**: IDE相关功能
-> **API Changes**: 无
-> **Configuration Changes**: 无
-> **Performance Impact**: 无
-
-   ```
-   root
-   - src
-     - main
-       - ide-service.ts // update 添加完整的TypeScript类型声明
-   ```
-
-## 2024-07-09 11:30:00
-
-### 1. 修复index.ts的TypeScript类型错误
-
-**Change Type**: fix
-
-> **Purpose**: 修复主进程入口文件中的TypeScript类型错误
-> **Detailed Description**: 为index.ts添加明确的类型定义，解决隐式any类型错误
-> **Reason for Change**: 提高代码质量和类型安全性，消除编译警告
-> **Impact Scope**: 主进程入口文件
-> **API Changes**: 无
-> **Configuration Changes**: 无
-> **Performance Impact**: 无
-
-   ```
-   root
-   - src
-     - main
-       - index.ts // update 添加完整的TypeScript类型声明
-   ```
-
-## 2024-07-10 15:30:00
-
-### 1. 优化IDE服务代码架构
-
-**Change Type**: improvement
-
-> **Purpose**: 重构IDE服务以提高可维护性、性能和代码质量
-> **Detailed Description**: 采用更好的模块化设计重构ide-service.ts，拆分复杂函数，改进类型定义，使用常量管理IDE类型，并优化Promise处理
-> **Reason for Change**: 提高代码可维护性和性能，遵循TypeScript最佳实践
-> **Impact Scope**: IDE服务功能
-> **API Changes**: 无接口变更，内部实现优化
-> **Configuration Changes**: 无
-> **Performance Impact**: 优化批量处理IDE配置的性能，通过Promise.all提高并行处理能力
-
-   ```
-   root
-   - src
-     - main
-       - ide-service.ts // update 重构代码架构，拆分复杂函数，优化类型定义和性能
-   ```
-
-### 2. 增强IDE服务的错误处理能力
-
-**Change Type**: improvement
-
-> **Purpose**: 改进IDE服务的错误处理和日志记录
-> **Detailed Description**: 优化错误处理逻辑，提供更明确的错误消息，使用常量避免硬编码字符串
-> **Reason for Change**: 提高程序稳定性和问题排查效率
-> **Impact Scope**: IDE服务的错误处理
-> **API Changes**: 无
-> **Configuration Changes**: 无
-> **Performance Impact**: 无显著影响，但提高了错误情况下的稳定性
-
-   ```
-   root
-   - src
-     - main
-       - ide-service.ts // update 改进错误处理和日志记录
-   ```
-
-## 2024-07-10 16:00:00
-
-### 1. 优化GitHub仓库同步逻辑
-
-**Change Type**: improvement
-
-> **Purpose**: 优化GitHub仓库同步功能的可靠性和性能
-> **Detailed Description**: 重构数据库同步逻辑，添加事务支持，改进错误处理，优化SQL查询
-> **Reason for Change**: 提高数据同步的可靠性，避免数据不一致问题
-> **Impact Scope**: GitHub仓库同步功能
-> **API Changes**: 添加同步操作结果返回值
-> **Configuration Changes**: 无
-
-## 2024-07-12 14:00:00
-
-### 1. 添加拖拽文件夹功能
-
-**Change Type**: feature
-
-> **Purpose**: 实现拖拽文件夹到应用中快速创建项目的功能
-> **Detailed Description**: 在主页视图中添加文件夹拖拽支持，用户可以直接拖拽本地文件夹到应用中，自动填充项目信息并弹出项目创建对话框
-> **Reason for Change**: 提升用户体验，简化项目添加流程
-> **Impact Scope**: 项目创建功能
-> **API Changes**: 无
-> **Configuration Changes**: 无
-> **Performance Impact**: 低，仅在拖拽操作时消耗资源
-
-   ```
-   root
-   - src
-     - renderer
-       - src
-         - views
-           - home
-             - index.vue // update 添加拖拽文件夹功能和视觉反馈
+   - pkg    // {类型: add/del/refact/-} {文件夹的作用}
+    - utils // {类型: add/del/refact} {文件的功能}
+   - xxx    // {类型: add/del/refact} {文件的功能}
    ```

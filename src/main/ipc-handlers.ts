@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from 'electron'
+import { app, ipcMain, shell, clipboard } from 'electron'
 import { dbService, initDatabase } from './db-service'
 import * as fileService from './file-service'
 import * as ideService from './ide-service'
@@ -260,6 +260,27 @@ function registerIpcHandlers() {
     return fileService.selectExecutable()
   })
 
+  // 检查路径是否存在
+  ipcMain.handle('path-exists', async (_, path) => {
+    try {
+      return fileService.pathExists(path)
+    } catch (error) {
+      console.error('检查路径失败:', error)
+      throw error
+    }
+  })
+
+  // 写入剪贴板
+  ipcMain.handle('clipboard:write', async (_, text) => {
+    try {
+      clipboard.writeText(text)
+      return { success: true }
+    } catch (error) {
+      console.error('写入剪贴板失败:', error)
+      throw error
+    }
+  })
+
   // ========== 设置相关 IPC 处理程序 ==========
   // 获取应用设置
 
@@ -345,16 +366,6 @@ function registerIpcHandlers() {
       })
     } catch (error) {
       console.error('克隆GitHub仓库失败:', error)
-      throw error
-    }
-  })
-
-  // 检查路径是否存在
-  ipcMain.handle('path-exists', async (_, path) => {
-    try {
-      return fileService.pathExists(path)
-    } catch (error) {
-      console.error('检查路径失败:', error)
       throw error
     }
   })
