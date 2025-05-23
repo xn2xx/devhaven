@@ -61,24 +61,38 @@ class MigrationService {
         console.log(`复制文件: ${targetFilePath}`)
       }
       // 执行npm install 命令
-      const npmInstallCmd = 'npm install'
-      const child = exec(npmInstallCmd, { cwd: targetPath }, (error, stdout, stderr) => {
+      // const npmInstallCmd = 'npm install'
+      // const child = exec(npmInstallCmd, { cwd: targetPath }, (error, stdout, stderr) => {
+      //   if (error) {
+      //     console.error('npm install 失败:', error)
+      //     return
+      //   }
+      //   console.log('npm install 输出:', stdout)
+      //   if (stderr) {
+      //     console.error('npm install 错误输出:', stderr)
+      //   }
+      // })
+
+      // // 可选：监听进程事件
+      // child.on('close', (code) => {
+      //   console.log(`npm install 进程退出，退出码: ${code}`)
+      // })
+
+      // console.log('npm install 命令执行成功')
+      // 解压node_modules.zip
+      const unzipCmd = 'unzip -o node_modules.zip'
+      const child = exec(unzipCmd, { cwd: targetPath }, (error, stdout, stderr) => {
         if (error) {
-          console.error('npm install 失败:', error)
+          console.error('解压失败:', error)
           return
         }
-        console.log('npm install 输出:', stdout)
+        console.log('解压输出:', stdout)
         if (stderr) {
-          console.error('npm install 错误输出:', stderr)
+          console.error('解压错误输出:', stderr)
         }
       })
 
       // 可选：监听进程事件
-      child.on('close', (code) => {
-        console.log(`npm install 进程退出，退出码: ${code}`)
-      })
-
-      console.log('npm install 命令执行成功')
     } catch (error) {
       console.error('迁移MCP文件失败:', error)
     }
