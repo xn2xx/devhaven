@@ -32,8 +32,6 @@
           <div class="card-header-info">
             <h3 class="project-title">
               {{ project.name }}
-              <span v-if="project.type === 'prompt'" class="type-badge prompt">提示词</span>
-              <span v-else class="type-badge project">项目</span>
             </h3>
             <div class="project-subtitle">{{ project.description || "暂无描述" }}</div>
           </div>
@@ -101,14 +99,24 @@
         <div class="card-body">
           <div class="project-stats">
             <template v-if="project.type === 'prompt'">
-              <!-- Prompt 类型的统计信息 -->
-              <div class="stat-item">
-                <i class="i-fa-solid:cogs stat-icon"></i>
-                <span>{{ getPromptArgumentsCount(project) }} 个参数</span>
-              </div>
-              <div class="stat-item">
-                <i class="i-fa-solid:comments stat-icon"></i>
-                <span>{{ getPromptMessagesCount(project) }} 条消息</span>
+              <!-- Prompt 类型的消息展示 -->
+              <div class="prompt-content">
+                <el-tooltip
+                  placement="top"
+                  :disabled="getPromptContent(project).length <= 100"
+                  effect="dark"
+                  :show-after="500"
+                  :popper-style="{ maxWidth: '400px', whiteSpace: 'pre-wrap' }"
+                >
+                  <template #content>
+                    <div style="white-space: pre-wrap; max-width: 350px; max-height: 300px; overflow-y: auto; word-wrap: break-word; padding: 8px; scrollbar-width: thin;">
+                      {{ getPromptContent(project) }}
+                    </div>
+                  </template>
+                  <div class="prompt-text">
+                    {{ getPromptContentPreview(project) }}
+                  </div>
+                </el-tooltip>
               </div>
             </template>
             <template v-else>
@@ -644,6 +652,31 @@ const viewPromptDetails = (project) => {
   emit("edit-project", project);
 };
 
+const getPromptContent = (project) => {
+  if (!project.prompt_messages) return "";
+  try {
+    const messages = typeof project.prompt_messages === 'string'
+      ? JSON.parse(project.prompt_messages)
+      : project.prompt_messages;
+    return messages
+      .filter(message => message.role === 'user')
+      .map(message => message.content.text)
+      .join('\n');
+  } catch (e) {
+    return "";
+  }
+};
+
+const getPromptContentPreview = (project) => {
+  const fullContent = getPromptContent(project);
+  // 将换行符和多个空白字符替换为单个空格，便于单行显示
+  const cleanContent = fullContent.replace(/\s+/g, ' ').trim();
+  const maxLength = 100; // 定义最大长度
+  if (cleanContent.length > maxLength) {
+    return cleanContent.slice(0, maxLength) + '...';
+  }
+  return cleanContent;
+};
 </script>
 
 <style scoped>
@@ -990,5 +1023,62 @@ const viewPromptDetails = (project) => {
   border-radius: 4px;
   font-size: 12px;
   margin-left: 6px;
+}
+
+.prompt-content {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.prompt-text {
+  background-color: rgba(var(--primary-rgb), 0.05);
+  border: 1px solid rgba(var(--primary-rgb), 0.1);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Droid Sans Mono', 'Consolas', monospace;
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.prompt-text:hover {
+  background-color: rgba(var(--primary-rgb), 0.08);
+  border-color: rgba(var(--primary-rgb), 0.2);
+}
+
+.prompt-text:empty::before {
+  content: "暂无提示词内容";
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Tooltip滚动条样式 */
+.el-tooltip__popper .el-tooltip__content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 针对webkit浏览器的滚动条样式 */
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 </style>

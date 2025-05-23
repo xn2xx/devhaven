@@ -1,3 +1,47 @@
+## 2024-12-19 16:45:00
+
+### 5. 提示词管理功能
+
+**Change Type**: feature
+
+> **Purpose**: 为 DevHaven 添加 AI 提示词管理功能，支持创建、编辑、收藏和复制提示词
+> **Detailed Description**:
+>   - 扩展项目系统支持 'project' 和 'prompt' 两种类型
+>   - 新增 PromptEditor 组件，支持参数定义和消息模板编辑
+>   - 项目列表中区分显示项目和提示词
+>   - 提示词列表中显示实际内容而非统计信息
+>   - 支持一键复制提示词内容到剪贴板
+>   - 提示词与项目混合管理，共享文件夹组织结构
+> **Reason for Change**: 满足开发者对 AI 提示词集中管理的需求，提高工作效率
+> **Impact Scope**: 数据库结构、项目服务、UI 组件、IPC 通信
+> **API Changes**:
+>   - 扩展项目 CRUD 接口支持 prompt 类型
+>   - 新增 `clipboard:write` IPC 接口用于剪贴板操作
+>   - 项目数据结构增加 `type`, `prompt_arguments`, `prompt_messages` 字段
+> **Configuration Changes**:
+>   - 数据库迁移 V004 添加提示词支持字段
+>   - 项目表增加类型索引以提高查询性能
+> **Performance Impact**:
+>   - 使用 Electron clipboard API 解决浏览器安全限制
+>   - 预加载脚本安全暴露剪贴板功能
+
+   ```
+   root
+   - src/main/
+     - migrations/sql/
+       - V004__add_prompt_support.sql    // add - 提示词支持数据库迁移
+     - ipc-handlers.ts                   // modify - 新增剪贴板 IPC 处理器
+     - db-service.ts                     // modify - 项目 CRUD 支持 prompt 类型
+   - src/preload/
+     - index.ts                          // modify - 暴露剪贴板写入 API
+   - src/renderer/src/views/home/
+     - components/
+       - PromptEditor.vue                // add - 提示词编辑器组件
+       - ProjectDialog.vue               // modify - 支持项目/提示词类型选择
+       - ProjectList.vue                 // modify - 区分展示项目和提示词
+     - index.vue                         // modify - 添加创建类型选择下拉菜单
+   ```
+
 ## 2024-12-19 15:30:00
 
 ### 1. DevHaven 项目初始化和核心架构搭建

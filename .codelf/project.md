@@ -1,14 +1,22 @@
 ## DevHaven (init from readme/docs)
 
-> DevHaven - 一个专为开发者设计的桌面应用程序，用于组织和管理散落在各个位置的项目文件夹，提供便捷的一键体验，可以使用您首选的 IDE 打开项目。
+> DevHaven - 一个专为开发者设计的桌面应用程序，用于组织和管理散落在各个位置的项目文件夹，提供便捷的一键体验，可以使用您首选的 IDE 打开项目。现已支持提示词管理功能。
 
-> 解决开发者项目管理的痛点：多公司、多项目的代码仓库散落在不同文件夹中，查找项目需要记忆路径且耗时，不同项目需要用不同 IDE 打开等问题。通过 DevHaven 提供集中化平台，将所有项目整合到单一界面中，支持一键用对应 IDE 打开项目。
+> 解决开发者项目管理的痛点：多公司、多项目的代码仓库散落在不同文件夹中，查找项目需要记忆路径且耗时，不同项目需要用不同 IDE 打开等问题。通过 DevHaven 提供集中化平台，将所有项目整合到单一界面中，支持一键用对应 IDE 打开项目。新增提示词管理功能，可以创建、编辑、收藏和复制 AI 提示词。
 
 > 状态：活跃开发中，版本 1.0.4
 
 > 开发团队：zxcvbnmzsedr
 
 > 技术栈：Electron + Vue 3 + TypeScript + Element Plus + UnoCSS + SQLite + Pinia + Node.js
+
+### 核心功能
+* 项目管理：支持本地项目和 GitHub 项目的统一管理
+* 文件夹分类：支持多级文件夹组织项目
+* IDE 集成：一键使用首选 IDE 打开项目
+* GitHub 集成：OAuth 认证，支持星标项目导入和克隆
+* 提示词管理：创建、编辑、收藏和复制 AI 提示词
+* 混合管理：项目和提示词在同一界面中统一管理
 
 ## Dependencies (init from programming language specification like package.json, requirements.txt, etc.)
 
@@ -119,6 +127,7 @@ root
                 - V001__initial_db_structure.sql     // 初始数据库结构
                 - V002__add_color_to_folders.sql     // 添加文件夹颜色字段
                 - V003__add_project_path_index.sql   // 添加项目路径索引
+                - V004__add_prompt_support.sql       // 添加提示词支持字段
         - open-project-service.ts           // 项目打开服务，核心业务逻辑
         - project-service.ts                // 项目管理服务，CRUD 操作
         - settings-service.ts               // 应用设置服务，配置管理
@@ -142,6 +151,7 @@ root
                     - components            // 主页组件
                         - ProjectDialog.vue         // 项目对话框组件，添加/编辑项目
                         - ProjectList.vue           // 项目列表组件，项目展示和操作
+                        - PromptEditor.vue          // 提示词编辑器组件，参数和消息模板编辑
                         - RecursiveFolderTree.vue   // 递归文件夹树组件，文件夹层级展示
                         - Sidebar.vue               // 侧边栏组件，公司/文件夹导航
                     - index.vue             // 主页入口组件
