@@ -3,7 +3,7 @@ import path from 'path'
 import { getDb } from '../db-service'
 import { app } from 'electron'
 import os from 'os'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
 
 interface MigrationInfo {
   version: string
@@ -62,8 +62,21 @@ class MigrationService {
       }
       // 执行npm install 命令
       const npmInstallCmd = 'npm install'
-      const npmInstallResult = execSync(npmInstallCmd, { cwd: targetPath })
-      console.log(npmInstallResult)
+      const child = exec(npmInstallCmd, { cwd: targetPath }, (error, stdout, stderr) => {
+        if (error) {
+          console.error('npm install 失败:', error)
+          return
+        }
+        console.log('npm install 输出:', stdout)
+        if (stderr) {
+          console.error('npm install 错误输出:', stderr)
+        }
+      })
+
+      // 可选：监听进程事件
+      child.on('close', (code) => {
+        console.log(`npm install 进程退出，退出码: ${code}`)
+      })
 
       console.log('npm install 命令执行成功')
     } catch (error) {

@@ -23,7 +23,23 @@
       <div class="form-row">
         <div class="form-col">
           <el-form-item label="名称" prop="name">
-            <el-input v-model="form.name" :placeholder="form.type === 'prompt' ? '例如: code_review' : '例如: 电商平台前端'" />
+            <div class="name-input-wrapper">
+              <el-input
+                v-model="form.name"
+                :placeholder="form.type === 'prompt' ? '例如: code_review' : '例如: 电商平台前端'"
+                @input="handleNameInput"
+              />
+              <el-tooltip
+                v-if="form.type === 'prompt'"
+                content="mcp的tool name，只能包含字母和下划线"
+                placement="top"
+                class="name-help-tooltip"
+              >
+                <el-icon class="name-help-icon">
+                  <QuestionFilled />
+                </el-icon>
+              </el-tooltip>
+            </div>
           </el-form-item>
         </div>
         <div class="form-col">
@@ -168,6 +184,7 @@
 <script setup>
 import { useAppStore } from "@/store";
 import { ElMessage } from "element-plus";
+import { QuestionFilled } from "@element-plus/icons-vue";
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import PromptEditor from "./PromptEditor.vue";
 
@@ -254,6 +271,15 @@ const rules = computed(() => {
       { required: true, message: "请选择类型", trigger: "change" }
     ]
   };
+
+  // 为prompt类型添加特殊的名称验证规则
+  if (form.value.type === 'prompt') {
+    baseRules.name.push({
+      pattern: /^[a-zA-Z0-9_]+$/,
+      message: "只能包含字母、数字和下划线",
+      trigger: "blur"
+    });
+  }
 
   // 只有项目类型才需要路径验证
   if (form.value.type === 'project') {
@@ -515,6 +541,17 @@ const handleClickOutside = (event) => {
   }
 };
 
+// 处理名称输入，对prompt类型进行字符限制
+const handleNameInput = (value) => {
+  if (form.value.type === 'prompt') {
+    // 只允许字母、数字和下划线
+    const filteredValue = value.replace(/[^a-zA-Z0-9_]/g, '');
+    if (filteredValue !== value) {
+      form.value.name = filteredValue;
+    }
+  }
+};
+
 onMounted(() => {
   loadIdeConfigs();
   document.addEventListener('click', handleClickOutside);
@@ -624,5 +661,23 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background-color: var(--card-bg);
+}
+
+.name-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name-help-icon {
+  color: var(--text-secondary);
+  cursor: help;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.name-help-icon:hover {
+  color: var(--primary-color);
 }
 </style>
