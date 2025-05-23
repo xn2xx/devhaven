@@ -45,10 +45,15 @@ class MigrationService {
         console.log(`MCP目录不存在: ${this.mcpDir}`)
         return
       }
-
+      console.log('开始迁移mcp文件')
       const files = fs.readdirSync(this.mcpDir)
-
+      console.log('读取mcp配置文件成功，读取到文件列表: ', files)
       const targetPath = path.join(os.homedir(), '.devhaven', 'prompt')
+      // 确保目标目录存在
+      if (!fs.existsSync(targetPath)) {
+        console.log(`创建目标目录: ${targetPath}`)
+        fs.mkdirSync(targetPath, { recursive: true })
+      }
       for (const file of files) {
         // 将文件复制到目标目录
         const targetFilePath = path.join(targetPath, file)
@@ -57,6 +62,7 @@ class MigrationService {
           // 删除文件
           fs.unlinkSync(targetFilePath)
         }
+        console.log(`复制文件: ${path.join(this.mcpDir, file)},${targetFilePath}`)
         fs.copyFileSync(path.join(this.mcpDir, file), targetFilePath)
         console.log(`复制文件: ${targetFilePath}`)
       }
