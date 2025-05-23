@@ -141,9 +141,9 @@ root
         - src                               // Vue 应用源码
             - global.d.ts                   // 全局类型定义
             - router                        // Vue Router 路由配置
-                - index.js                  // 路由定义，包含主页/设置/托盘/GitHub星标页面
+                - mcp.js                  // 路由定义，包含主页/设置/托盘/GitHub星标页面
             - store                         // Pinia 状态管理
-                - index.js                  // 状态管理入口
+                - mcp.js                  // 状态管理入口
             - views                         // 页面组件
                 - GithubStarView.vue        // GitHub 星标项目管理页面
                 - TrayWindow.vue            // 系统托盘悬浮窗口组件

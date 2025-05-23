@@ -119,7 +119,7 @@ function registerIpcHandlers() {
   // 删除项目
   ipcMain.handle('db:deleteProject', async (_, id) => {
     try {
-      return dbService.projects.delete(id)
+      return projectService.deleteProject(id)
     } catch (error) {
       console.error('删除项目失败:', error)
       throw error

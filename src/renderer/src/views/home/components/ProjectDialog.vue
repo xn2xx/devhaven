@@ -91,12 +91,12 @@
         </div>
       </div>
 
-      <el-form-item v-if="form.type === 'project'" label="项目描述" prop="description">
+      <el-form-item label="描述" prop="description">
         <el-input
           v-model="form.description"
           type="textarea"
           :rows="3"
-          placeholder="简要描述项目的功能和目的..."
+          placeholder="简要描述功能和目的..."
         />
       </el-form-item>
 

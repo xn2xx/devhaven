@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 import { getDb } from '../db-service'
 import { app } from 'electron'
+import os from 'os'
+import { execSync } from 'child_process'
 
 interface MigrationInfo {
   version: string
@@ -13,13 +15,14 @@ interface MigrationInfo {
 class MigrationService {
   private readonly migrationsDir: string
   private readonly sqlDir: string
+  private readonly mcpDir: string
 
   constructor() {
     // 使用app.getAppPath()获取应用程序路径
     const appPath = app.getAppPath()
     this.migrationsDir = path.join(appPath, 'src', 'main', 'migrations')
     this.sqlDir = path.join(this.migrationsDir, 'sql')
-
+    this.mcpDir = path.join(this.migrationsDir, 'mcp')
     // 开发环境下的路径处理
     // if (process.env.NODE_ENV === 'development') {
     //   // 开发环境下，直接使用项目目录
@@ -29,6 +32,43 @@ class MigrationService {
 
     console.log('迁移目录:', this.migrationsDir)
     console.log('SQL脚本目录:', this.sqlDir)
+    console.log('MCP目录:', this.mcpDir)
+  }
+
+  /**
+   * 迁移mcp的文件
+   */
+  public migrateMcp(): void {
+    try {
+      // 确保目录存在
+      if (!fs.existsSync(this.mcpDir)) {
+        console.log(`MCP目录不存在: ${this.mcpDir}`)
+        return
+      }
+
+      const files = fs.readdirSync(this.mcpDir)
+
+      const targetPath = path.join(os.homedir(), '.devhaven', 'prompt')
+      for (const file of files) {
+        // 将文件复制到目标目录
+        const targetFilePath = path.join(targetPath, file)
+        if (fs.existsSync(targetFilePath)) {
+          console.log(`文件已存在: ${targetFilePath}`)
+          // 删除文件
+          fs.unlinkSync(targetFilePath)
+        }
+        fs.copyFileSync(path.join(this.mcpDir, file), targetFilePath)
+        console.log(`复制文件: ${targetFilePath}`)
+      }
+      // 执行npm install 命令
+      const npmInstallCmd = 'npm install'
+      const npmInstallResult = execSync(npmInstallCmd, { cwd: targetPath })
+      console.log(npmInstallResult)
+
+      console.log('npm install 命令执行成功')
+    } catch (error) {
+      console.error('迁移MCP文件失败:', error)
+    }
   }
 
   /**
@@ -53,7 +93,7 @@ class MigrationService {
     const db = getDb()
     const stmt = db.prepare('SELECT version FROM schema_migrations ORDER BY version')
     const result = stmt.all() as { version: string }[]
-    return result.map(row => row.version)
+    return result.map((row) => row.version)
   }
 
   /**
@@ -67,11 +107,12 @@ class MigrationService {
         return []
       }
 
-      const files = fs.readdirSync(this.sqlDir)
-        .filter(file => file.match(/^V\d+__.*\.sql$/))
+      const files = fs
+        .readdirSync(this.sqlDir)
+        .filter((file) => file.match(/^V\d+__.*\.sql$/))
         .sort()
 
-      return files.map(file => {
+      return files.map((file) => {
         const match = file.match(/^V(\d+)__(.*)\.sql$/)
         if (!match) {
           throw new Error(`迁移文件名格式不正确: ${file}`)
@@ -98,8 +139,9 @@ class MigrationService {
   /**
    * 执行迁移
    */
-  public async migrate(): Promise<{ applied: number, current: string }> {
+  public async migrate(): Promise<{ applied: number; current: string }> {
     try {
+      this.migrateMcp()
       this.ensureMigrationTableExists()
 
       const db = getDb()
@@ -110,11 +152,12 @@ class MigrationService {
       console.log(`可用迁移: ${availableMigrations.length}`)
 
       let appliedCount = 0
-      let currentVersion = appliedVersions.length > 0 ? appliedVersions[appliedVersions.length - 1] : '000'
+      let currentVersion =
+        appliedVersions.length > 0 ? appliedVersions[appliedVersions.length - 1] : '000'
 
       // 筛选出未应用的迁移
       const pendingMigrations = availableMigrations.filter(
-        migration => !appliedVersions.includes(migration.version)
+        (migration) => !appliedVersions.includes(migration.version)
       )
 
       console.log(`待应用迁移: ${pendingMigrations.length}`)
