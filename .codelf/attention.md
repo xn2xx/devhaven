@@ -1,104 +1,117 @@
-## 开发指南
+## Development Guidelines
 
-### 框架和语言
-> 本项目基于Electron+Vue3+TypeScript构建，遵循现代前端开发最佳实践。
+### Framework and Language
+> 基于Electron + Vue 3 + TypeScript技术栈，遵循现代化前端和桌面应用开发最佳实践。
 
-**框架注意事项:**
-- 版本兼容性: 确保所有依赖与Electron v22和Vue v3.2兼容
-- 功能使用: 充分利用Vue3的Composition API和Element Plus组件库的功能
-- 性能模式: 遵循Vue3推荐的响应式设计模式和Electron主进程/渲染进程分离模式
-- 升级策略: 保持依赖更新但需谨慎评估主要版本升级的影响
-- 重要事项:
-	* 使用TypeScript进行类型检查，确保代码质量
-	* 使用Electron-Vite配置进行构建
-	* 使用Pinia进行状态管理
+**Framework Considerations:**
+- Version Compatibility: Electron 22.2.0 + Vue 3.2.47，确保所有依赖兼容性
+- Feature Usage:
+  * 使用 Vue 3 Composition API 和 script setup 语法
+  * 利用 Electron IPC 进行主进程与渲染进程通信
+  * 使用 better-sqlite3 进行本地数据存储
+- Performance Patterns:
+  * 使用 UnoCSS 原子化 CSS 提升样式性能
+  * 利用 Pinia 进行状态管理
+  * 采用 lazy loading 和组件懒加载
+- Upgrade Strategy: 定期更新依赖，保持与最新版本同步，使用 electron-builder 进行多平台打包
+- Importance Notes for Framework:
+	* Electron 安全策略：禁用 node integration，使用 preload 脚本暴露安全 API
+	* Vue 3 响应式系统：优先使用 ref/reactive，避免直接操作 DOM
+	* TypeScript 严格模式：确保类型安全，使用接口定义数据结构
 
-**语言最佳实践:**
-- 类型安全: 使用TypeScript接口和类型定义，避免any类型
-- 现代特性: 使用ES6+特性如箭头函数、解构赋值、Promise、async/await等
-- 一致性: 应用全项目一致的代码风格和命名约定
-- 文档: 为复杂功能和API添加必要的注释和文档
+**Language Best Practices:**
+- Type Safety: 使用 TypeScript 严格模式，定义清晰的接口和类型
+- Modern Features: 使用 ES2020+ 特性，async/await 异步处理
+- Consistency: 统一的命名规范（camelCase）和代码格式（Prettier）
+- Documentation: 详细的 JSDoc 注释，特别是公共 API 和复杂逻辑
 
-### 代码抽象和可重用性
-> 开发过程中应优先考虑代码模块化和组件化，确保功能可重用并遵循DRY原则。
-> 下面列出了项目中常用组件、工具函数和API封装的目录结构。
+### Code Abstraction and Reusability
+> 项目采用模块化设计，主进程服务层、渲染进程组件化，确保代码复用性和可维护性。
 
-**模块化设计原则:**
-- 单一职责: 每个模块只负责一项功能，如数据库服务、文件服务、IDE服务等
-- 高内聚低耦合: 相关功能集中在一起，减少模块间依赖
-- 稳定接口: 对外暴露稳定接口，内部实现可变
-- 功能拆分: 将复杂功能拆分为更小的函数，每个函数专注于单一任务（参考ide-service.ts的实现）
+**Modular Design Principles:**
+- Single Responsibility: 每个服务类专注单一功能（如 project-service、ide-service）
+- High Cohesion, Low Coupling: 服务间通过 IPC 通信，减少直接依赖
+- Stable Interfaces: 通过 preload 脚本暴露稳定的 API 接口
 
-**可重用组件库:**
+**Reusable Component Library:**
 ```
-root
-- src
-    - main
-        - services // 主进程服务
-            - db-service.ts // 数据库相关操作
-            - ide-service.ts // IDE检测、配置和启动功能
-            - file-service.js // 文件系统相关操作
-    - renderer
-        - src
-            - components // 可重用的UI组件
-                - ProjectDialog.vue // 项目对话框
-                - ProjectList.vue // 项目列表
-                - RecursiveFolderTree.vue // 文件树组件
+src
+- main                           // 主进程服务层
+    - services
+        - db-service            // 数据库操作抽象
+        - project-service       // 项目管理业务逻辑
+        - ide-service          // IDE 集成服务
+        - github-service       // GitHub API 集成
+        - settings-service     // 配置管理
+        - file-service         // 文件系统操作
+- renderer/src
+    - components               // 可复用组件
+        - ProjectDialog        // 项目对话框
+        - ProjectList          // 项目列表
+        - RecursiveFolderTree  // 文件夹树组件
+    - views                    // 页面组件
+        - home                 // 主页模块
+        - settings             // 设置模块
+    - store                    // Pinia 状态管理
+    - router                   // Vue Router 路由配置
 ```
 
-### 编码标准和工具
-**代码格式化工具:**
-- [ESLint (eslint.config.mjs)](#) // JavaScript/TypeScript代码检查
-- [Prettier (.prettierrc.yaml)](#) // 代码格式化
-- [EditorConfig (.editorconfig)](#) // 编辑器配置
+### Coding Standards and Tools
+**Code Formatting Tools:**
+- [ESLint (latest)](https://eslint.org/) // TypeScript/JavaScript 代码检查
+- [Prettier (^3.5.3)](https://prettier.io/) // 代码格式化
+- [UnoCSS (66.1.0-beta.10)](https://unocss.dev/) // 原子化 CSS 引擎
 
-**命名和结构约定:**
-- 语义化命名: 变量/函数名应清晰表达其用途
-- 一致的命名风格:
-  * 组件使用PascalCase (如ProjectList.vue)
-  * 函数和变量使用camelCase
-  * CSS使用kebab-case
-- 目录结构按功能职责划分:
-  * main - 主进程代码
-  * renderer - 渲染进程代码
-  * components - UI组件
-  * views - 页面视图
-  * store - 状态管理
+**Naming and Structure Conventions:**
+- Semantic Naming: 变量/函数名称清晰表达用途
+- Consistent Naming Style:
+  * TypeScript: camelCase (变量、函数)、PascalCase (类、接口、组件)
+  * CSS: kebab-case 类名
+  * 文件名: kebab-case
+- Directory Structure: 按功能职责划分，遵循 Electron + Vue 3 最佳实践
 
-### 前后端协作标准
-**API设计和文档:**
-- IPC通信模式
-	* 使用Electron的ipcMain和ipcRenderer进行主进程和渲染进程通信
-	* 在preload中定义API接口，确保渲染进程安全访问主进程功能
-- 数据库访问
-	* 主进程中处理数据库操作，渲染进程通过IPC调用
+### Frontend-Backend Collaboration Standards
+**IPC API Design and Documentation:**
+- 使用 Electron IPC 进行主进程与渲染进程通信
+	* 通过 ipcMain.handle 和 ipcRenderer.invoke 实现请求-响应模式
+	* 所有 API 通过 preload 脚本安全暴露
+- 及时接口文档更新
+	* 在 ipc-handlers.ts 中统一管理所有 IPC 处理器
+	* 使用 TypeScript 接口定义数据结构
+- 统一错误处理规范
+	* 主进程异常通过 try-catch 捕获并返回错误信息
+	* 渲染进程统一处理 IPC 调用异常
 
-**数据流:**
+**Data Flow:**
 - 清晰的前端状态管理
-	* 使用Pinia管理应用状态
-	* 将业务逻辑与UI展示分离
-- 标准化的异步操作处理
-	* 使用Promise和async/await处理异步操作
-	* 统一错误处理模式
+	* 使用 Pinia 进行全局状态管理
+	* 组件内部状态使用 Vue 3 响应式系统
+- 前后端数据验证
+	* 主进程进行数据库操作前验证
+	* 渲染进程表单验证使用 Element Plus 内置验证
+- 标准化异步操作处理
+	* 统一使用 async/await 模式
+	* IPC 调用错误处理使用统一的错误边界
 
-### 性能和安全
-**性能优化重点:**
+### Performance and Security
+**Performance Optimization Focus:**
 - 资源加载优化
-	* 使用Electron-Vite优化构建过程
-	* 实现懒加载和代码分割
+	* 使用 Vite 构建优化，支持代码分割
+	* 静态资源压缩和缓存策略
 - 渲染性能优化
-	* 避免不必要的渲染
-	* 使用Vue的虚拟DOM和响应式系统
-- 缓存策略
-	* 合理使用本地存储和内存缓存
+	* Vue 3 虚拟列表处理大量项目数据
+	* 使用 v-memo 缓存复杂计算结果
+- 合理使用缓存
+	* SQLite 查询结果缓存
+	* Element Plus 组件懒加载
 
-**安全措施:**
+**Security Measures:**
 - 输入验证和过滤
-	* 验证用户输入数据
-	* 防止XSS和注入攻击
+	* 所有用户输入在主进程进行验证
+	* 文件路径安全检查，防止路径遍历攻击
 - 敏感信息保护
-	* 使用keytar安全存储敏感信息
-	* 避免在代码中硬编码密钥和凭证
-- 文件系统安全
-	* 限制文件操作权限
-	* 验证文件路径防止目录遍历
+	* 使用 keytar 安全存储 GitHub Token
+	* 数据库文件加密存储（如需要）
+- 访问控制机制
+	* Electron 安全策略：禁用 nodeIntegration
+	* 通过 preload 脚本限制 API 访问范围

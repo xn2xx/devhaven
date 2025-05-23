@@ -25,15 +25,35 @@ DevHaven provides a centralized platform that integrates all projects into a sin
 - **Dark/Light Theme**: Switch interface themes
 - **Search Function**: Quickly find projects
 - **Cross-IDE File Switching**: Quickly switch between different IDEs for the same file through a floating window, allowing you to edit the same file in different IDEs without manual navigation
+- **Prompt Management**: Manage prompts and provide MCP access for AI tools like Cursor, inspired by: https://github.com/gdli6177/mcp-prompt-server
+
+## MCP Configuration
+When starting the application, prompts will be mounted to the local directory, and the MCP environment will be set up in the %HOME%/.devhaven/prompt directory.
+
+If MCP is not loaded, you may need to run `npm install` in this directory to install dependencies.
+
+```json
+{
+  "prompt-server": {
+    "command": "node",
+    "args": [
+      "~/.devhaven/prompt/index.js"
+    ],
+    "transport": "stdio"
+  }
+}
+```
 
 ## Plugin Support
 To provide a smoother development experience, DevHaven offers companion IDE plugins that automatically synchronize projects opened in IDEs to the DevHaven application:
 - [**VS Code Plugin**](https://github.com/zxcvbnmzsedr/devhaven-vs-plugin) - Automatically synchronize projects opened in VS Code
 - [**IntelliJ IDEA Plugin**](https://github.com/zxcvbnmzsedr/devhaven-idea-plugin) - For all IDEs on the IntelliJ platform (including WebStorm, PyCharm, etc.)
+
 These plugins can:
 - Automatically detect projects opened in the IDE
 - Synchronize project information to DevHaven
 - Eliminate the need to manually add projects, improving work efficiency
+
 For more information, please check the [plugin directory](./plugin).
 
 ## Tech Stack
@@ -88,6 +108,11 @@ pnpm build:linux
 ```
 
 # Preview
+## Project Management
 ![img](doc/image.png)
 ![img](doc/setting.png)
 ![img](doc/switch.png)
+## Prompt Management
+![img](doc/prompt.png)
+![img](doc/mcp.png)
+![img](doc/mcp_result.png)

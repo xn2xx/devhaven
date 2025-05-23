@@ -25,6 +25,27 @@ DevHaven提供了一个集中式平台，将所有项目整合在一个界面中
 - **深色/浅色主题**：支持切换界面主题
 - **搜索功能**：快速查找项目
 - **跨IDE文件切换**：通过悬浮窗快速在不同IDE之间切换同一文件，无需手动导航即可在不同IDE中编辑同一文件
+- **prompt**管理: 管理prompt，然后提供mcp提供给cursor这种ai工具进行访问，灵感来源于：https://github.com/gdli6177/mcp-prompt-server
+
+## mcp配置
+在启动应用的时候会将prompt挂载到本地目录之中，在%HOME%/.devhaven/prompt目录之下将mcp环境搭建好
+
+如果没有加载到mcp，也许需要到此目录下执行 npm install 来安装依赖
+
+```json
+{
+  "prompt-server": {
+    "command": "node",
+    "args": [
+      "~/.devhaven/prompt/index.js"
+    ],
+    "transport": "stdio"
+  }
+}
+
+```
+
+
 
 ## 插件支持
 为了提供更流畅的开发体验，DevHaven提供了配套的IDE插件，可自动同步IDE中打开的项目到DevHaven应用：
@@ -88,6 +109,12 @@ pnpm build:linux
 ```
 
 # 预览
+## 项目管理
 ![img](doc/image.png)
 ![img](doc/setting.png)
 ![img](doc/switch.png)
+## prompt管理
+![img](doc/prompt.png)
+![img](doc/mcp.png)
+![img](doc/mcp_result.png)
+

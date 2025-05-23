@@ -4,12 +4,18 @@
       <i class="i-fa-solid:folder-open text-8xl text-gray-300 mb-4"></i>
       <h3>未找到项目</h3>
       <p class="text-gray-500 mb-4">
-        {{ searchInput ? "没有匹配您搜索条件的项目。" : "开始添加一个新项目吧。" }}
+        {{ searchInput ? "没有匹配您搜索条件的项目。" : "开始添加一个新项目或提示词吧。" }}
       </p>
-      <el-button type="primary" @click="$emit('add-project')">
-        <i class="i-fa-solid:plus mr-2"></i>
-        添加项目
-      </el-button>
+      <div class="no-projects-actions">
+        <el-button type="primary" @click="$emit('add-project', 'project')">
+          <i class="i-fa-solid:code mr-2"></i>
+          添加项目
+        </el-button>
+        <el-button type="success" @click="$emit('add-project', 'prompt')">
+          <i class="i-fa-solid:comments mr-2"></i>
+          添加提示词
+        </el-button>
+      </div>
     </div>
 
     <div v-else class="projects-grid">
@@ -17,14 +23,16 @@
         v-for="project in projects"
         :key="project.id"
         class="project-card"
-        @click="handleProjectAction('openFolder', project)"
+        @click="handleProjectClick(project)"
       >
         <div class="card-header">
-          <div :class="`project-icon ${getIconClass(project.icon)}`">
-            <i :class="`i-fa-solid:${project.icon || 'code'}`"></i>
+          <div :class="`project-icon ${getIconClass(project.icon, project.type)}`">
+            <i :class="`i-fa-solid:${project.type === 'prompt' ? 'comments' : (project.icon || 'code')}`"></i>
           </div>
           <div class="card-header-info">
-            <h3 class="project-title">{{ project.name }}</h3>
+            <h3 class="project-title">
+              {{ project.name }}
+            </h3>
             <div class="project-subtitle">{{ project.description || "暂无描述" }}</div>
           </div>
           <div class="card-menu" @click.stop>
@@ -32,32 +40,56 @@
               <i class="i-fa-solid:ellipsis-v" @click.stop></i>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="openFolder">
-                    <i class="i-fa-solid:folder-open mr-2"></i>
-                    打开文件夹
-                  </el-dropdown-item>
-                  <el-dropdown-item command="edit">
-                    <i class="i-fa-solid:edit mr-2"></i>
-                    编辑项目
-                  </el-dropdown-item>
-                  <el-dropdown-item command="favorite">
-                    <i
-                      :class="['i-fa-solid:star mr-2']"
-                      :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
-                    {{ project.is_favorite === 1 ? "取消收藏" : "收藏项目" }}
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="project.source_type === 'github' && project.is_cloned === 0" command="clone">
-                    <i class="i-fa-solid:download mr-2"></i>
-                    克隆仓库
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="project.source_type === 'github'" command="viewOnGithub">
-                    <i class="i-fa-brands:github mr-2"></i>
-                    在 GitHub 上查看
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided>
-                    <i class="i-fa-solid:trash-alt mr-2 text-red-500"></i>
-                    <span class="text-red-500">删除项目</span>
-                  </el-dropdown-item>
+                  <template v-if="project.type === 'prompt'">
+                    <!-- Prompt 类型的菜单项 -->
+                    <el-dropdown-item command="copyPrompt">
+                      <i class="i-fa-solid:copy mr-2"></i>
+                      复制提示词
+                    </el-dropdown-item>
+                    <el-dropdown-item command="edit">
+                      <i class="i-fa-solid:edit mr-2"></i>
+                      编辑提示词
+                    </el-dropdown-item>
+                    <el-dropdown-item command="favorite">
+                      <i
+                        :class="['i-fa-solid:star mr-2']"
+                        :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
+                      {{ project.is_favorite === 1 ? "取消收藏" : "收藏提示词" }}
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>
+                      <i class="i-fa-solid:trash-alt mr-2 text-red-500"></i>
+                      <span class="text-red-500">删除提示词</span>
+                    </el-dropdown-item>
+                  </template>
+                  <template v-else>
+                    <!-- Project 类型的菜单项 -->
+                    <el-dropdown-item command="openFolder">
+                      <i class="i-fa-solid:folder-open mr-2"></i>
+                      打开文件夹
+                    </el-dropdown-item>
+                    <el-dropdown-item command="edit">
+                      <i class="i-fa-solid:edit mr-2"></i>
+                      编辑项目
+                    </el-dropdown-item>
+                    <el-dropdown-item command="favorite">
+                      <i
+                        :class="['i-fa-solid:star mr-2']"
+                        :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
+                      {{ project.is_favorite === 1 ? "取消收藏" : "收藏项目" }}
+                    </el-dropdown-item>
+                    <el-dropdown-item v-if="project.source_type === 'github' && project.is_cloned === 0" command="clone">
+                      <i class="i-fa-solid:download mr-2"></i>
+                      克隆仓库
+                    </el-dropdown-item>
+                    <el-dropdown-item v-if="project.source_type === 'github'" command="viewOnGithub">
+                      <i class="i-fa-brands:github mr-2"></i>
+                      在 GitHub 上查看
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>
+                      <i class="i-fa-solid:trash-alt mr-2 text-red-500"></i>
+                      <span class="text-red-500">删除项目</span>
+                    </el-dropdown-item>
+                  </template>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -66,14 +98,47 @@
 
         <div class="card-body">
           <div class="project-stats">
-            <div class="stat-item">
-              <i class="i-fa-solid:code-branch stat-icon"></i>
-              <span>{{ project.branch || "master" }}</span>
-            </div>
-            <div class="stat-item">
-              <i class="i-fa-solid:clock stat-icon"></i>
-              <span>{{ formatDate(project.last_opened_at) || "未打开" }}</span>
-            </div>
+            <template v-if="project.type === 'prompt'">
+              <!-- Prompt 类型的消息展示 -->
+              <div class="prompt-content">
+                <el-tooltip
+                  placement="top"
+                  :disabled="getPromptContent(project).length <= 100"
+                  effect="dark"
+                  :show-after="500"
+                  :popper-style="{ maxWidth: '400px', whiteSpace: 'pre-wrap' }"
+                >
+                  <template #content>
+                    <div style="white-space: pre-wrap; max-width: 350px; max-height: 300px; overflow-y: auto; word-wrap: break-word; padding: 8px; scrollbar-width: thin;">
+                      {{ getPromptContent(project) }}
+                    </div>
+                  </template>
+                  <div class="prompt-text">
+                    {{ getPromptContentPreview(project) }}
+                  </div>
+                </el-tooltip>
+              </div>
+            </template>
+            <template v-else>
+              <!-- Project 类型的统计信息 -->
+              <div class="stat-item">
+                <i class="i-fa-solid:code-branch stat-icon"></i>
+                <span>{{ project.branch || "master" }}</span>
+              </div>
+              <div class="stat-item">
+                <i class="i-fa-solid:clock stat-icon"></i>
+                <span>{{ formatDate(project.last_opened_at) || "未打开" }}</span>
+              </div>
+              <div class="stat-item">
+                <i
+                  :class="[project.source_type === 'github' ? 'i-fa-brands:github' : 'i-fa-solid:folder', 'stat-icon']"></i>
+                <span class="project-path">{{ project.path }}</span>
+                <span v-if="project.source_type === 'github'" class="github-badge">GitHub</span>
+                <span v-if="project.source_type === 'github' && project.is_cloned === 0"
+                      class="not-cloned-badge">未克隆</span>
+              </div>
+            </template>
+
             <div class="stat-item">
               <i class="i-fa-solid:folder-tree stat-icon"></i>
               <span class="project-folder"
@@ -84,14 +149,6 @@
                 <i :class="[project.is_favorite ===1? 'i-fa-solid:star' : 'i-fa-solid:star', 'card-action-icon']"
                    :style="project.is_favorite === 1 ? 'color: #f59e0b;' : ''"></i>
               </i>
-            </div>
-            <div class="stat-item">
-              <i
-                :class="[project.source_type === 'github' ? 'i-fa-brands:github' : 'i-fa-solid:folder', 'stat-icon']"></i>
-              <span class="project-path">{{ project.path }}</span>
-              <span v-if="project.source_type === 'github'" class="github-badge">GitHub</span>
-              <span v-if="project.source_type === 'github' && project.is_cloned === 0"
-                    class="not-cloned-badge">未克隆</span>
             </div>
           </div>
           <div class="project-tags">
@@ -109,23 +166,43 @@
           </div>
 
           <div class="card-actions">
-            <button
-              class="card-action-btn"
-              v-for="ide in getPreferredIdes(project)"
-              @click.stop="openProjectWithSpecificIde(project, ide)"
-              :disabled="project.source_type === 'github' && project.is_cloned === 0 && !cloningProject"
-            >
-              <i class="i-fa-solid:external-link-alt card-action-icon"></i>
-              {{ getIdeName(ide) }}
-            </button>
-            <button
-              v-if="project.source_type === 'github' && project.is_cloned === 0"
-              class="card-action-btn github"
-              @click.stop="handleProjectAction('clone', project)"
-            >
-              <i class="i-fa-solid:download card-action-icon"></i>
-              克隆
-            </button>
+            <template v-if="project.type === 'prompt'">
+              <!-- Prompt 类型的操作按钮 -->
+              <button
+                class="card-action-btn prompt"
+                @click.stop="copyPromptToClipboard(project)"
+              >
+                <i class="i-fa-solid:copy card-action-icon"></i>
+                复制提示词
+              </button>
+              <button
+                class="card-action-btn secondary"
+                @click.stop="viewPromptDetails(project)"
+              >
+                <i class="i-fa-solid:eye card-action-icon"></i>
+                查看详情
+              </button>
+            </template>
+            <template v-else>
+              <!-- Project 类型的操作按钮 -->
+              <button
+                class="card-action-btn"
+                v-for="ide in getPreferredIdes(project)"
+                @click.stop="openProjectWithSpecificIde(project, ide)"
+                :disabled="project.source_type === 'github' && project.is_cloned === 0 && !cloningProject"
+              >
+                <i class="i-fa-solid:external-link-alt card-action-icon"></i>
+                {{ getIdeName(ide) }}
+              </button>
+              <button
+                v-if="project.source_type === 'github' && project.is_cloned === 0"
+                class="card-action-btn github"
+                @click.stop="handleProjectAction('clone', project)"
+              >
+                <i class="i-fa-solid:download card-action-icon"></i>
+                克隆
+              </button>
+            </template>
           </div>
         </div>
       </div>
@@ -185,8 +262,19 @@ const store = useAppStore();
 const folders = computed(() => store.folders);
 
 
+const handleProjectClick = (project) => {
+  if (project.type === 'prompt') {
+    handleProjectAction('copyPrompt', project)
+  } else {
+    handleProjectAction('openFolder', project)
+  }
+};
+
 const handleProjectAction = async (command, project) => {
   switch (command) {
+    case "copyPrompt":
+      await copyPromptToClipboard(project);
+      break;
     case "openFolder":
       try {
         if (project.source_type === "github" && project.is_cloned === 0) {
@@ -209,8 +297,9 @@ const handleProjectAction = async (command, project) => {
       emit("edit-project", project);
       break;
     case "delete":
+      const itemType = project.type === 'prompt' ? '提示词' : '项目';
       ElMessageBox.confirm(
-        "确定要删除此项目吗？",
+        `确定要删除此${itemType}吗？`,
         "确认删除",
         {
           confirmButtonText: "删除",
@@ -221,9 +310,9 @@ const handleProjectAction = async (command, project) => {
         try {
           await store.deleteProject(project.id);
           loadProjects();
-          ElMessage.success("项目删除成功");
+          ElMessage.success(`${itemType}删除成功`);
         } catch (error) {
-          ElMessage.error("删除项目失败");
+          ElMessage.error(`删除${itemType}失败`);
         }
       }).catch(() => {
       });
@@ -233,7 +322,8 @@ const handleProjectAction = async (command, project) => {
         await store.toggleFavoriteProject(project);
         project.is_favorite = project.is_favorite === 1 ? 0 : 1;
         emit("favorite-project", project);
-        ElMessage.success(project.is_favorite === 1 ? "项目已添加到收藏" : "项目已从收藏中移除");
+        const itemType = project.type === 'prompt' ? '提示词' : '项目';
+        ElMessage.success(project.is_favorite === 1 ? `${itemType}已添加到收藏` : `${itemType}已从收藏中移除`);
       } catch (error) {
         console.error(error);
         ElMessage.error("操作收藏失败");
@@ -328,8 +418,10 @@ const getCloneStatusText = () => {
   }
 };
 
-const getIconClass = (icon) => {
-  switch (icon) {
+const getIconClass = (icon, type) => {
+  switch (type) {
+    case "prompt":
+      return "prompt";
     case "server":
       return "backend";
     case "code":
@@ -475,6 +567,116 @@ watch(() => props.currentFolderId, async () => {
   await loadProjects();
 });
 
+const getPromptArgumentsCount = (project) => {
+  if (!project.prompt_arguments) return 0;
+  try {
+    const args = typeof project.prompt_arguments === 'string'
+      ? JSON.parse(project.prompt_arguments)
+      : project.prompt_arguments;
+    return Array.isArray(args) ? args.length : 0;
+  } catch (e) {
+    return 0;
+  }
+};
+
+const getPromptMessagesCount = (project) => {
+  if (!project.prompt_messages) return 0;
+  try {
+    const messages = typeof project.prompt_messages === 'string'
+      ? JSON.parse(project.prompt_messages)
+      : project.prompt_messages;
+    return Array.isArray(messages) ? messages.length : 0;
+  } catch (e) {
+    return 0;
+  }
+};
+
+const copyPromptToClipboard = async (project) => {
+  try {
+    const data = JSON.parse(project.prompt_messages)
+      .filter(message => message.role === 'user')
+      .map(message => message.content.text).join('\n');
+
+    // 使用Electron的剪贴板API
+    await window.api.writeClipboard(data);
+    ElMessage.success("提示词已复制到剪贴板");
+  } catch (error) {
+    console.error(error);
+    ElMessage.error("复制失败");
+  }
+};
+
+const generatePromptYaml = (project) => {
+  try {
+    const args = typeof project.prompt_arguments === 'string'
+      ? JSON.parse(project.prompt_arguments)
+      : project.prompt_arguments || [];
+    const messages = typeof project.prompt_messages === 'string'
+      ? JSON.parse(project.prompt_messages)
+      : project.prompt_messages || [];
+
+    let yaml = `name: ${project.name}\n`;
+    yaml += `description: ${project.description || ''}\n`;
+
+    if (args.length > 0) {
+      yaml += 'arguments:\n';
+      args.forEach(arg => {
+        yaml += `  - name: ${arg.name}\n`;
+        yaml += `    description: ${arg.description}\n`;
+        yaml += `    required: ${arg.required}\n`;
+      });
+    }
+
+    if (messages.length > 0) {
+      yaml += 'messages:\n';
+      messages.forEach(msg => {
+        yaml += `  - role: ${msg.role}\n`;
+        yaml += `    content:\n`;
+        yaml += `      type: text\n`;
+        yaml += `      text: |\n`;
+        msg.content.text.split('\n').forEach(line => {
+          yaml += `        ${line}\n`;
+        });
+      });
+    }
+
+    return yaml;
+  } catch (error) {
+    console.error('生成YAML失败:', error);
+    return `name: ${project.name}\ndescription: ${project.description || ''}`;
+  }
+};
+
+const viewPromptDetails = (project) => {
+  // 这里可以打开一个详情对话框
+  emit("edit-project", project);
+};
+
+const getPromptContent = (project) => {
+  if (!project.prompt_messages) return "";
+  try {
+    const messages = typeof project.prompt_messages === 'string'
+      ? JSON.parse(project.prompt_messages)
+      : project.prompt_messages;
+    return messages
+      .filter(message => message.role === 'user')
+      .map(message => message.content.text)
+      .join('\n');
+  } catch (e) {
+    return "";
+  }
+};
+
+const getPromptContentPreview = (project) => {
+  const fullContent = getPromptContent(project);
+  // 将换行符和多个空白字符替换为单个空格，便于单行显示
+  const cleanContent = fullContent.replace(/\s+/g, ' ').trim();
+  const maxLength = 100; // 定义最大长度
+  if (cleanContent.length > maxLength) {
+    return cleanContent.slice(0, maxLength) + '...';
+  }
+  return cleanContent;
+};
 </script>
 
 <style scoped>
@@ -504,6 +706,13 @@ watch(() => props.currentFolderId, async () => {
   justify-content: center;
   padding: 60px 0;
   text-align: center;
+}
+
+.no-projects-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .projects-grid {
@@ -549,6 +758,11 @@ watch(() => props.currentFolderId, async () => {
 .project-icon.database {
   background-color: rgba(231, 76, 60, 0.1);
   color: var(--danger-color);
+}
+
+.project-icon.prompt {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--primary-color);
 }
 
 .card-header-info {
@@ -780,5 +994,91 @@ watch(() => props.currentFolderId, async () => {
 .card-action-btn[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.card-action-btn.prompt {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.card-action-btn.prompt:hover {
+  background-color: var(--primary-dark);
+  border-color: var(--primary-dark);
+}
+
+.type-badge.prompt {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--primary-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.type-badge.project {
+  background-color: rgba(46, 204, 113, 0.1);
+  color: var(--secondary-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.prompt-content {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.prompt-text {
+  background-color: rgba(var(--primary-rgb), 0.05);
+  border: 1px solid rgba(var(--primary-rgb), 0.1);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Fira Mono', 'Droid Sans Mono', 'Consolas', monospace;
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.prompt-text:hover {
+  background-color: rgba(var(--primary-rgb), 0.08);
+  border-color: rgba(var(--primary-rgb), 0.2);
+}
+
+.prompt-text:empty::before {
+  content: "暂无提示词内容";
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Tooltip滚动条样式 */
+.el-tooltip__popper .el-tooltip__content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 针对webkit浏览器的滚动条样式 */
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.el-tooltip__popper .el-tooltip__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 </style>

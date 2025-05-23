@@ -13,6 +13,7 @@ interface ElectronAPI {
   openExternalUrl: (url: string) => Promise<void>
   pathExists: (path: string) => Promise<boolean>
   cloneGithubRepo: (repoUrl: string, targetPath: string) => Promise<void>
+  writeClipboard: (text: string) => Promise<{ success: boolean }>
 
   // 应用设置
   getAppSettings: () => Promise<any>
@@ -73,6 +74,7 @@ const electronAPI: ElectronAPI = {
   pathExists: (path) => ipcRenderer.invoke('path-exists', path),
   cloneGithubRepo: (repoUrl, targetPath) =>
     ipcRenderer.invoke('clone-github-repo', repoUrl, targetPath),
+  writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
 
   // 应用设置
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),

@@ -37,10 +37,25 @@
           </div>
 
           <div class="page-actions">
-            <el-button class="action-btn secondary" @click="showProjectDialog">
-              <i class="i-fa-solid:plus action-btn-icon"></i>
-              添加项目
-            </el-button>
+            <el-dropdown @command="handleAddCommand" trigger="click">
+              <el-button class="action-btn secondary">
+                <i class="i-fa-solid:plus action-btn-icon"></i>
+                添加
+                <i class="i-fa-solid:caret-down ml-1"></i>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="project">
+                    <i class="i-fa-solid:code mr-2"></i>
+                    添加项目
+                  </el-dropdown-item>
+                  <el-dropdown-item command="prompt">
+                    <i class="i-fa-solid:comments mr-2"></i>
+                    添加提示词
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <button class="theme-toggle" @click="toggleTheme">
               <i :class="isDarkMode ? 'i-fa-solid:sun' : 'i-fa-solid:moon'"></i>
             </button>
@@ -58,7 +73,7 @@
         <ProjectList
           :loading="loading"
           :search-input="searchInput"
-          @add-project="showProjectDialog"
+          @add-project="handleAddCommand"
           :current-folder-id="currentFolder?.id"
           @edit-project="editProject"
           @select-folder="selectFolder"
@@ -164,15 +179,39 @@ const showAddFolderDialog = async (parentId = null) => {
   }
 };
 
-const showProjectDialog = () => {
-  currentProject.value = {
+
+const handleAddCommand = (command) => {
+  const baseProject = {
     name: "",
     folder_id: currentFolder.value?.id || null,
     description: "",
     path: "",
     preferred_ide: ["vscode"],
-    icon: "code"
+    prompt_arguments: [],
+    prompt_messages: [{
+      role: 'user',
+      content: {
+        type: 'text',
+        text: ''
+      }
+    }]
   };
+
+  if (command === 'project') {
+    currentProject.value = {
+      ...baseProject,
+      icon: "code",
+      type: "project"
+    };
+  } else if (command === 'prompt') {
+    currentProject.value = {
+      ...baseProject,
+      icon: "comments",
+      type: "prompt",
+      path: "" // 提示词不需要路径
+    };
+  }
+
   projectDialogVisible.value = true;
 };
 

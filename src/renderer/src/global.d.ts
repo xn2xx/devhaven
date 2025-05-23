@@ -16,6 +16,9 @@ declare namespace DevHaven {
     updated_at: string
     is_favorite: boolean
     ide: string
+    type:'project'|'prompt',
+    prompt_arguments?: string | any[]
+    prompt_messages?: string | any[]
     projectName: string
     projectPath: string
     isFavorite?: boolean
