@@ -157,7 +157,12 @@ export const useAppStore = defineStore("app", {
         if (Array.isArray(projectToCreate.tags)) {
           projectToCreate.tags = JSON.stringify(projectToCreate.tags);
         }
-
+        if (projectToCreate.prompt_arguments) {
+          projectToCreate.prompt_arguments = JSON.stringify(projectToCreate.prompt_arguments);
+        }
+        if (projectToCreate.prompt_messages) {
+          projectToCreate.prompt_messages = JSON.stringify(projectToCreate.prompt_messages);
+        }
         const newProject = await api.createProject(projectToCreate);
         await this.loadProjects(project.folder_id);
         return newProject;

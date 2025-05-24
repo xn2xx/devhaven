@@ -396,8 +396,6 @@ const saveProject = async () => {
 
     // 对于prompt类型，将数据序列化为JSON字符串
     if (projectData.type === 'prompt') {
-      projectData.prompt_arguments = JSON.stringify(projectData.prompt_arguments);
-      projectData.prompt_messages = JSON.stringify(projectData.prompt_messages);
       // 提示词不需要路径和IDE配置
       projectData.path = projectData.path || '';
       projectData.preferred_ide = [];
