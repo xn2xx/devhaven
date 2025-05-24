@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ windows-latest, macos-latest, ubuntu-latest,    macos-13 ]
+        os: [ windows-latest, macos-latest, ubuntu-latest ]
 
     steps:
       - name: 检出代码
@@ -112,15 +112,15 @@ jobs:
         run: |
           ls -la
           echo "===== 构建MacOS应用 ====="
-          # 如果build:mac:mas命令不存在，则回退到build:mac
-          if grep -q "build:mac:mas" package.json; then
-            ELECTRON_BUILDER_LOGGING=debug pnpm build:mac:mas -- --publish never || {
+          # 构建支持x64和arm64的MacOS应用
+          if grep -q "build:mac:universal" package.json; then
+            ELECTRON_BUILDER_LOGGING=debug pnpm build:mac:universal -- --publish never || {
               echo "pnpm脚本构建失败，尝试直接调用electron-builder..."
-              npm run build && npx electron-builder --mac --config.mac.identity=null --publish never || { echo "构建失败"; exit 1; }
+              npm run build && npx electron-builder --mac --x64 --arm64 --config.mac.identity=null --publish never || { echo "构建失败"; exit 1; }
             }
           else
-            echo "使用直接调用electron-builder构建MacOS应用"
-            npm run build && npx electron-builder --mac --config.mac.identity=null --publish never || { echo "构建失败"; exit 1; }
+            echo "使用直接调用electron-builder构建MacOS应用（支持x64和arm64）"
+            npm run build && npx electron-builder --mac --x64 --arm64 --config.mac.identity=null --publish never || { echo "构建失败"; exit 1; }
           fi
         shell: bash
 
@@ -223,7 +223,12 @@ jobs:
           for file in artifacts/devhaven-macos/*.dmg; do
             if [ -f "$file" ]; then
               timestamp=$(date +%Y%m%d%H%M%S)
-              new_name=$(echo "$file" | sed "s/\.dmg$/-${timestamp}.dmg/")
+              # 检查文件名是否已包含架构信息
+              if [[ "$file" =~ -x64\.dmg$ ]] || [[ "$file" =~ -arm64\.dmg$ ]]; then
+                new_name=$(echo "$file" | sed "s/\.dmg$/-${timestamp}.dmg/")
+              else
+                new_name=$(echo "$file" | sed "s/\.dmg$/-${timestamp}.dmg/")
+              fi
               mv "$file" "$new_name"
             fi
           done

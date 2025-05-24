@@ -16,6 +16,7 @@
     "build:unpack": "NODE_ENV=prod npm run build && electron-builder --dir",
     "build:win": "NODE_ENV=prod npm run build && electron-builder --win",
     "build:mac": "NODE_ENV=prod npm run build && electron-builder --mac",
+    "build:mac:universal": "NODE_ENV=prod npm run build && electron-builder --mac --x64 --arm64",
     "build:linux": "NODE_ENV=prod npm run build && electron-builder --linux",
     "build:mac:mas": "NODE_ENV=prod npm run build && electron-builder --mac --config.mac.identity=null --config.mac.type=development"
   },
