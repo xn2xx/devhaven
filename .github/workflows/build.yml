@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ windows-latest, macos-latest, ubuntu-latest,macOS-13 ]
+        os: [ windows-latest, macos-latest, ubuntu-latest,    macos-13 ]
 
     steps:
       - name: 检出代码
