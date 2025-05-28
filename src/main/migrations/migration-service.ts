@@ -23,13 +23,6 @@ class MigrationService {
     this.migrationsDir = path.join(appPath, 'src', 'main', 'migrations')
     this.sqlDir = path.join(this.migrationsDir, 'sql')
     this.mcpDir = path.join(this.migrationsDir, 'mcp')
-    // 开发环境下的路径处理
-    // if (process.env.NODE_ENV === 'development') {
-    //   // 开发环境下，直接使用项目目录
-    //   this.migrationsDir = path.join(__dirname, '..')
-    //   this.sqlDir = path.join(this.migrationsDir, 'sql')
-    // }
-
     console.log('迁移目录:', this.migrationsDir)
     console.log('SQL脚本目录:', this.sqlDir)
     console.log('MCP目录:', this.mcpDir)
@@ -66,28 +59,9 @@ class MigrationService {
         fs.copyFileSync(path.join(this.mcpDir, file), targetFilePath)
         console.log(`复制文件: ${targetFilePath}`)
       }
-      // 执行npm install 命令
-      // const npmInstallCmd = 'npm install'
-      // const child = exec(npmInstallCmd, { cwd: targetPath }, (error, stdout, stderr) => {
-      //   if (error) {
-      //     console.error('npm install 失败:', error)
-      //     return
-      //   }
-      //   console.log('npm install 输出:', stdout)
-      //   if (stderr) {
-      //     console.error('npm install 错误输出:', stderr)
-      //   }
-      // })
-
-      // // 可选：监听进程事件
-      // child.on('close', (code) => {
-      //   console.log(`npm install 进程退出，退出码: ${code}`)
-      // })
-
-      // console.log('npm install 命令执行成功')
       // 解压node_modules.zip
       const unzipCmd = 'unzip -o node_modules.zip'
-      const child = exec(unzipCmd, { cwd: targetPath }, (error, stdout, stderr) => {
+      exec(unzipCmd, { cwd: targetPath }, (error, stdout, stderr) => {
         if (error) {
           console.error('解压失败:', error)
           return
@@ -224,7 +198,6 @@ class MigrationService {
           // 回滚事务
           db.exec('ROLLBACK')
           console.error(`迁移失败: V${migration.version}__${migration.description}`, error)
-          throw error
         }
       }
 
