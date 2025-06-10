@@ -343,6 +343,7 @@ const handleDrop = async (event) => {
             folder_id: currentFolder.value?.id || null,
             description: "",
             path: folderPath,
+            type: "project",
             preferred_ide: ["vscode"],
             icon: "code"
           };
