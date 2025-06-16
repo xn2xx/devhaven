@@ -36,16 +36,19 @@ async function getOpenProjects(): Promise<DevHaven.Project[]> {
         const projectPath = Buffer.from(base64Path, 'base64').toString('utf-8');
 
         // 获取项目信息
-        const project = dbService.projects.getByPath(projectPath);
+        const project = dbService.projects.getByPath(projectPath) as DevHaven.Project;
         // 查看文件内容
         const fileContent = fs.readFileSync(path.join(filePath, file), 'utf-8');
         const projectInfo = JSON.parse(fileContent);
-
+        const folder_id = project.folder_id
+        // 查询文件夹的名称
+        const folder = dbService.folders.getById(folder_id)
         projects.push({
           ide,
           projectName: projectInfo.name,
           projectPath,
-          debHavenProject: project
+          debHavenProject: project,
+          folderName: folder?.name
         });
 
       } catch (fileError) {
