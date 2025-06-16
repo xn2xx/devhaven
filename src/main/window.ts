@@ -17,6 +17,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    show: false, // 初始不显示，等待ready-to-show事件
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -37,6 +38,17 @@ function createWindow() {
     // 生产模式：加载本地文件
     mainWindow.loadFile(path.join(__dirname, "../../out/renderer/index.html"));
   }
+
+  // 当页面准备好显示时才显示窗口，避免视觉闪烁
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) {
+      mainWindow.show();
+      // 在 macOS 上确保窗口获得焦点
+      if (process.platform === 'darwin') {
+        mainWindow.focus();
+      }
+    }
+  });
 
   // 处理窗口关闭事件
   mainWindow.on("closed", () => {

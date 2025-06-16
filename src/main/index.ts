@@ -101,9 +101,15 @@ app.whenReady().then(async () => {
     } else {
       app.on('second-instance', (_1, commandLine, _): void => {
         // 有人试图运行第二个实例，我们应该聚焦到我们的窗口
-        if (getMainWindow()) {
-          if (getMainWindow()?.isMinimized()) getMainWindow()?.restore()
-          getMainWindow()?.focus()
+        const mainWindow = getMainWindow()
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) {
+            mainWindow.restore()
+          }
+          if (!mainWindow.isVisible()) {
+            mainWindow.show()
+          }
+          mainWindow.focus()
         }
 
         // 处理协议URL (Windows)
@@ -118,11 +124,22 @@ app.whenReady().then(async () => {
     }
   }
 
-  // 在macOS上，当点击dock图标时重新创建窗口
+  // 在macOS上，当点击dock图标时重新创建窗口或显示已存在的窗口
   app.on('activate', () => {
     console.log('activate')
-    if (!getMainWindow()) {
+    const mainWindow = getMainWindow()
+    if (!mainWindow) {
+      // 如果主窗口不存在，创建新窗口
       createWindow()
+    } else {
+      // 如果主窗口存在但被最小化或隐藏，则显示并聚焦
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      if (!mainWindow.isVisible()) {
+        mainWindow.show()
+      }
+      mainWindow.focus()
     }
   })
 })

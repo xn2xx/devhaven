@@ -127,7 +127,7 @@ setInterval(() => {
 
         <!-- 项目信息 -->
         <div class="project-info">
-          <div class="project-title" v-if="project.debHavenProject">{{ project.debHavenProject.name }}</div>
+          <div class="project-title" v-if="project.debHavenProject">{{project.folderName}}-{{ project.debHavenProject.name }}</div>
           <div class="project-title" v-else>{{ project.projectName }}</div>
           <div class="project-path">
             <span class="path-text">{{ project.projectPath }}</span>
