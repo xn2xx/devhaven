@@ -1,6 +1,6 @@
 {
   "name": "devhaven",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "A project management tool for organizing projects across companies",
   "main": "./out/main/index.js",
   "scripts": {
