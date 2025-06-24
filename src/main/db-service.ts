@@ -445,6 +445,7 @@ const dbService = {
         ideConfig.display_name,
         ideConfig.command,
         ideConfig.args || null,
+        ideConfig.icon || null,
         now,
         now
       )
@@ -479,6 +480,7 @@ const dbService = {
         data.display_name || ideConfig.display_name,
         data.command || ideConfig.command,
         data.args !== undefined ? data.args : ideConfig.args,
+        data.icon !== undefined ? data.icon : ideConfig.icon,
         now,
         id
       )

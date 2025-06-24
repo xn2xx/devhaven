@@ -3,13 +3,13 @@ import fs from 'fs';
 import os from 'os'
 import path from 'path'
 import { dbService } from './db-service'
-const memoryData: DevHaven.Project[] = []
+const memoryData: DevHaven.OpenProject[] = []
 
 /**
  * 获取打开的项目
- * @returns Promise<Project[]> 打开的项目列表
+ * @returns Promise<OpenProject[]> 打开的项目列表
  */
-async function getOpenProjects(): Promise<DevHaven.Project[]> {
+async function getOpenProjects(): Promise<DevHaven.OpenProject[]> {
   try {
     // 查询%HOME/.debhaven/projects的文件列表
     const filePath = path.join(os.homedir(), '.devhaven/projects')
@@ -24,7 +24,7 @@ async function getOpenProjects(): Promise<DevHaven.Project[]> {
     const files = await fs.promises.readdir(filePath);
 
     // 处理文件并获取项目信息
-    const projects: DevHaven.Project[] = [];
+    const projects: DevHaven.OpenProject[] = [];
 
     for (const file of files) {
       try {
@@ -40,6 +40,12 @@ async function getOpenProjects(): Promise<DevHaven.Project[]> {
         // 查看文件内容
         const fileContent = fs.readFileSync(path.join(filePath, file), 'utf-8');
         const projectInfo = JSON.parse(fileContent);
+
+        if (!project) {
+          console.warn(`未找到路径为 ${projectPath} 的项目信息`);
+          continue;
+        }
+
         const folder_id = project.folder_id
         // 查询文件夹的名称
         const folder = dbService.folders.getById(folder_id)
@@ -48,8 +54,8 @@ async function getOpenProjects(): Promise<DevHaven.Project[]> {
           projectName: projectInfo.name,
           projectPath,
           debHavenProject: project,
-          folderName: folder?.name
-        });
+          folderName: folder ? folder.name : undefined
+        } as DevHaven.OpenProject);
 
       } catch (fileError) {
         console.error(`处理文件 ${file} 时出错:`, fileError);

@@ -9,7 +9,7 @@
       一个高效管理本地开发项目的工具，让您的开发工作更轻松、更有条理。
     </p>
     <div class="app-copyright">
-      © 2023 DevHaven. 保留所有权利。
+      © 2025 DevHaven. 保留所有权利。
     </div>
   </div>
 </template>

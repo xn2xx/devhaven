@@ -55,6 +55,15 @@ declare namespace DevHaven {
     display_name: string
     command: string
     args: string
+    icon?: string
+  }
+
+  interface OpenProject {
+    ide: string
+    projectName: string
+    projectPath: string
+    debHavenProject: Project | null
+    folderName?: string
   }
 }
 declare namespace GitHub {
