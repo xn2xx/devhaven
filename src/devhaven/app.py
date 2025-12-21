@@ -6,8 +6,12 @@ import shlex
 import subprocess
 import sys
 
+from rich.columns import Columns
+from rich.console import Group
+from rich.panel import Panel
+from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, Container
+from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, Static, Tree
 
@@ -442,10 +446,14 @@ class DevHavenApp(App):
         margin: 1;
     }
 
-    #detail {
+    #detail_scroll {
         border: solid $secondary;
         padding: 1;
         height: 1fr;
+    }
+
+    #detail {
+        height: auto;
     }
     """
 
@@ -480,7 +488,8 @@ class DevHavenApp(App):
                 tree.show_root = False
                 yield tree
             with Vertical(id="detail_panel"):
-                yield Static("未选择项目。", id="detail")
+                with VerticalScroll(id="detail_scroll"):
+                    yield Static("未选择项目。", id="detail")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -595,18 +604,7 @@ class DevHavenApp(App):
         if space is None:
             self.update_detail(None)
             return
-        count = self.space_counts.get(space, 0)
-        detail = self.query_one("#detail", Static)
-        detail.update(
-            "\n".join(
-                [
-                    f"空间：{space}",
-                    "",
-                    f"项目数量：{count}",
-                    "提示：请选择具体项目进行打开或编辑。",
-                ]
-            )
-        )
+        self._render_space_detail(space)
 
     def update_detail(self, project: Project | None) -> None:
         detail = self.query_one("#detail", Static)
@@ -629,6 +627,29 @@ class DevHavenApp(App):
                 ]
             )
         )
+
+    def _render_space_detail(self, space: str) -> None:
+        detail = self.query_one("#detail", Static)
+        count = self.space_counts.get(space, 0)
+        header = Text(f"空间：{space}", style="bold")
+        meta = Text(
+            "\n".join(
+                [
+                    f"项目数量：{count}",
+                ]
+            )
+        )
+        projects = [project for project in self.projects if project.space == space]
+        if projects:
+            cards = []
+            for project in projects:
+                tags = "、".join(project.tags) if project.tags else "无"
+                body = Text(f"标签：{tags}", style="dim")
+                cards.append(Panel(body, title=project.name, title_align="center", padding=(0, 1)))
+            grid = Columns(cards, equal=True, expand=True, padding=(0, 1))
+        else:
+            grid = Text("当前空间暂无项目。")
+        detail.update(Group(header, Text(""), meta, Text(""), grid))
 
     def get_selected_project(self) -> Project | None:
         if self.selected_project_id is None:

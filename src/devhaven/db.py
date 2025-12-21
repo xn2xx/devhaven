@@ -66,6 +66,7 @@ class Database:
                 paths.add(path)
         return paths
 
+
     def get_project(self, project_id: int) -> Project | None:
         config = self._load_state()
         for item in config["projects"]:
@@ -73,6 +74,7 @@ class Database:
             if project and project.id == project_id:
                 return project
         return None
+
 
     def create_project(self, name: str, path: str, space: str, tags: Iterable[str]) -> None:
         config = self._load_state()
