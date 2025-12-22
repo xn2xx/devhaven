@@ -521,9 +521,9 @@ class DevHavenApp(App):
 
     def on_mount(self) -> None:
         self.db.ensure_schema()
+        self._start_terminal()
         self.refresh_projects()
         self.query_one("#search", Input).focus()
-        self._start_terminal()
 
     def _terminal_command(self) -> str:
         if sys.platform.startswith("win"):
@@ -533,6 +533,31 @@ class DevHavenApp(App):
     def _start_terminal(self) -> None:
         terminal = self.query_one("#terminal", Terminal)
         terminal.start()
+
+    def _normalize_terminal_path(self, path: str) -> str:
+        resolved = Path(path).expanduser().resolve()
+        if sys.platform.startswith("win"):
+            return str(resolved)
+        return resolved.as_posix()
+
+    def _quote_terminal_path(self, path: str) -> str:
+        escaped = path.replace('"', '\\"')
+        return f"\"{escaped}\""
+
+    def _build_cd_command(self, path: str) -> str:
+        path_value = self._normalize_terminal_path(path)
+        quoted = self._quote_terminal_path(path_value)
+        if sys.platform.startswith("win"):
+            return f"cd /d {quoted}\r\n"
+        return f"cd {quoted}\n"
+
+    def _update_terminal_cwd(self, path: str | None) -> None:
+        if not path:
+            return
+        terminal = self.query_one("#terminal", Terminal)
+        if terminal.send_queue is None:
+            return
+        terminal.send_queue.put_nowait(["stdin", self._build_cd_command(path)])
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search":
@@ -634,6 +659,8 @@ class DevHavenApp(App):
         self.selected_space = None
         project = self.project_map.get(project_id) if project_id is not None else None
         self.update_detail(project)
+        if project is not None:
+            self._update_terminal_cwd(project.path)
 
     def set_selected_space(self, space: str | None) -> None:
         self.selected_space = space
