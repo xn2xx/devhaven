@@ -1,118 +1,58 @@
-# DevHaven - Project Management Tool
+# DevHaven TUI
 
-[中文版](./README_zh.md)
+一个基于 Textual 的本地项目管理 TUI。
 
-A desktop application designed specifically for developers to help you organize and manage project folders scattered in various locations, offering a convenient one-click experience to open projects with your preferred IDE.
+## 运行环境
+- Python 3.10+
+- uv
 
-## Pain Points & Solutions
+## 安装
 
-### Pain Points
-- Developers often have code repositories from multiple companies and projects scattered across different folders
-- Finding specific projects requires remembering or searching for paths, which is time-consuming
-- Different projects may need to be opened with different IDEs
-- Project-related information (such as branches, documentation, etc.) lacks centralized management
+创建虚拟环境并安装依赖：
 
-### Solutions
-DevHaven provides a centralized platform that integrates all projects into a single interface, making it easy to find and access them, and supports opening projects with the corresponding IDE with just one click, greatly improving development efficiency.
+```bash
+uv venv
+uv pip install -e ".[dev]"
+```
 
-## Core Features
+启动：
 
-- **Project Organization**: Organize projects by company/folder hierarchy
-- **Quick Access**: Open projects with preferred IDEs (VS Code, IntelliJ IDEA, WebStorm, etc.) in one click
-- **Project Details**: View project path, Git branch, last opened time, and other information
-- **Tag Classification**: Add tags and categories to projects
-- **Custom Database Location**: Easy to backup and synchronize
-- **Dark/Light Theme**: Switch interface themes
-- **Search Function**: Quickly find projects
-- **Cross-IDE File Switching**: Quickly switch between different IDEs for the same file through a floating window, allowing you to edit the same file in different IDEs without manual navigation
-- **Prompt Management**: Manage prompts and provide MCP access for AI tools like Cursor, inspired by: https://github.com/gdli6177/mcp-prompt-server
+```bash
+python -m devhaven
+```
 
-## MCP Configuration
-When starting the application, prompts will be mounted to the local directory, and the MCP environment will be set up in the %HOME%/.devhaven/prompt directory.
+## 快捷键
+- `a` 新增项目
+- `e` 编辑项目
+- `d` 删除项目
+- `i` 导入目录（一键导入父目录下一层子目录）
+- `o` 打开项目
+- `/` 搜索
+- `空格` 展开/收起空间节点
+- `q` 退出
 
-If MCP is not loaded, you may need to run `npm install` in this directory to install dependencies.
+## 路径输入更省心
+- 新增/编辑项目时，点击“选择目录”可直接浏览文件夹
+- 名称留空会自动使用所选路径的文件夹名
+
+## 空间（分组）
+- 空间用于分类项目，默认值为“个人”
+- 导入目录时，空间会自动使用父目录名（可手动覆盖）
+- 左侧以“空间 -> 项目”的层级结构展示
+
+## 数据位置
+- 配置与数据：`~/.devhaven/config.json`
+
+## 配置说明
+
+示例（JSON）：
 
 ```json
 {
-  "prompt-server": {
-    "command": "node",
-    "args": [
-      "~/.devhaven/prompt/index.js"
-    ],
-    "transport": "stdio"
-  }
+  "open_command": "code {path}",
+  "projects": [],
+  "next_project_id": 1
 }
 ```
 
-## Plugin Support
-To provide a smoother development experience, DevHaven offers companion IDE plugins that automatically synchronize projects opened in IDEs to the DevHaven application:
-- [**VS Code Plugin**](https://github.com/zxcvbnmzsedr/devhaven-vs-plugin) - Automatically synchronize projects opened in VS Code
-- [**IntelliJ IDEA Plugin**](https://github.com/zxcvbnmzsedr/devhaven-idea-plugin) - For all IDEs on the IntelliJ platform (including WebStorm, PyCharm, etc.)
-
-These plugins can:
-- Automatically detect projects opened in the IDE
-- Synchronize project information to DevHaven
-- Eliminate the need to manually add projects, improving work efficiency
-
-For more information, please check the [plugin directory](./plugin).
-
-## Tech Stack
-
-- **Frontend**: Vue.js 3 (Composition API), Element Plus
-- **Styling**: UnoCSS
-- **State Management**: Pinia
-- **Database**: SQLite with better-sqlite3
-- **Desktop Integration**: Electron
-
-## Development Guide
-
-### Requirements
-
-- Node.js 14+
-- pnpm (recommended) or npm
-
-### Installation & Launch
-
-1. Clone the repository
-2. Install dependencies:
-
-```bash
-pnpm install
-```
-
-3. Start the development server:
-
-```bash
-pnpm dev
-```
-
-### Building the Application
-
-Build for current platform:
-
-```bash
-pnpm build
-```
-
-Build for specific platforms:
-
-```bash
-# Windows
-pnpm build:win
-
-# macOS
-pnpm build:mac
-
-# Linux
-pnpm build:linux
-```
-
-# Preview
-## Project Management
-![img](doc/image.png)
-![img](doc/setting.png)
-![img](doc/switch.png)
-## Prompt Management
-![img](doc/prompt.png)
-![img](doc/mcp.png)
-![img](doc/mcp_result.png)
+如果 `open_command` 为空或缺失，则使用系统默认打开方式。
