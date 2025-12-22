@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -10,10 +11,20 @@ from rich.columns import Columns
 from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
+from textual import app as textual_app
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import ModalScreen
+from textual.theme import BUILTIN_THEMES
 from textual.widgets import Button, DirectoryTree, Footer, Header, Input, Label, Static, Tree
+
+if not hasattr(textual_app, "DEFAULT_COLORS"):
+    textual_app.DEFAULT_COLORS = {
+        "dark": BUILTIN_THEMES["textual-dark"].to_color_system(),
+        "light": BUILTIN_THEMES["textual-light"].to_color_system(),
+    }
+
+from textual_terminal import Terminal
 
 from .config import load_config
 from .db import Database, Project
@@ -449,11 +460,22 @@ class DevHavenApp(App):
     #detail_scroll {
         border: solid $secondary;
         padding: 1;
-        height: 1fr;
+        height: 2fr;
     }
 
     #detail {
         height: auto;
+    }
+
+    #terminal_panel {
+        border: solid $secondary;
+        padding: 0 1;
+        margin-top: 1;
+        height: 1fr;
+    }
+
+    #terminal {
+        height: 1fr;
     }
     """
 
@@ -490,12 +512,27 @@ class DevHavenApp(App):
             with Vertical(id="detail_panel"):
                 with VerticalScroll(id="detail_scroll"):
                     yield Static("未选择项目。", id="detail")
+                with Container(id="terminal_panel"):
+                    yield Terminal(
+                        command=self._terminal_command(),
+                        id="terminal",
+                    )
         yield Footer()
 
     def on_mount(self) -> None:
         self.db.ensure_schema()
         self.refresh_projects()
         self.query_one("#search", Input).focus()
+        self._start_terminal()
+
+    def _terminal_command(self) -> str:
+        if sys.platform.startswith("win"):
+            return os.environ.get("COMSPEC", "cmd")
+        return os.environ.get("SHELL") or "bash"
+
+    def _start_terminal(self) -> None:
+        terminal = self.query_one("#terminal", Terminal)
+        terminal.start()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search":
