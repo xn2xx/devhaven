@@ -12,6 +12,7 @@ from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 from textual import app as textual_app
+from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import ModalScreen
@@ -25,6 +26,28 @@ if not hasattr(textual_app, "DEFAULT_COLORS"):
     }
 
 from textual_terminal import Terminal
+
+
+class ProjectTerminal(Terminal):
+    async def on_key(self, event: events.Key) -> None:
+        if self.emulator is None:
+            return
+
+        if event.key == "ctrl+f1":
+            self.app.set_focus(None)
+            return
+
+        event.prevent_default()
+        event.stop()
+        char = self.ctrl_keys.get(event.key)
+        if char is None and event.key.startswith("ctrl+"):
+            key = event.key.removeprefix("ctrl+")
+            if len(key) == 1 and key.isalpha():
+                char = chr(ord(key.lower()) - 96)
+        if char is None:
+            char = event.character
+        if char:
+            await self.send_queue.put(["stdin", char])
 
 from .config import load_config
 from .db import Database, Project
@@ -513,7 +536,7 @@ class DevHavenApp(App):
                 with VerticalScroll(id="detail_scroll"):
                     yield Static("未选择项目。", id="detail")
                 with Container(id="terminal_panel"):
-                    yield Terminal(
+                    yield ProjectTerminal(
                         command=self._terminal_command(),
                         id="terminal",
                     )
@@ -531,7 +554,7 @@ class DevHavenApp(App):
         return os.environ.get("SHELL") or "bash"
 
     def _start_terminal(self) -> None:
-        terminal = self.query_one("#terminal", Terminal)
+        terminal = self.query_one("#terminal", ProjectTerminal)
         terminal.start()
 
     def _normalize_terminal_path(self, path: str) -> str:
@@ -554,7 +577,7 @@ class DevHavenApp(App):
     def _update_terminal_cwd(self, path: str | None) -> None:
         if not path:
             return
-        terminal = self.query_one("#terminal", Terminal)
+        terminal = self.query_one("#terminal", ProjectTerminal)
         if terminal.send_queue is None:
             return
         terminal.send_queue.put_nowait(["stdin", self._build_cd_command(path)])
