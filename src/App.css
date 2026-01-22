@@ -721,7 +721,8 @@
 .dashboard-modal {
   width: min(980px, 92vw);
   max-height: 92vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .dashboard-header {
@@ -908,6 +909,7 @@
 
 .heatmap-month {
   text-align: left;
+  white-space: nowrap;
 }
 
 .heatmap-weeks {
