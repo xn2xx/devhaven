@@ -1,6 +1,6 @@
 # DevHaven
 
-![version](https://img.shields.io/badge/version-0.1.0-blue)
+![version](https://img.shields.io/badge/version-2.0.0-blue)
 
 DevHaven 是一个基于 Tauri + React 的桌面应用，用于扫描本地工作目录并汇总项目状态、Git 活跃度和备注，帮助开发者快速整理与管理日常项目。
 
