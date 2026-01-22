@@ -37,6 +37,13 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### macOS 自签名说明
+如果本地没有秘钥，需要在 macOS 上自签证书，可先移除隔离属性：
+```bash
+sudo xattr -r -d com.apple.quarantine "/Applications/DevHaven.app"
+```
+请将路径替换为实际应用位置。
+
 ### 使用示例
 1. 左侧「目录」中添加工作目录或直接导入项目，支持拖拽目录到侧边栏。
 2. 通过「标签」管理项目分类，颜色可自定义，支持隐藏标签。

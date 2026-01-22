@@ -41,6 +41,8 @@ jobs:
 
       - name: Tauri build and release
         uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: "DevHaven ${{ inputs.tag || github.ref_name }}"
