@@ -1,0 +1,363 @@
+import { useMemo } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+
+import type { HeatmapData } from "../models/heatmap";
+import { HEATMAP_CONFIG } from "../models/heatmap";
+import type { AppStateFile, Project, TagData } from "../models/types";
+import { colorDataToHex } from "../utils/colors";
+import Heatmap from "./Heatmap";
+import DropdownMenu from "./DropdownMenu";
+import { IconEye, IconEyeOff, IconMoreHorizontal, IconPlusCircle } from "./Icons";
+import { openInFinder } from "../services/system";
+
+export type SidebarProps = {
+  appState: AppStateFile;
+  projects: Project[];
+  heatmapData: HeatmapData[];
+  heatmapSelectedDateKey: string | null;
+  selectedTags: Set<string>;
+  selectedDirectory: string | null;
+  heatmapFilteredProjectIds: Set<string>;
+  onSelectTag: (tag: string) => void;
+  onClearHeatmapFilter: () => void;
+  onSelectHeatmapDate: (entry: HeatmapData | null) => void;
+  onSelectDirectory: (directory: string | null) => void;
+  onOpenTagEditor: (tag?: TagData) => void;
+  onToggleTagHidden: (name: string) => void;
+  onRemoveTag: (name: string) => void;
+  onAssignTagToProjects: (tag: string, projectIds: string[]) => void;
+  onAddDirectory: (path: string) => Promise<void>;
+  onRemoveDirectory: (path: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
+  onAddProjects: (paths: string[]) => Promise<void>;
+  isHeatmapLoading: boolean;
+};
+
+/** 左侧边栏，负责目录、标签与筛选入口。 */
+export default function Sidebar({
+  appState,
+  projects,
+  heatmapData,
+  heatmapSelectedDateKey,
+  selectedTags,
+  selectedDirectory,
+  heatmapFilteredProjectIds,
+  onSelectTag,
+  onClearHeatmapFilter,
+  onSelectHeatmapDate,
+  onSelectDirectory,
+  onOpenTagEditor,
+  onToggleTagHidden,
+  onRemoveTag,
+  onAssignTagToProjects,
+  onAddDirectory,
+  onRemoveDirectory,
+  onRefresh,
+  onAddProjects,
+  isHeatmapLoading,
+}: SidebarProps) {
+  const directoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const directory of appState.directories) {
+      counts.set(
+        directory,
+        projects.filter((project) => project.path.startsWith(directory)).length,
+      );
+    }
+    return counts;
+  }, [appState.directories, projects]);
+
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const project of projects) {
+      if (project.tags.length === 0) {
+        counts.set("没有标签", (counts.get("没有标签") ?? 0) + 1);
+      }
+      for (const tag of project.tags) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    counts.set("全部", projects.length);
+    return counts;
+  }, [projects]);
+
+  const sortedTags = useMemo(() => {
+    return [...appState.tags].sort((a, b) => {
+      const countA = tagCounts.get(a.name) ?? 0;
+      const countB = tagCounts.get(b.name) ?? 0;
+      return countB - countA;
+    });
+  }, [appState.tags, tagCounts]);
+
+  const handlePickDirectory = async (multiple: boolean, directProject: boolean) => {
+    const selected = await open({
+      directory: true,
+      multiple,
+      title: directProject ? "请选择要添加的项目文件夹" : "请选择要添加的工作目录",
+    });
+    if (!selected) {
+      return;
+    }
+    const paths = Array.isArray(selected) ? selected : [selected];
+    if (directProject) {
+      await onAddProjects(paths);
+      return;
+    }
+    for (const path of paths) {
+      await onAddDirectory(path);
+    }
+    await onRefresh();
+  };
+
+  const handleDirectoryDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const paths = Array.from(event.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((path): path is string => Boolean(path));
+    if (paths.length === 0) {
+      return;
+    }
+    for (const path of paths) {
+      await onAddDirectory(path);
+    }
+    await onRefresh();
+  };
+
+  return (
+    <aside className="sidebar-panel">
+      <div className="sidebar-scroll" onDragOver={(event) => event.preventDefault()} onDrop={handleDirectoryDrop}>
+        <section className="sidebar-section">
+          <div className="section-header">
+            <span className="section-title">目录</span>
+            <DropdownMenu
+              label={<IconPlusCircle size={16} />}
+              items={[
+                {
+                  label: "添加工作目录（扫描项目）",
+                  onClick: () => void handlePickDirectory(false, false),
+                },
+                {
+                  label: "直接添加为项目",
+                  onClick: () => void handlePickDirectory(true, true),
+                },
+                { label: "刷新项目列表", onClick: () => void onRefresh() },
+              ]}
+            />
+          </div>
+          <div className="list">
+            <DirectoryRow
+              label="全部"
+              count={projects.length}
+              selected={selectedDirectory === null}
+              onClick={() => onSelectDirectory(null)}
+            />
+            {appState.directories.map((dir) => (
+              <DirectoryRow
+                key={dir}
+                label={dir.split("/").pop() ?? dir}
+                count={directoryCounts.get(dir) ?? 0}
+                selected={selectedDirectory === dir}
+                onClick={() => onSelectDirectory(dir)}
+                onOpen={() => void openInFinder(dir)}
+                onRemove={() => void onRemoveDirectory(dir)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <div className="section-divider" />
+
+        <section className="sidebar-section">
+          <div className="section-header">
+            <span className="section-title">开发热力图</span>
+          </div>
+          {heatmapFilteredProjectIds.size > 0 ? (
+            <div className="heatmap-filter">
+              <span>日期筛选已启用</span>
+              <button onClick={onClearHeatmapFilter}>清除</button>
+            </div>
+          ) : null}
+          {isHeatmapLoading ? (
+            <div className="heatmap-placeholder">正在统计中...</div>
+          ) : heatmapData.length > 0 ? (
+            <Heatmap
+              data={heatmapData}
+              config={HEATMAP_CONFIG.sidebar}
+              selectedDateKey={heatmapSelectedDateKey}
+              onSelectDate={onSelectHeatmapDate}
+              className="heatmap-sidebar"
+            />
+          ) : (
+            <div className="heatmap-placeholder">暂无数据</div>
+          )}
+        </section>
+
+        <div className="section-divider" />
+
+        <section className="sidebar-section sidebar-tags">
+          <div className="section-header">
+            <span className="section-title">标签</span>
+            <div className="tag-actions">
+              <button className="icon-button" onClick={() => onOpenTagEditor()} aria-label="新建标签">
+                <IconPlusCircle size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="list">
+            <TagRow
+              label="全部"
+              count={tagCounts.get("全部") ?? 0}
+              selected={selectedTags.size === 0}
+              onClick={() => onSelectTag("全部")}
+            />
+            {sortedTags.map((tag) => (
+              <TagRow
+                key={tag.name}
+                label={tag.name}
+                count={tagCounts.get(tag.name) ?? 0}
+                selected={selectedTags.has(tag.name)}
+                color={colorDataToHex(tag.color)}
+                hidden={tag.hidden}
+                onClick={() => onSelectTag(tag.name)}
+                onToggleHidden={() => onToggleTagHidden(tag.name)}
+                onEdit={() => onOpenTagEditor(tag)}
+                onRemove={() => onRemoveTag(tag.name)}
+                onAssignProjects={(projectIds) => onAssignTagToProjects(tag.name, projectIds)}
+              />
+            ))}
+          </div>
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+type DirectoryRowProps = {
+  label: string;
+  count: number;
+  selected: boolean;
+  onClick: () => void;
+  onOpen?: () => void;
+  onRemove?: () => void;
+};
+
+/** 目录行，展示数量与快捷操作。 */
+function DirectoryRow({ label, count, selected, onClick, onOpen, onRemove }: DirectoryRowProps) {
+  const menuItems = [] as { label: string; onClick: () => void; destructive?: boolean }[];
+  if (onOpen) {
+    menuItems.push({ label: "在访达中显示", onClick: onOpen });
+  }
+  if (onRemove) {
+    menuItems.push({ label: "移除目录", onClick: onRemove, destructive: true });
+  }
+
+  return (
+    <div className={`tag-row${selected ? " is-selected" : ""}`} onClick={onClick}>
+      <span>{label}</span>
+      <div className="tag-actions">
+        <span className="tag-count">{count}</span>
+        {menuItems.length > 0 ? (
+          <DropdownMenu label={<IconMoreHorizontal size={16} />} items={menuItems} />
+        ) : (
+          <span className="icon-button is-placeholder" aria-hidden="true" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type TagRowProps = {
+  label: string;
+  count: number;
+  selected: boolean;
+  color?: string;
+  hidden?: boolean;
+  onClick: () => void;
+  onToggleHidden?: () => void;
+  onEdit?: () => void;
+  onRemove?: () => void;
+  onAssignProjects?: (projectIds: string[]) => void;
+};
+
+/** 标签行，支持隐藏、编辑与拖拽分配。 */
+function TagRow({
+  label,
+  count,
+  selected,
+  color,
+  hidden,
+  onClick,
+  onToggleHidden,
+  onEdit,
+  onRemove,
+  onAssignProjects,
+}: TagRowProps) {
+  const menuItems = [] as { label: string; onClick: () => void; destructive?: boolean }[];
+  if (onEdit) {
+    menuItems.push({ label: "编辑标签", onClick: onEdit });
+  }
+  if (onRemove) {
+    menuItems.push({ label: "删除标签", onClick: onRemove, destructive: true });
+  }
+
+  const tagStyle = color
+    ? {
+        background: selected ? color : `${color}33`,
+        color: "#fff",
+      }
+    : undefined;
+
+  return (
+    <div
+      className={`tag-row${selected ? " is-selected" : ""}${hidden ? " is-hidden" : ""}`}
+      onClick={onClick}
+      onDragOver={(event) => {
+        if (onAssignProjects) {
+          event.preventDefault();
+        }
+      }}
+      onDrop={(event) => {
+        if (!onAssignProjects) {
+          return;
+        }
+        event.preventDefault();
+        const payload = event.dataTransfer.getData("application/x-project-ids");
+        if (!payload) {
+          return;
+        }
+        try {
+          const parsed = JSON.parse(payload) as string[];
+          onAssignProjects(parsed);
+        } catch {
+          return;
+        }
+      }}
+    >
+      <span className="tag-label" style={tagStyle}>
+        {label}
+      </span>
+      <div className="tag-actions">
+        {onToggleHidden ? (
+          <button
+            className={`icon-button tag-visibility${hidden ? " is-visible" : ""}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleHidden();
+            }}
+            aria-label={hidden ? "显示标签" : "隐藏标签"}
+          >
+            {hidden ? <IconEyeOff size={14} /> : <IconEye size={14} />}
+          </button>
+        ) : (
+          <span className="icon-button is-placeholder" aria-hidden="true" />
+        )}
+        <span className="tag-count">{count}</span>
+        {menuItems.length > 0 ? (
+          <DropdownMenu label={<IconMoreHorizontal size={16} />} items={menuItems} />
+        ) : (
+          <span className="icon-button is-placeholder" aria-hidden="true" />
+        )}
+      </div>
+    </div>
+  );
+}
