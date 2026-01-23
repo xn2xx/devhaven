@@ -7,11 +7,13 @@ import DetailPanel from "./components/DetailPanel";
 import TagEditDialog from "./components/TagEditDialog";
 import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
+import WorkspaceView from "./components/WorkspaceView";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
-import type { ColorData, TagData } from "./models/types";
+import type { WorkspaceSession } from "./models/terminal";
+import type { ColorData, Project, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
@@ -19,6 +21,9 @@ import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, openInTerminal } from "./services/system";
+import { closeTerminalSession, createTerminalSession } from "./services/terminal";
+
+type AppMode = "gallery" | "workspace";
 
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
@@ -60,6 +65,9 @@ function AppLayout() {
   );
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [appMode, setAppMode] = useState<AppMode>("gallery");
+  const [workspaceSessions, setWorkspaceSessions] = useState<WorkspaceSession[]>([]);
+  const [activeWorkspaceSessionId, setActiveWorkspaceSessionId] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -239,6 +247,21 @@ function AppLayout() {
     })();
   }, [isLoading, projects, updateGitDaily]);
 
+  useEffect(() => {
+    if (workspaceSessions.length === 0) {
+      setActiveWorkspaceSessionId(null);
+      if (appMode === "workspace") {
+        setAppMode("gallery");
+      }
+      return;
+    }
+
+    if (activeWorkspaceSessionId && workspaceSessions.some((session) => session.id === activeWorkspaceSessionId)) {
+      return;
+    }
+    setActiveWorkspaceSessionId(workspaceSessions[0].id);
+  }, [activeWorkspaceSessionId, appMode, workspaceSessions]);
+
   const handleTagSubmit = useCallback(
     async (name: string, colorHex: string) => {
       if (!tagDialogState) {
@@ -309,6 +332,55 @@ function AppLayout() {
     [terminalSettings.arguments, terminalSettings.commandPath, showToast],
   );
 
+  const handleEnterWorkspace = useCallback(
+    async (project: Project) => {
+      const existing = workspaceSessions.find((session) => session.projectId === project.id);
+      if (existing) {
+        setActiveWorkspaceSessionId(existing.id);
+        setAppMode("workspace");
+        return;
+      }
+
+      try {
+        const sessionInfo = await createTerminalSession(project.id, project.path);
+        const nextSession: WorkspaceSession = { ...sessionInfo, projectName: project.name };
+        setWorkspaceSessions((prev) => {
+          if (prev.some((session) => session.id === sessionInfo.id || session.projectId === project.id)) {
+            return prev;
+          }
+          return [...prev, nextSession];
+        });
+        setActiveWorkspaceSessionId(sessionInfo.id);
+        setAppMode("workspace");
+      } catch (error) {
+        console.error("终端会话创建失败。", error);
+        showToast("终端启动失败，请检查 tmux 是否可用", "error");
+      }
+    },
+    [showToast, workspaceSessions],
+  );
+
+  const handleCloseWorkspaceSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await closeTerminalSession(sessionId);
+      } catch (error) {
+        console.error("终端会话关闭失败。", error);
+        showToast("终端关闭失败，请稍后重试", "error");
+      }
+      setWorkspaceSessions((prev) => prev.filter((session) => session.id !== sessionId));
+    },
+    [showToast],
+  );
+
+  const handleSelectWorkspaceSession = useCallback((sessionId: string) => {
+    setActiveWorkspaceSessionId(sessionId);
+  }, []);
+
+  const handleExitWorkspace = useCallback(() => {
+    setAppMode("gallery");
+  }, []);
+
   const handleSaveSettings = useCallback(
     async (settings: typeof appState.settings) => {
       try {
@@ -322,73 +394,80 @@ function AppLayout() {
   );
 
   return (
-    <div className="app-root">
-      <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
-        <Sidebar
-          appState={appState}
-          projects={projects}
-          heatmapData={sidebarHeatmapData}
-          heatmapSelectedDateKey={heatmapSelectedDateKey}
-          selectedTags={selectedTags}
-          selectedDirectory={selectedDirectory}
-          heatmapFilteredProjectIds={heatmapFilteredProjectIds}
-          onSelectTag={handleSelectTag}
-          onClearHeatmapFilter={() => {
-            setHeatmapFilteredProjectIds(new Set());
-            setHeatmapSelectedDateKey(null);
-          }}
-          onSelectHeatmapDate={handleSelectHeatmapDate}
-          onSelectDirectory={setSelectedDirectory}
-          onOpenTagEditor={handleOpenTagEditor}
-          onToggleTagHidden={toggleTagHidden}
-          onRemoveTag={removeTag}
-          onAssignTagToProjects={handleAssignTagToProjects}
-          onAddDirectory={addDirectory}
-          onRemoveDirectory={removeDirectory}
-          onRefresh={refresh}
-          onAddProjects={addProjects}
-          isHeatmapLoading={heatmapStore.isLoading}
+    <div className={`app-root${appMode === "workspace" ? " is-workspace" : ""}`}>
+      {appMode === "workspace" ? (
+        <WorkspaceView
+          sessions={workspaceSessions}
+          activeSessionId={activeWorkspaceSessionId}
+          onSelectSession={handleSelectWorkspaceSession}
+          onCloseSession={handleCloseWorkspaceSession}
+          onExitWorkspace={handleExitWorkspace}
         />
-        <MainContent
-          projects={projects}
-          filteredProjects={filteredProjects}
-          isLoading={isLoading}
-          error={error}
-          searchText={searchText}
-          onSearchTextChange={setSearchText}
-          dateFilter={dateFilter}
-          onDateFilterChange={setDateFilter}
-          gitFilter={gitFilter}
-          onGitFilterChange={setGitFilter}
-          showDetailPanel={showDetailPanel}
-          onToggleDetailPanel={handleToggleDetail}
-          onOpenDashboard={() => setShowDashboard(true)}
-          onOpenSettings={() => setShowSettings(true)}
-          selectedProjects={selectedProjects}
-          onSelectProject={handleSelectProject}
-          onShowProjectDetail={(project) => {
-            setSelectedProjectId(project.id);
-            setShowDetailPanel(true);
-          }}
-          onTagSelected={handleSelectTag}
-          onRemoveTagFromProject={removeTagFromProject}
-          onRefreshProject={refreshProject}
-          onCopyPath={handleCopyPath}
-          onOpenInTerminal={handleOpenInTerminal}
-          getTagColor={getTagColor}
-          searchInputRef={searchInputRef}
-        />
-        {showDetailPanel ? (
-          <DetailPanel
-            project={selectedProject}
-            tags={appState.tags}
-            onClose={() => setShowDetailPanel(false)}
-            onAddTagToProject={addTagToProject}
-            onRemoveTagFromProject={removeTagFromProject}
-            getTagColor={getTagColor}
+      ) : (
+        <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
+          <Sidebar
+            appState={appState}
+            projects={projects}
+            heatmapData={sidebarHeatmapData}
+            heatmapSelectedDateKey={heatmapSelectedDateKey}
+            selectedTags={selectedTags}
+            selectedDirectory={selectedDirectory}
+            heatmapFilteredProjectIds={heatmapFilteredProjectIds}
+            onSelectTag={handleSelectTag}
+            onClearHeatmapFilter={() => {
+              setHeatmapFilteredProjectIds(new Set());
+              setHeatmapSelectedDateKey(null);
+            }}
+            onSelectHeatmapDate={handleSelectHeatmapDate}
+            onSelectDirectory={setSelectedDirectory}
+            onOpenTagEditor={handleOpenTagEditor}
+            onToggleTagHidden={toggleTagHidden}
+            onRemoveTag={removeTag}
+            onAssignTagToProjects={handleAssignTagToProjects}
+            onAddDirectory={addDirectory}
+            onRemoveDirectory={removeDirectory}
+            onRefresh={refresh}
+            onAddProjects={addProjects}
+            isHeatmapLoading={heatmapStore.isLoading}
           />
-        ) : null}
-      </div>
+          <MainContent
+            projects={projects}
+            filteredProjects={filteredProjects}
+            isLoading={isLoading}
+            error={error}
+            searchText={searchText}
+            onSearchTextChange={setSearchText}
+            dateFilter={dateFilter}
+            onDateFilterChange={setDateFilter}
+            gitFilter={gitFilter}
+            onGitFilterChange={setGitFilter}
+            showDetailPanel={showDetailPanel}
+            onToggleDetailPanel={handleToggleDetail}
+            onOpenDashboard={() => setShowDashboard(true)}
+            onOpenSettings={() => setShowSettings(true)}
+            selectedProjects={selectedProjects}
+            onSelectProject={handleSelectProject}
+            onEnterWorkspace={handleEnterWorkspace}
+            onTagSelected={handleSelectTag}
+            onRemoveTagFromProject={removeTagFromProject}
+            onRefreshProject={refreshProject}
+            onCopyPath={handleCopyPath}
+            onOpenInTerminal={handleOpenInTerminal}
+            getTagColor={getTagColor}
+            searchInputRef={searchInputRef}
+          />
+          {showDetailPanel ? (
+            <DetailPanel
+              project={selectedProject}
+              tags={appState.tags}
+              onClose={() => setShowDetailPanel(false)}
+              onAddTagToProject={addTagToProject}
+              onRemoveTagFromProject={removeTagFromProject}
+              getTagColor={getTagColor}
+            />
+          ) : null}
+        </div>
+      )}
 
       <TagEditDialog
         title={tagDialogState?.mode === "edit" ? "编辑标签" : "新建标签"}

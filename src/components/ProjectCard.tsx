@@ -10,7 +10,7 @@ export type ProjectCardProps = {
   isSelected: boolean;
   selectedProjectIds: Set<string>;
   onSelect: (event: React.MouseEvent<HTMLDivElement>) => void;
-  onOpenDetail: () => void;
+  onEnterWorkspace: () => void;
   onTagClick: (tag: string) => void;
   onRemoveTag: (projectId: string, tag: string) => void;
   getTagColor: (tag: string) => string;
@@ -34,7 +34,7 @@ function ProjectCard({
   isSelected,
   selectedProjectIds,
   onSelect,
-  onOpenDetail,
+  onEnterWorkspace,
   onTagClick,
   onRemoveTag,
   getTagColor,
@@ -59,7 +59,7 @@ function ProjectCard({
     <div
       className={`project-card${isSelected ? " is-selected" : ""}`}
       onClick={onSelect}
-      onDoubleClick={onOpenDetail}
+      onDoubleClick={onEnterWorkspace}
       draggable
       onDragStart={handleDragStart}
     >

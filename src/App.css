@@ -959,6 +959,115 @@
   color: var(--color-secondary-text);
 }
 
+.app-root.is-workspace {
+  background: var(--color-background);
+}
+
+.workspace-root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-search-area-bg);
+}
+
+.workspace-back {
+  color: var(--color-titlebar-icon);
+}
+
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  overflow-x: auto;
+}
+
+.workspace-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-card-bg);
+  color: var(--color-secondary-text);
+}
+
+.workspace-tab.is-active {
+  border-color: var(--color-accent);
+  background: rgba(69, 59, 231, 0.2);
+  color: var(--color-text);
+}
+
+.workspace-tab-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.workspace-tab-title {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.workspace-tab-close:hover {
+  opacity: 1;
+}
+
+.workspace-terminal {
+  flex: 1;
+  min-height: 0;
+  background: #101114;
+  border-top: 1px solid var(--color-divider);
+}
+
+.terminal-container {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-container .xterm {
+  height: 100%;
+}
+
+.terminal-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-secondary-text);
+  font-size: 13px;
+}
+
 .settings-preview {
   display: flex;
   flex-direction: column;

@@ -28,7 +28,7 @@ export type MainContentProps = {
   onOpenSettings: () => void;
   selectedProjects: Set<string>;
   onSelectProject: (project: Project, event: React.MouseEvent<HTMLDivElement>) => void;
-  onShowProjectDetail: (project: Project) => void;
+  onEnterWorkspace: (project: Project) => void;
   onTagSelected: (tag: string) => void;
   onRemoveTagFromProject: (projectId: string, tag: string) => void;
   onRefreshProject: (path: string) => void;
@@ -56,7 +56,7 @@ export default function MainContent({
   onOpenSettings,
   selectedProjects,
   onSelectProject,
-  onShowProjectDetail,
+  onEnterWorkspace,
   onTagSelected,
   onRemoveTagFromProject,
   onRefreshProject,
@@ -130,7 +130,7 @@ export default function MainContent({
                 isSelected={selectedProjects.has(project.id)}
                 selectedProjectIds={selectedProjects}
                 onSelect={(event) => onSelectProject(project, event)}
-                onOpenDetail={() => onShowProjectDetail(project)}
+                onEnterWorkspace={() => onEnterWorkspace(project)}
                 onTagClick={onTagSelected}
                 onRemoveTag={onRemoveTagFromProject}
                 getTagColor={getTagColor}

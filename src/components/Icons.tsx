@@ -104,6 +104,15 @@ export function IconArrowDownCircle(props: IconProps) {
   );
 }
 
+export function IconArrowLeft(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <line x1="19" y1="12" x2="5" y2="12" />
+      <polyline points="11 6 5 12 11 18" />
+    </IconBase>
+  );
+}
+
 export function IconHashCircle(props: IconProps) {
   return (
     <IconBase {...props}>

@@ -1,0 +1,56 @@
+import type { WorkspaceSession } from "../models/terminal";
+import { IconArrowLeft, IconTerminal, IconX } from "./Icons";
+
+export type TabBarProps = {
+  sessions: WorkspaceSession[];
+  activeSessionId: string | null;
+  onSelectSession: (sessionId: string) => void;
+  onCloseSession: (sessionId: string) => void;
+  onExitWorkspace: () => void;
+};
+
+/** 工作空间顶部标签栏。 */
+export default function TabBar({
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onCloseSession,
+  onExitWorkspace,
+}: TabBarProps) {
+  return (
+    <div className="workspace-header">
+      <button className="icon-button workspace-back" type="button" onClick={onExitWorkspace} aria-label="返回项目列表">
+        <IconArrowLeft size={16} />
+      </button>
+      <div className="workspace-tabs">
+        {sessions.map((session) => {
+          const isActive = session.id === activeSessionId;
+          return (
+            <div
+              key={session.id}
+              className={`workspace-tab${isActive ? " is-active" : ""}`}
+              title={session.projectPath}
+            >
+              <button
+                className="workspace-tab-trigger"
+                type="button"
+                onClick={() => onSelectSession(session.id)}
+              >
+                <IconTerminal size={14} />
+                <span className="workspace-tab-title">{session.projectName}</span>
+              </button>
+              <button
+                className="workspace-tab-close"
+                type="button"
+                aria-label={`关闭 ${session.projectName}`}
+                onClick={() => onCloseSession(session.id)}
+              >
+                <IconX size={12} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
