@@ -44,6 +44,7 @@ export const useTerminalSession = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const webglAddonRef = useRef<WebglAddon | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const renderedSessionRef = useRef<string | null>(null);
   const readySessionRef = useRef<string | null>(null);
@@ -183,19 +184,48 @@ export const useTerminalSession = ({
 
     terminal.open(container);
 
+    // 添加键盘事件监听器，确保所有组合键都能传递到终端
+    // 这对于 tmux 等工具的快捷键至关重要
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // 检查是否是需要传递给终端的组合键
+      const isModifierKey = event.ctrlKey || event.metaKey || event.altKey;
+      const isTabKey = event.key === 'Tab';
+
+      if (isModifierKey || isTabKey) {
+        // 只保留 Command+Q (macOS) 或 Ctrl+Q (其他平台) 作为退出快捷键
+        const isQuitShortcut =
+          (event.metaKey || event.ctrlKey) &&
+          (event.key === 'q' || event.key === 'Q');
+
+        // 如果不是退出快捷键，阻止默认行为，让终端处理
+        if (!isQuitShortcut) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }
+    };
+
+    // 在终端容器上添加键盘事件监听
+    container.addEventListener('keydown', handleKeyDown, true);
+
     // WebGL 渲染器必须在 terminal.open() 之后加载
     // 使用 setTimeout 确保 DOM 已经完全渲染
-    setTimeout(() => {
+    const webglTimeoutId = window.setTimeout(() => {
       if (!disposed && terminal.element) {
         try {
           const webglAddon = new WebglAddon();
+          webglAddonRef.current = webglAddon;
           webglAddon.onContextLoss(() => {
             console.warn("WebGL context lost, disposing addon");
             webglAddon.dispose();
+            if (webglAddonRef.current === webglAddon) {
+              webglAddonRef.current = null;
+            }
           });
           terminal.loadAddon(webglAddon);
           console.log("WebGL renderer loaded successfully");
         } catch (e) {
+          webglAddonRef.current = null;
           console.warn("WebGL addon could not be loaded, using canvas renderer", e);
         }
       }
@@ -248,11 +278,17 @@ export const useTerminalSession = ({
 
     return () => {
       disposed = true;
+      window.clearTimeout(webglTimeoutId);
       cancelAnimationFrame(rafId);
+      container.removeEventListener('keydown', handleKeyDown, true);
       disposeRender.dispose();
       resizeObserver.disconnect();
       disposeResize.dispose();
       disposeData.dispose();
+      if (webglAddonRef.current) {
+        webglAddonRef.current.dispose();
+        webglAddonRef.current = null;
+      }
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;

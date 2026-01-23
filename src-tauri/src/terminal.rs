@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 const TERMINAL_OUTPUT_EVENT: &str = "terminal-output";
 const DEFAULT_TERM: &str = "xterm-256color";
+const TMUX_TERM: &str = "screen-256color";
 
 #[derive(Clone, serde::Serialize)]
 pub struct TerminalSessionInfo {
@@ -256,7 +257,16 @@ fn spawn_pty(
     if should_use_interactive_flag(&shell) {
         command.arg("-i");
     }
-    command.env("TERM", DEFAULT_TERM);
+
+    // 检测是否在 tmux 环境中，如果是则使用 screen-256color
+    // 这样可以避免终端格式错乱问题
+    let term_value = if std::env::var("TMUX").is_ok() {
+        TMUX_TERM
+    } else {
+        DEFAULT_TERM
+    };
+
+    command.env("TERM", term_value);
     command.env("COLORTERM", "truecolor");
 
     let child = pair
