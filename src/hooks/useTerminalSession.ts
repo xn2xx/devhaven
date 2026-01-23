@@ -6,13 +6,7 @@ import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
 
-import {
-  resizeTerminalSession,
-  switchTerminalSession,
-  TERMINAL_OUTPUT_EVENT,
-  writeToTerminal,
-  type TerminalOutputPayload,
-} from "../services/terminal";
+import { resizeTerminalSession, switchTerminalSession, TERMINAL_OUTPUT_EVENT, writeToTerminal } from "../services/terminal";
 import "xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
@@ -87,8 +81,23 @@ export const useTerminalSession = ({
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let canceled = false;
-    void listen<TerminalOutputPayload>(TERMINAL_OUTPUT_EVENT, (event) => {
-      const { sessionId, data } = event.payload;
+    void listen<unknown>(TERMINAL_OUTPUT_EVENT, (event) => {
+      const payload = (() => {
+        if (typeof event.payload === "string") {
+          try {
+            return JSON.parse(event.payload) as { sessionId?: string; session_id?: string; data?: string };
+          } catch {
+            return { data: event.payload };
+          }
+        }
+        return event.payload as { sessionId?: string; session_id?: string; data?: string };
+      })();
+      const sessionId = payload.sessionId ?? payload.session_id ?? activeSessionRef.current;
+      const data = payload.data ?? "";
+      console.log("[terminal-output]", { sessionId, data });
+      if (!sessionId || !data) {
+        return;
+      }
       const next = appendBuffer(outputBuffersRef.current.get(sessionId), data);
       outputBuffersRef.current.set(sessionId, next);
       if (activeSessionRef.current === sessionId) {

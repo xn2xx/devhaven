@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -78,12 +78,29 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
   const [versionLabel, setVersionLabel] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [isSaving, setIsSaving] = useState(false);
-  const pendingSettingsRef = useRef<AppSettings | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
-  const saveSeqRef = useRef(0);
 
   const parsedTerminalArguments = useMemo(() => normalizeArgs(terminalArgumentsText.split("\n")), [terminalArgumentsText]);
   const normalizedGitIdentities = useMemo(() => normalizeGitIdentities(gitIdentities), [gitIdentities]);
+  const nextSettings = useMemo<AppSettings>(
+    () => ({
+      ...settings,
+      terminalOpenTool: {
+        commandPath: terminalCommandPath.trim(),
+        arguments: parsedTerminalArguments,
+      },
+      gitIdentities: normalizedGitIdentities,
+    }),
+    [normalizedGitIdentities, parsedTerminalArguments, settings, terminalCommandPath],
+  );
+  const isDirty = useMemo(() => {
+    const currentTerminalArguments = normalizeArgs(settings.terminalOpenTool.arguments);
+    const normalizedStoredIdentities = normalizeGitIdentities(settings.gitIdentities);
+    return !(
+      nextSettings.terminalOpenTool.commandPath === settings.terminalOpenTool.commandPath &&
+      isSameArguments(nextSettings.terminalOpenTool.arguments, currentTerminalArguments) &&
+      isSameIdentities(nextSettings.gitIdentities, normalizedStoredIdentities)
+    );
+  }, [nextSettings, settings]);
 
   const terminalCommandPreview = useMemo(() => {
     const command = terminalCommandPath.trim();
@@ -154,66 +171,20 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
     };
   }, []);
 
-  useEffect(() => {
-    const currentTerminalArguments = normalizeArgs(settings.terminalOpenTool.arguments);
-    const normalizedStoredIdentities = normalizeGitIdentities(settings.gitIdentities);
-    const nextSettings: AppSettings = {
-      ...settings,
-      terminalOpenTool: {
-        commandPath: terminalCommandPath.trim(),
-        arguments: parsedTerminalArguments,
-      },
-      gitIdentities: normalizedGitIdentities,
-    };
-    const isSynced =
-      nextSettings.terminalOpenTool.commandPath === settings.terminalOpenTool.commandPath &&
-      isSameArguments(nextSettings.terminalOpenTool.arguments, currentTerminalArguments) &&
-      isSameIdentities(nextSettings.gitIdentities, normalizedStoredIdentities);
-    if (isSynced) {
-      pendingSettingsRef.current = null;
+  const handleClose = async () => {
+    if (isSaving) {
       return;
     }
-    pendingSettingsRef.current = nextSettings;
-    setIsSaving(true);
-    if (saveTimerRef.current) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+    if (isDirty) {
+      setIsSaving(true);
+      try {
+        await onSaveSettings(nextSettings);
+      } finally {
+        setIsSaving(false);
+      }
     }
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null;
-      const seq = (saveSeqRef.current += 1);
-      void onSaveSettings(nextSettings).finally(() => {
-        if (saveSeqRef.current === seq) {
-          setIsSaving(false);
-        }
-      });
-    }, 500);
-    return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-    };
-  }, [
-    onSaveSettings,
-    parsedTerminalArguments,
-    settings,
-    terminalCommandPath,
-    normalizedGitIdentities,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-      const pending = pendingSettingsRef.current;
-      if (pending) {
-        void onSaveSettings(pending);
-      }
-    };
-  }, [onSaveSettings]);
+    onClose();
+  };
 
   const handleCheckUpdate = async () => {
     if (updateState.status === "checking") {
@@ -279,9 +250,9 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
         <div className="settings-header">
           <div>
             <div className="modal-title">设置</div>
-            <div className="settings-subtitle">调整更新检查、终端打开方式与 Git 身份</div>
+            <div className="settings-subtitle">调整更新检查、终端打开方式与 Git 身份（关闭窗口后保存）</div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <button className="icon-button" onClick={() => void handleClose()} aria-label="关闭" disabled={isSaving}>
             <IconX size={14} />
           </button>
         </div>
@@ -343,7 +314,8 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
           <div className="settings-note settings-hint">
             <div className="settings-hint-list">
               <span>用于热力图统计过滤，不会修改 Git 配置。</span>
-              <span>支持配置多个身份，匹配用户名或邮箱即可。</span>
+              <span>支持配置多个身份，按用户名或邮箱（大小写不敏感）精确匹配。</span>
+              <span>修改将在关闭设置窗口时保存。</span>
             </div>
           </div>
         </section>
