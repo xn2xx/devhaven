@@ -9,6 +9,11 @@ type TerminalSessionPayload = {
   created_at: number;
 };
 
+export type TerminalOutputPayload = {
+  sessionId: string;
+  data: string;
+};
+
 const normalizeSession = (payload: TerminalSessionPayload): TerminalSessionInfo => ({
   id: payload.id,
   projectId: payload.project_id,
@@ -16,7 +21,7 @@ const normalizeSession = (payload: TerminalSessionPayload): TerminalSessionInfo 
   createdAt: payload.created_at,
 });
 
-export const getTerminalOutputEventName = (sessionId: string) => `terminal-output-${sessionId}`;
+export const TERMINAL_OUTPUT_EVENT = "terminal-output";
 
 /** 创建终端会话并返回会话信息。 */
 export async function createTerminalSession(projectId: string, projectPath: string): Promise<TerminalSessionInfo> {
@@ -38,7 +43,17 @@ export async function closeTerminalSession(sessionId: string): Promise<void> {
   await invoke("close_terminal_session", { sessionId });
 }
 
-/** 将输入写入指定终端。 */
-export async function writeToTerminal(sessionId: string, data: string): Promise<void> {
-  await invoke("write_to_terminal", { sessionId, data });
+/** 切换当前终端会话。 */
+export async function switchTerminalSession(sessionId: string): Promise<void> {
+  await invoke("switch_terminal_session", { sessionId });
+}
+
+/** 将输入写入终端。 */
+export async function writeToTerminal(data: string): Promise<void> {
+  await invoke("write_to_terminal", { data });
+}
+
+/** 调整终端会话大小。 */
+export async function resizeTerminalSession(cols: number, rows: number): Promise<void> {
+  await invoke("resize_terminal_session", { cols, rows });
 }

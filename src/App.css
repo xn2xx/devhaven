@@ -916,6 +916,37 @@
   gap: 8px;
 }
 
+.settings-identity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-identity-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-identity-row input {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px;
+  color: var(--color-text);
+}
+
+.settings-identity-row input:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
+  border-color: var(--color-accent);
+}
+
+.settings-identity-remove {
+  white-space: nowrap;
+}
+
 .settings-inline {
   display: flex;
   align-items: center;
@@ -1047,15 +1078,58 @@
   min-height: 0;
   background: #101114;
   border-top: 1px solid var(--color-divider);
+  display: flex;
 }
 
-.terminal-container {
+.terminal-shell {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.terminal-surface {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  padding-top: 8px;
+  box-sizing: border-box;
+}
+
+.terminal-surface .xterm,
+.terminal-surface .xterm-screen,
+.terminal-surface .xterm-viewport {
+  background: transparent !important;
+}
+
+.terminal-surface .xterm {
   width: 100%;
   height: 100%;
 }
 
-.terminal-container .xterm {
-  height: 100%;
+.terminal-surface .xterm-viewport {
+  height: 100% !important;
+}
+
+.terminal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 17, 21, 0.85);
+  color: var(--color-secondary-text);
+  pointer-events: none;
+  text-align: center;
+  font-size: 12px;
+  padding: 16px;
+}
+
+.terminal-status {
+  max-width: 280px;
 }
 
 .terminal-empty {

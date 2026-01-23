@@ -17,6 +17,7 @@ import type { ColorData, Project, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
+import { buildGitIdentitySignature } from "./utils/gitIdentity";
 import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
@@ -73,7 +74,8 @@ function AppLayout() {
   const toastTimerRef = useRef<number | null>(null);
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
-  const heatmapStore = useHeatmapData(projects);
+  const gitIdentitySignatureRef = useRef<string | null>(null);
+  const heatmapStore = useHeatmapData(projects, appState.settings.gitIdentities);
   const sidebarHeatmapData = useMemo(
     () => heatmapStore.getHeatmapData(HEATMAP_CONFIG.sidebar.days),
     [heatmapStore],
@@ -247,6 +249,30 @@ function AppLayout() {
     })();
   }, [isLoading, projects, updateGitDaily]);
 
+  const gitIdentitySignature = useMemo(
+    () => buildGitIdentitySignature(appState.settings.gitIdentities),
+    [appState.settings.gitIdentities],
+  );
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (gitIdentitySignatureRef.current === null) {
+      gitIdentitySignatureRef.current = gitIdentitySignature;
+      return;
+    }
+    if (gitIdentitySignatureRef.current === gitIdentitySignature) {
+      return;
+    }
+    gitIdentitySignatureRef.current = gitIdentitySignature;
+    const gitPaths = projects.filter((project) => project.git_commits > 0).map((project) => project.path);
+    if (gitPaths.length === 0) {
+      return;
+    }
+    void updateGitDaily(gitPaths);
+  }, [gitIdentitySignature, isLoading, projects, updateGitDaily]);
+
   useEffect(() => {
     if (workspaceSessions.length === 0) {
       setActiveWorkspaceSessionId(null);
@@ -354,7 +380,7 @@ function AppLayout() {
         setAppMode("workspace");
       } catch (error) {
         console.error("终端会话创建失败。", error);
-        showToast("终端启动失败，请检查 tmux 是否可用", "error");
+        showToast("终端启动失败，请检查默认 shell 与权限", "error");
       }
     },
     [showToast, workspaceSessions],

@@ -1,5 +1,5 @@
 import type { WorkspaceSession } from "../models/terminal";
-import XtermTerminal from "./XtermTerminal";
+import { useTerminalSession } from "../hooks/useTerminalSession";
 
 export type TerminalPanelProps = {
   activeSession: WorkspaceSession | null;
@@ -7,6 +7,11 @@ export type TerminalPanelProps = {
 
 /** 工作空间终端展示区域。 */
 export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
+  const { status, containerRef } = useTerminalSession({
+    activeSessionId: activeSession?.id ?? null,
+    isVisible: Boolean(activeSession),
+  });
+
   if (!activeSession) {
     return (
       <div className="workspace-terminal terminal-empty">
@@ -18,7 +23,18 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
 
   return (
     <div className="workspace-terminal">
-      <XtermTerminal sessionId={activeSession.id} />
+      <div className="terminal-shell">
+        <div ref={containerRef} className="terminal-surface" />
+        {status !== "ready" && (
+          <div className="terminal-overlay">
+            <div className="terminal-status">
+              {(status === "idle" || status === "preparing") && "正在准备终端..."}
+              {status === "connecting" && "正在连接终端..."}
+              {status === "error" && "终端启动失败"}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

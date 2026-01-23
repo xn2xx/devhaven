@@ -32,6 +32,8 @@ pub struct AppSettings {
     pub editor_open_tool: OpenToolSettings,
     #[serde(default)]
     pub terminal_open_tool: OpenToolSettings,
+    #[serde(default)]
+    pub git_identities: Vec<GitIdentity>,
 }
 
 impl Default for AppSettings {
@@ -39,6 +41,7 @@ impl Default for AppSettings {
         Self {
             editor_open_tool: OpenToolSettings::default(),
             terminal_open_tool: OpenToolSettings::default(),
+            git_identities: Vec::new(),
         }
     }
 }
@@ -57,6 +60,13 @@ impl Default for OpenToolSettings {
             arguments: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitIdentity {
+    pub name: String,
+    pub email: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

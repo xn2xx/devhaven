@@ -25,6 +25,7 @@ const emptyState: AppStateFile = {
       commandPath: "",
       arguments: [],
     },
+    gitIdentities: [],
   },
 };
 
@@ -178,7 +179,7 @@ export function useDevHaven(): DevHavenStore {
         return;
       }
       try {
-        const results = await collectGitDaily(targetPaths);
+        const results = await collectGitDaily(targetPaths, appState.settings.gitIdentities);
         if (results.length === 0) {
           return;
         }
@@ -196,7 +197,7 @@ export function useDevHaven(): DevHavenStore {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [projects],
+    [appState.settings.gitIdentities, projects],
   );
 
   /** 添加需要扫描的工作目录并持久化。 */

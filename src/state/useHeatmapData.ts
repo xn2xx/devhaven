@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { HeatmapCacheEntry, HeatmapCacheFile, HeatmapData } from "../models/heatmap";
 import { EMPTY_HEATMAP_CACHE } from "../models/heatmap";
 import type { DailyActivity, HeatmapStats } from "../models/dashboard";
-import type { Project } from "../models/types";
+import type { GitIdentity, Project } from "../models/types";
 import { loadHeatmapCache, saveHeatmapCache } from "../services/heatmap";
+import { buildGitIdentitySignature } from "../utils/gitIdentity";
 import { formatDateKey, parseGitDaily } from "../utils/gitDaily";
 
 const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
@@ -20,7 +21,7 @@ export type HeatmapStore = {
 };
 
 /** 热力图数据仓库，负责缓存与聚合计算。 */
-export function useHeatmapData(projects: Project[]): HeatmapStore {
+export function useHeatmapData(projects: Project[], gitIdentities: GitIdentity[]): HeatmapStore {
   const [cache, setCache] = useState<HeatmapCacheFile>(EMPTY_HEATMAP_CACHE);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,9 +32,9 @@ export function useHeatmapData(projects: Project[]): HeatmapStore {
       setError(null);
       try {
         const stored = await loadHeatmapCache().catch(() => EMPTY_HEATMAP_CACHE);
-        const shouldRebuild = shouldRefreshCache(stored, projects, force);
+        const shouldRebuild = shouldRefreshCache(stored, projects, gitIdentities, force);
         if (shouldRebuild) {
-          const rebuilt = buildHeatmapCache(projects);
+          const rebuilt = buildHeatmapCache(projects, gitIdentities);
           setCache(rebuilt);
           await saveHeatmapCache(rebuilt);
         } else {
@@ -45,7 +46,7 @@ export function useHeatmapData(projects: Project[]): HeatmapStore {
         setIsLoading(false);
       }
     },
-    [projects],
+    [gitIdentities, projects],
   );
 
   useEffect(() => {
@@ -81,7 +82,12 @@ export function useHeatmapData(projects: Project[]): HeatmapStore {
   );
 }
 
-function shouldRefreshCache(cache: HeatmapCacheFile, projects: Project[], force?: boolean) {
+function shouldRefreshCache(
+  cache: HeatmapCacheFile,
+  projects: Project[],
+  gitIdentities: GitIdentity[],
+  force?: boolean,
+) {
   if (force) {
     return true;
   }
@@ -95,14 +101,14 @@ function shouldRefreshCache(cache: HeatmapCacheFile, projects: Project[], force?
   if (cache.projectCount !== projects.length) {
     return true;
   }
-  const signature = buildGitDailySignature(projects);
+  const signature = buildGitDailySignature(projects, gitIdentities);
   if (cache.gitDailySignature !== signature) {
     return true;
   }
   return Date.now() - lastUpdated > REFRESH_INTERVAL_MS;
 }
 
-function buildHeatmapCache(projects: Project[]): HeatmapCacheFile {
+function buildHeatmapCache(projects: Project[], gitIdentities: GitIdentity[]): HeatmapCacheFile {
   const dailyActivity: Record<string, HeatmapCacheEntry> = {};
 
   for (const project of projects) {
@@ -131,7 +137,7 @@ function buildHeatmapCache(projects: Project[]): HeatmapCacheFile {
     lastUpdated: new Date().toISOString(),
     dailyActivity,
     projectCount: projects.length,
-    gitDailySignature: buildGitDailySignature(projects),
+    gitDailySignature: buildGitDailySignature(projects, gitIdentities),
   };
 }
 
@@ -211,10 +217,12 @@ function startOfDay(date: Date) {
   return next;
 }
 
-function buildGitDailySignature(projects: Project[]) {
+function buildGitDailySignature(projects: Project[], gitIdentities: GitIdentity[]) {
+  const identitySignature = buildGitIdentitySignature(gitIdentities);
   const entries = projects
     .map((project) => `${project.id}:${project.git_daily ?? ""}`)
     .sort();
+  entries.push(`identities:${identitySignature}`);
   let hash = 0;
   for (const entry of entries) {
     for (let index = 0; index < entry.length; index += 1) {

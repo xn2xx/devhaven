@@ -2,27 +2,27 @@
 
 ### Requirement: 终端会话管理
 
-系统应当(SHALL)为每个项目提供独立的终端会话，并且每个项目仅对应一个 tmux 会话。
+系统应当(SHALL)为每个项目提供独立的终端会话，并且每个项目仅对应一个 PTY + shell 会话。
 
 #### Scenario: 创建终端会话
 - **WHEN** 用户首次打开某个项目的开发模式
 - **THEN** 系统应当创建一个新的终端会话
 - **AND** 自动切换工作目录到项目路径
 - **AND** 使用系统默认 shell（bash/zsh 或 WSL 默认 shell）
-- **AND** 为该项目创建或附加一个 tmux 会话
+- **AND** 在项目路径启动 PTY + shell 进程
 - **AND** 返回唯一的会话 ID
 
 #### Scenario: 复用已存在的会话
 - **WHEN** 用户打开已有活跃会话的项目
 - **THEN** 系统应当复用现有会话
 - **AND** 不创建新的终端进程
-- **AND** 复用对应的 tmux 会话
+- **AND** 复用已创建的 PTY 会话
 
 #### Scenario: 关闭终端会话
 - **WHEN** 用户关闭项目标签页
 - **THEN** 系统应当请求对应终端进程优雅退出
 - **AND** 必要时按平台强制终止进程
-- **AND** 关闭对应的 tmux 会话
+- **AND** 关闭对应的终端进程
 - **AND** 清理会话资源
 - **AND** 从活跃会话列表中移除
 
@@ -53,7 +53,7 @@
 - **THEN** 系统应当切换到对应的终端会话
 - **AND** 更新活跃标签高亮状态
 - **AND** 终端面板显示切换后的会话输出
-- **AND** 终端应当切换到对应的 tmux 会话
+- **AND** 终端应当切换到对应的会话并绑定其输入输出
 
 ### Requirement: 标签页操作
 
@@ -99,18 +99,17 @@
 - **WHEN** 应用运行在 macOS 上
 - **THEN** 终端应当使用用户默认 shell（通常是 zsh 或 bash）
 - **AND** 支持完整的 Unix 命令
-- **AND** 使用 tmux 作为会话容器
+- **AND** 使用用户默认 shell
 
 #### Scenario: Linux 平台
 - **WHEN** 应用运行在 Linux 上
 - **THEN** 终端应当使用 /bin/bash 或用户配置的 shell
 - **AND** 支持完整的 Linux 命令
-- **AND** 使用 tmux 作为会话容器
+- **AND** 使用用户默认 shell
 
 #### Scenario: Windows 平台
 - **WHEN** 应用运行在 Windows 上
-- **THEN** 系统应当提示用户需启用 WSL 才能使用 tmux
-- **AND** 在 WSL 可用时使用其默认 shell 与 tmux
+- **THEN** 系统应当使用 Windows 可用的默认 shell（如 PowerShell 或 WSL shell）
 
 ### Requirement: 错误处理
 
@@ -121,10 +120,15 @@
 - **THEN** 应当显示错误提示
 - **AND** 建议用户检查系统权限或重启应用
 
-#### Scenario: tmux 不可用
-- **WHEN** 系统检测到 tmux 不存在或不可执行
-- **THEN** 应当提示用户安装或启用 tmux
-- **AND** 给出平台相关的安装指引
+#### Scenario: shell 不可用
+- **WHEN** 系统无法定位默认 shell
+- **THEN** 应当提示用户检查 SHELL/COMSPEC 配置
+- **AND** 给出平台相关的说明
+
+#### Scenario: 会话未初始化
+- **WHEN** 前端请求写入或调整尺寸，但会话尚未启动
+- **THEN** 应当返回明确错误信息
+- **AND** 提示用户重新进入工作空间或重启会话
 
 #### Scenario: 进程异常退出
 - **WHEN** shell 进程意外崩溃或被杀死

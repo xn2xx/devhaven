@@ -15,9 +15,9 @@
 - **新增开发模式视图**：双击项目卡片进入专用开发模式界面
   - 上方：横向标签页栏，每个标签对应一个打开的项目
   - 下方：终端实例，自动 cd 到对应项目目录
-- **终端集成**：使用 xterm.js + PTY + tmux 技术栈
-  - 每个项目维护独立的终端会话
-  - 每个项目仅创建一个 tmux 会话，分屏与窗口由 tmux 管理
+- **终端集成**：使用 xterm.js + PTY 原生会话
+  - 每个项目维护独立的终端会话（独立 PTY + shell）
+  - 终端切换在前端完成，后端按会话写入/调整尺寸
   - 支持完整的终端输入输出和 ANSI 控制序列
   - 跨平台支持（macOS/Linux/Windows）
 - **工作空间管理**：
@@ -32,7 +32,6 @@
 **技术栈变更**：
 - 新增前端依赖：`xterm` + `xterm-addon-fit` + `xterm-addon-web-links`
 - 新增后端依赖：`portable-pty`（Rust crate）
-- 新增运行时依赖：`tmux`
 - Tauri 后端：PTY 进程管理、终端会话 API
 - React 前端：新增 WorkspaceView、TabBar、TerminalPanel 组件
 
@@ -54,6 +53,7 @@
 
 ### 风险评估
 - **跨平台兼容性**：Windows 的 PTY 实现与 Unix 系统有差异，需要充分测试
+- **资源占用**：多会话 PTY 进程会增加内存与 CPU 占用
 - **性能**：多个终端实例可能增加内存占用（每个会话约 20-50MB）
 - **复杂度**：进程生命周期管理、PTY 通信需谨慎处理
 - **依赖维护**：xterm.js 和 portable-pty 需要持续跟进更新

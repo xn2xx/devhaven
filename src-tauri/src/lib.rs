@@ -8,7 +8,6 @@ mod system;
 mod terminal;
 mod time_utils;
 
-use std::io::Write;
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::AppHandle;
@@ -16,7 +15,7 @@ use tauri::Manager;
 use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::models::{AppStateFile, BranchListItem, GitDailyResult, HeatmapCacheFile, Project};
+use crate::models::{AppStateFile, BranchListItem, GitDailyResult, GitIdentity, HeatmapCacheFile, Project};
 use crate::system::{EditorOpenParams, TerminalOpenParams};
 use crate::terminal::{TerminalManager, TerminalSessionInfo};
 
@@ -131,10 +130,10 @@ fn write_project_notes(path: String, notes: Option<String>) -> Result<(), String
 }
 
 #[tauri::command]
-fn collect_git_daily(paths: Vec<String>) -> Vec<GitDailyResult> {
+fn collect_git_daily(paths: Vec<String>, identities: Vec<GitIdentity>) -> Vec<GitDailyResult> {
     log_command("collect_git_daily", || {
         log::info!("collect_git_daily paths={}", paths.len());
-        git_daily::collect_git_daily(&paths)
+        git_daily::collect_git_daily(&paths, &identities)
     })
 }
 
@@ -150,7 +149,6 @@ fn save_heatmap_cache(app: AppHandle, cache: HeatmapCacheFile) -> Result<(), Str
 
 #[tauri::command]
 fn create_terminal_session(
-    app: AppHandle,
     state: State<'_, Mutex<TerminalManager>>,
     project_id: String,
     project_path: String,
@@ -164,7 +162,7 @@ fn create_terminal_session(
         state
             .lock()
             .map_err(|_| "终端状态锁异常".to_string())?
-            .create_session(app, &project_id, &project_path)
+            .create_session(&project_id, &project_path)
     })
 }
 
@@ -195,44 +193,51 @@ fn close_terminal_session(
 }
 
 #[tauri::command]
-fn write_to_terminal(
+fn switch_terminal_session(
+    app: AppHandle,
     state: State<'_, Mutex<TerminalManager>>,
     session_id: String,
+) -> Result<(), String> {
+    log_command_result("switch_terminal_session", || {
+        log::info!("switch_terminal_session session_id={}", session_id);
+        state
+            .lock()
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .switch_session(app, &session_id)
+    })
+}
+
+#[tauri::command]
+fn resize_terminal_session(
+    state: State<'_, Mutex<TerminalManager>>,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    log_command_result("resize_terminal_session", || {
+        state
+            .lock()
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .resize_session(cols, rows)
+    })
+}
+
+#[tauri::command]
+fn write_to_terminal(
+    state: State<'_, Mutex<TerminalManager>>,
     data: String,
 ) -> Result<(), String> {
     let data_len = data.len();
-    let writer = {
-        let manager = state
+    log_command_result("write_to_terminal", || {
+        state
             .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?;
-        manager.get_writer(&session_id)?
-    };
-    let mut locked = writer
-        .lock()
-        .map_err(|_| "终端写入锁异常".to_string())?;
-    locked
-        .write_all(data.as_bytes())
-        .map_err(|err| {
-            let message = format!("终端写入失败: {err}");
-            log::error!(
-                "write_to_terminal session_id={} size={} error={}",
-                session_id,
-                data_len,
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .write_to_terminal(&data)
+            .map_err(|err| {
+                let message = format!("终端写入失败: {err}");
+                log::error!("write_to_terminal size={} error={}", data_len, message);
                 message
-            );
-            message
-        })?;
-    locked.flush().map_err(|err| {
-        let message = format!("终端写入失败: {err}");
-        log::error!(
-            "write_to_terminal session_id={} size={} error={}",
-            session_id,
-            data_len,
-            message
-        );
-        message
-    })?;
-    Ok(())
+            })
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -283,6 +288,8 @@ pub fn run() {
             create_terminal_session,
             list_terminal_sessions,
             close_terminal_session,
+            switch_terminal_session,
+            resize_terminal_session,
             write_to_terminal,
         ])
         .run(tauri::generate_context!())
