@@ -186,7 +186,38 @@ export const useTerminalSession = ({
 
     // 添加键盘事件监听器，确保所有组合键都能传递到终端
     // 这对于 tmux 等工具的快捷键至关重要
+    const sendToTmux = (data: string, errorMessage: string) => {
+      if (!readySessionRef.current) {
+        return;
+      }
+      void writeToTerminal(data).catch((error) => {
+        console.error(errorMessage, error);
+      });
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.code === "KeyD") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            if (event.shiftKey) {
+              sendToTmux("\x01\"", "Failed to send tmux vertical split command.");
+            } else {
+              sendToTmux("\x01%", "Failed to send tmux split command.");
+            }
+          }
+          return;
+        }
+        if (event.code === "KeyW") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            sendToTmux("\x01x", "Failed to send tmux kill pane command.");
+          }
+          return;
+        }
+      }
       // 检查是否是需要传递给终端的组合键
       const isModifierKey = event.ctrlKey || event.metaKey || event.altKey;
       const isTabKey = event.key === 'Tab';
@@ -200,7 +231,6 @@ export const useTerminalSession = ({
         // 如果不是退出快捷键，阻止默认行为，让终端处理
         if (!isQuitShortcut) {
           event.preventDefault();
-          event.stopPropagation();
         }
       }
     };
