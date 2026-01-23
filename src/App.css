@@ -1076,7 +1076,7 @@
 .workspace-terminal {
   flex: 1;
   min-height: 0;
-  background: #101114;
+  background: #002b36; /* Solarized Dark 背景色 */
   border-top: 1px solid var(--color-divider);
   display: flex;
 }
@@ -1087,6 +1087,7 @@
   flex: 1;
   min-height: 0;
   height: 100%;
+  background: #002b36; /* 确保继承 Solarized Dark 背景色 */
 }
 
 .terminal-surface {
@@ -1094,7 +1095,7 @@
   min-height: 0;
   height: 100%;
   overflow: hidden;
-  background: transparent;
+  background: #002b36; /* Solarized Dark 背景色 */
   padding-top: 8px;
   box-sizing: border-box;
 }
@@ -1102,7 +1103,7 @@
 .terminal-surface .xterm,
 .terminal-surface .xterm-screen,
 .terminal-surface .xterm-viewport {
-  background: transparent !important;
+  /* 移除强制透明，让主题背景色生效 */
 }
 
 .terminal-surface .xterm {

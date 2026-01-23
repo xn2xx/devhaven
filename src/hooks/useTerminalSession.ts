@@ -5,8 +5,11 @@ import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
+import { Unicode11Addon } from "xterm-addon-unicode11";
+import { WebglAddon } from "xterm-addon-webgl";
 
 import { resizeTerminalSession, switchTerminalSession, TERMINAL_OUTPUT_EVENT, writeToTerminal } from "../services/terminal";
+import { solarizedDark } from "../styles/terminal-themes";
 import "xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
@@ -162,20 +165,41 @@ export const useTerminalSession = ({
     const terminal = new Terminal({
       cursorBlink: true,
       fontSize: 12,
-      fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
-      allowTransparency: true,
-      theme: {
-        background: "transparent",
-        foreground: "rgba(255, 255, 255, 0.9)",
-        cursor: "rgba(255, 255, 255, 0.9)",
-      },
+      fontFamily: "'Hack Nerd Font', monospace",
+      allowTransparency: false,
+      allowProposedApi: true,
+      theme: solarizedDark,
       scrollback: 5000,
     });
     const fitAddon = new FitAddon();
+    const unicode11Addon = new Unicode11Addon();
+
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(unicode11Addon);
     terminal.loadAddon(new WebLinksAddon());
+
+    // 激活 Unicode 11 支持
+    terminal.unicode.activeVersion = "11";
+
     terminal.open(container);
+
+    // WebGL 渲染器必须在 terminal.open() 之后加载
+    // 使用 setTimeout 确保 DOM 已经完全渲染
+    setTimeout(() => {
+      if (!disposed && terminal.element) {
+        try {
+          const webglAddon = new WebglAddon();
+          webglAddon.onContextLoss(() => {
+            console.warn("WebGL context lost, disposing addon");
+            webglAddon.dispose();
+          });
+          terminal.loadAddon(webglAddon);
+          console.log("WebGL renderer loaded successfully");
+        } catch (e) {
+          console.warn("WebGL addon could not be loaded, using canvas renderer", e);
+        }
+      }
+    }, 0);
 
     const safeFit = () => {
       if (disposed || !terminal.element || !container.isConnected) {
