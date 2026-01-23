@@ -261,7 +261,7 @@ fn spawn_pty(
     // 检测是否在 tmux 环境中，如果是则使用 screen-256color
     // 这样可以避免终端格式错乱问题
     let term_value = if std::env::var("TMUX").is_ok() {
-        TMUX_TERM
+        DEFAULT_TERM
     } else {
         DEFAULT_TERM
     };

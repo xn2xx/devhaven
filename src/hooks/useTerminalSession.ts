@@ -296,6 +296,14 @@ export const useTerminalSession = ({
       // 检查是否是需要传递给终端的组合键
       const isModifierKey = event.ctrlKey || event.metaKey || event.altKey;
       const isTabKey = event.key === 'Tab';
+      const isPasteShortcut =
+        (event.metaKey || event.ctrlKey) &&
+        (event.key === 'v' || event.key === 'V');
+      const isShiftInsertPaste = event.shiftKey && event.key === 'Insert';
+
+      if (isPasteShortcut || isShiftInsertPaste) {
+        return;
+      }
 
       if (isModifierKey || isTabKey) {
         // 只保留 Command+Q (macOS) 或 Ctrl+Q (其他平台) 作为退出快捷键
