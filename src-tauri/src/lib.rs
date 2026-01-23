@@ -10,7 +10,7 @@ mod time_utils;
 use tauri::AppHandle;
 
 use crate::models::{AppStateFile, BranchListItem, GitDailyResult, HeatmapCacheFile, Project};
-use crate::system::EditorOpenParams;
+use crate::system::{EditorOpenParams, TerminalOpenParams};
 
 #[tauri::command]
 /// 读取应用状态。
@@ -62,8 +62,8 @@ fn open_in_finder(path: String) -> Result<(), String> {
 
 #[tauri::command]
 /// 在终端中打开路径。
-fn open_in_terminal(path: String) -> Result<(), String> {
-    system::open_in_terminal(&path)
+fn open_in_terminal(params: TerminalOpenParams) -> Result<(), String> {
+    system::open_in_terminal(params)
 }
 
 #[tauri::command]

@@ -9,15 +9,52 @@ pub struct AppStateFile {
     pub version: i32,
     pub tags: Vec<TagData>,
     pub directories: Vec<String>,
+    #[serde(default)]
+    pub settings: AppSettings,
 }
 
 impl Default for AppStateFile {
     /// 默认应用状态结构。
     fn default() -> Self {
         Self {
-            version: 2,
+            version: 3,
             tags: Vec::new(),
             directories: Vec::new(),
+            settings: AppSettings::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    #[serde(default)]
+    pub editor_open_tool: OpenToolSettings,
+    #[serde(default)]
+    pub terminal_open_tool: OpenToolSettings,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            editor_open_tool: OpenToolSettings::default(),
+            terminal_open_tool: OpenToolSettings::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenToolSettings {
+    pub command_path: String,
+    pub arguments: Vec<String>,
+}
+
+impl Default for OpenToolSettings {
+    fn default() -> Self {
+        Self {
+            command_path: String::new(),
+            arguments: Vec::new(),
         }
     }
 }

@@ -7,6 +7,7 @@ import {
   IconCalendar,
   IconChartLine,
   IconSearch,
+  IconSettings,
   IconSidebarRight,
 } from "./Icons";
 
@@ -24,6 +25,7 @@ export type MainContentProps = {
   showDetailPanel: boolean;
   onToggleDetailPanel: () => void;
   onOpenDashboard: () => void;
+  onOpenSettings: () => void;
   selectedProjects: Set<string>;
   onSelectProject: (project: Project, event: React.MouseEvent<HTMLDivElement>) => void;
   onShowProjectDetail: (project: Project) => void;
@@ -31,6 +33,7 @@ export type MainContentProps = {
   onRemoveTagFromProject: (projectId: string, tag: string) => void;
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
+  onOpenInTerminal: (path: string) => void;
   getTagColor: (tag: string) => string;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
 };
@@ -50,6 +53,7 @@ export default function MainContent({
   showDetailPanel,
   onToggleDetailPanel,
   onOpenDashboard,
+  onOpenSettings,
   selectedProjects,
   onSelectProject,
   onShowProjectDetail,
@@ -57,6 +61,7 @@ export default function MainContent({
   onRemoveTagFromProject,
   onRefreshProject,
   onCopyPath,
+  onOpenInTerminal,
   getTagColor,
   searchInputRef,
 }: MainContentProps) {
@@ -72,6 +77,9 @@ export default function MainContent({
           onClick={onToggleDetailPanel}
         >
           <IconSidebarRight size={18} />
+        </button>
+        <button className="icon-button" aria-label="设置" onClick={onOpenSettings}>
+          <IconSettings size={18} />
         </button>
         <SearchBar value={searchText} onChange={onSearchTextChange} ref={searchInputRef} />
         <label className="filter-select">
@@ -128,6 +136,7 @@ export default function MainContent({
                 getTagColor={getTagColor}
                 onRefreshProject={onRefreshProject}
                 onCopyPath={onCopyPath}
+                onOpenInTerminal={onOpenInTerminal}
               />
             ))}
           </div>

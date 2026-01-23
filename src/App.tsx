@@ -6,6 +6,7 @@ import MainContent from "./components/MainContent";
 import DetailPanel from "./components/DetailPanel";
 import TagEditDialog from "./components/TagEditDialog";
 import DashboardModal from "./components/DashboardModal";
+import SettingsModal from "./components/SettingsModal";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
@@ -17,7 +18,7 @@ import { formatDateKey } from "./utils/gitDaily";
 import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
-import { copyToClipboard } from "./services/system";
+import { copyToClipboard, openInTerminal } from "./services/system";
 
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
@@ -40,6 +41,7 @@ function AppLayout() {
     removeTagFromProject,
     refreshProject,
     updateGitDaily,
+    updateSettings,
   } = useDevHavenContext();
 
   const [searchText, setSearchText] = useState("");
@@ -57,6 +59,7 @@ function AppLayout() {
     null,
   );
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -67,6 +70,8 @@ function AppLayout() {
     () => heatmapStore.getHeatmapData(HEATMAP_CONFIG.sidebar.days),
     [heatmapStore],
   );
+
+  const terminalSettings = appState.settings.terminalOpenTool;
 
   const hiddenTags = useMemo(
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
@@ -286,6 +291,36 @@ function AppLayout() {
     [showToast],
   );
 
+  const handleOpenInTerminal = useCallback(
+    async (path: string) => {
+      const commandPath = terminalSettings.commandPath.trim();
+      const argumentsList = terminalSettings.arguments.map((arg) => arg.trim()).filter(Boolean);
+      try {
+        await openInTerminal({
+          path,
+          command_path: commandPath.length > 0 ? commandPath : null,
+          arguments: commandPath.length > 0 && argumentsList.length > 0 ? argumentsList : null,
+        });
+      } catch (error) {
+        console.error("终端打开失败。", error);
+        showToast("终端打开失败，请检查终端配置", "error");
+      }
+    },
+    [terminalSettings.arguments, terminalSettings.commandPath, showToast],
+  );
+
+  const handleSaveSettings = useCallback(
+    async (settings: typeof appState.settings) => {
+      try {
+        await updateSettings(settings);
+      } catch (error) {
+        console.error("保存设置失败。", error);
+        showToast("保存失败，请稍后重试", "error");
+      }
+    },
+    [showToast, updateSettings],
+  );
+
   return (
     <div className="app-root">
       <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
@@ -328,6 +363,7 @@ function AppLayout() {
           showDetailPanel={showDetailPanel}
           onToggleDetailPanel={handleToggleDetail}
           onOpenDashboard={() => setShowDashboard(true)}
+          onOpenSettings={() => setShowSettings(true)}
           selectedProjects={selectedProjects}
           onSelectProject={handleSelectProject}
           onShowProjectDetail={(project) => {
@@ -338,6 +374,7 @@ function AppLayout() {
           onRemoveTagFromProject={removeTagFromProject}
           onRefreshProject={refreshProject}
           onCopyPath={handleCopyPath}
+          onOpenInTerminal={handleOpenInTerminal}
           getTagColor={getTagColor}
           searchInputRef={searchInputRef}
         />
@@ -370,6 +407,14 @@ function AppLayout() {
           heatmapStore={heatmapStore}
           onClose={() => setShowDashboard(false)}
           onUpdateGitDaily={updateGitDaily}
+        />
+      ) : null}
+      {showSettings ? (
+        <SettingsModal
+          settings={appState.settings}
+          projects={projects}
+          onClose={() => setShowSettings(false)}
+          onSaveSettings={handleSaveSettings}
         />
       ) : null}
       {toast ? (
