@@ -1,162 +1,128 @@
 ## ADDED Requirements
 
-### Requirement: 终端会话管理
+### Requirement: 项目 tmux 会话管理
 
-系统应当(SHALL)为每个项目提供独立的终端会话，并且每个项目仅对应一个 PTY + shell 会话。
+系统应当(SHALL)使用共享默认 tmux server，并为每个项目创建或复用一个 tmux session。
 
-#### Scenario: 创建终端会话
-- **WHEN** 用户首次打开某个项目的开发模式
-- **THEN** 系统应当创建一个新的终端会话
-- **AND** 自动切换工作目录到项目路径
-- **AND** 使用系统默认 shell（bash/zsh 或 WSL 默认 shell）
-- **AND** 在项目路径启动 PTY + shell 进程
-- **AND** 返回唯一的会话 ID
+#### Scenario: 创建或复用项目会话
+- **WHEN** 用户进入某项目的开发模式
+- **THEN** 系统应当创建或附加名为 `devhaven_<project_id>` 的 session
+- **AND** 该 session 的工作目录应当为项目路径
+- **AND** 控制模式客户端应当附着到该 session
 
-#### Scenario: 复用已存在的会话
-- **WHEN** 用户打开已有活跃会话的项目
-- **THEN** 系统应当复用现有会话
-- **AND** 不创建新的终端进程
-- **AND** 复用已创建的 PTY 会话
+#### Scenario: 外部终端恢复
+- **WHEN** 用户在外部终端执行 `tmux attach -t <session>`
+- **THEN** 应当看到与 DevHaven 相同的窗口与 pane 布局
+- **AND** DevHaven 仍可继续操作该 session
 
-#### Scenario: 关闭终端会话
+#### Scenario: 关闭标签页不销毁会话
 - **WHEN** 用户关闭项目标签页
-- **THEN** 系统应当请求对应终端进程优雅退出
-- **AND** 必要时按平台强制终止进程
-- **AND** 关闭对应的终端进程
-- **AND** 清理会话资源
-- **AND** 从活跃会话列表中移除
+- **THEN** 系统应当仅断开显示/控制
+- **AND** 不应当销毁对应 tmux session
 
-#### Scenario: 限制最大会话数量
-- **WHEN** 已打开 10 个终端会话（默认上限）
-- **AND** 用户尝试打开第 11 个项目
-- **THEN** 系统应当显示警告提示
-- **AND** 要求用户关闭至少一个现有会话后再继续
+### Requirement: 控制模式连接与错误提示
 
-### Requirement: 工作空间 UI 布局
+系统应当(SHALL)通过 tmux 控制模式连接并解析事件流。
 
-系统应当(SHALL)在开发模式下提供标签页 + 终端的布局。
+#### Scenario: tmux 可用时连接成功
+- **WHEN** 系统检测到 tmux 可用
+- **THEN** 应当启动 `tmux -CC` 控制模式客户端
+- **AND** 正常接收 `%output` 与 `%layout-change` 等通知
 
-#### Scenario: 显示标签页栏
-- **WHEN** 应用处于开发模式
-- **THEN** 界面上方应当显示横向标签页栏
-- **AND** 每个标签显示项目名称
-- **AND** 活跃标签高亮显示
+#### Scenario: tmux 不可用
+- **WHEN** 系统无法找到 tmux 或启动失败
+- **THEN** 应当提示用户安装/修复 tmux
+- **AND** 禁用开发模式入口
 
-#### Scenario: 显示终端面板
-- **WHEN** 应用处于开发模式
-- **THEN** 界面下方应当显示终端容器
-- **AND** 显示当前活跃标签对应的终端实例
-- **AND** 终端占据剩余可用空间
+### Requirement: pane 布局同步
 
-#### Scenario: 标签页切换
-- **WHEN** 用户点击非活跃标签
-- **THEN** 系统应当切换到对应的终端会话
-- **AND** 更新活跃标签高亮状态
-- **AND** 终端面板显示切换后的会话输出
-- **AND** 终端应当切换到对应的会话并绑定其输入输出
+系统应当(SHALL)在 UI 中严格同步 tmux 的 pane 布局。
 
-### Requirement: 标签页操作
+#### Scenario: 布局变化同步
+- **WHEN** tmux 触发 `%layout-change`
+- **THEN** UI 应当重新计算 pane 几何信息
+- **AND** 每个 pane 的位置与大小应当与 tmux 一致
 
-系统应当(SHALL)支持标签页关闭操作。
+#### Scenario: 窗口切换同步
+- **WHEN** 用户切换到另一个 tmux window
+- **THEN** UI 应当更新为该 window 的 pane 布局
 
-#### Scenario: 关闭标签页
-- **WHEN** 用户点击标签页的关闭按钮（×）
-- **THEN** 系统应当判断该会话是否存在未退出的前台进程（无法判断时视为无运行）
-- **AND** 若存在运行中的前台进程，系统应当显示确认对话框
-- **AND** 用户确认后关闭对应的终端会话
-- **AND** 从标签页栏移除该标签
+### Requirement: pane 输入输出
 
-#### Scenario: 最后一个标签页关闭时返回项目列表
-- **WHEN** 用户关闭最后一个打开的标签页
-- **THEN** 系统应当自动退出开发模式
-- **AND** 返回到项目列表视图（gallery-mode）
+系统应当(SHALL)将输入输出正确路由到对应 pane。
 
-### Requirement: 终端输入输出
+#### Scenario: 发送输入到目标 pane
+- **WHEN** 用户在某 pane 中输入内容
+- **THEN** 系统应当将字节流发送到该 pane
+- **AND** vim/fzf/htop 等全屏程序应当稳定工作
 
-系统应当(SHALL)正确处理终端的输入输出。
+#### Scenario: 接收并渲染输出
+- **WHEN** tmux 发送 `%output <pane-id> <data>`
+- **THEN** 系统应当将输出渲染到对应 pane 的终端实例
 
-#### Scenario: 用户输入命令
-- **WHEN** 用户在终端中输入字符
-- **THEN** 系统应当将输入发送到后端 PTY 进程
-- **AND** 终端显示用户输入的回显
+### Requirement: 分屏与窗口操作
 
-#### Scenario: 终端输出内容
-- **WHEN** shell 进程产生输出（stdout/stderr）
-- **THEN** 系统应当实时捕获输出
-- **AND** 将输出发送到前端 xterm.js 实例
-- **AND** 终端界面实时显示输出内容
+系统应当(SHALL)支持 tmux 的分屏与窗口管理操作。
 
-#### Scenario: 支持 ANSI 转义序列
-- **WHEN** shell 输出包含颜色、格式控制等 ANSI 代码
-- **THEN** 终端应当正确渲染这些控制序列
-- **AND** 显示彩色输出、粗体、下划线等格式
+#### Scenario: 创建左右分屏
+- **WHEN** 用户触发左右分屏操作
+- **THEN** tmux 应当创建新的 pane
+- **AND** UI 应当显示新的 pane
 
-### Requirement: 跨平台支持
+#### Scenario: 创建上下分屏
+- **WHEN** 用户触发上下分屏操作
+- **THEN** tmux 应当创建新的 pane
+- **AND** UI 应当显示新的 pane
 
-系统应当(SHALL)在主流操作系统上提供终端功能。
+#### Scenario: 切换窗口
+- **WHEN** 用户触发窗口切换操作
+- **THEN** 系统应当切换到目标 window
+- **AND** UI 更新为该 window 的 pane 布局
 
-#### Scenario: macOS 平台
-- **WHEN** 应用运行在 macOS 上
-- **THEN** 终端应当使用用户默认 shell（通常是 zsh 或 bash）
-- **AND** 支持完整的 Unix 命令
-- **AND** 使用用户默认 shell
+#### Scenario: 关闭 pane
+- **WHEN** 用户关闭当前 pane
+- **THEN** tmux 应当关闭该 pane
+- **AND** UI 移除对应 pane
 
-#### Scenario: Linux 平台
-- **WHEN** 应用运行在 Linux 上
-- **THEN** 终端应当使用 /bin/bash 或用户配置的 shell
-- **AND** 支持完整的 Linux 命令
-- **AND** 使用用户默认 shell
+### Requirement: 窗口列表常驻显示
 
-#### Scenario: Windows 平台
-- **WHEN** 应用运行在 Windows 上
-- **THEN** 系统应当使用 Windows 可用的默认 shell（如 PowerShell 或 WSL shell）
+系统应当(SHALL)在开发模式下常驻显示当前 session 的窗口列表。
 
-### Requirement: 错误处理
+#### Scenario: 展示窗口列表
+- **WHEN** 用户进入开发模式
+- **THEN** 应当显示窗口列表
+- **AND** 列表应当标识当前活跃窗口
 
-系统应当(SHALL)优雅地处理终端相关的错误。
+#### Scenario: 点击窗口切换
+- **WHEN** 用户点击窗口列表中的某个窗口
+- **THEN** 系统应当切换到该窗口
+- **AND** UI 更新为该窗口的 pane 布局
 
-#### Scenario: 创建会话失败
-- **WHEN** 系统无法创建 PTY 进程（权限问题、系统限制等）
-- **THEN** 应当显示错误提示
-- **AND** 建议用户检查系统权限或重启应用
+### Requirement: 快捷键
 
-#### Scenario: shell 不可用
-- **WHEN** 系统无法定位默认 shell
-- **THEN** 应当提示用户检查 SHELL/COMSPEC 配置
-- **AND** 给出平台相关的说明
+系统应当(SHALL)提供默认快捷键以操作 tmux。
 
-#### Scenario: 会话未初始化
-- **WHEN** 前端请求写入或调整尺寸，但会话尚未启动
-- **THEN** 应当返回明确错误信息
-- **AND** 提示用户重新进入工作空间或重启会话
+#### Scenario: 分屏快捷键
+- **WHEN** 用户按下 `Cmd+D`
+- **THEN** 系统应当创建左右分屏
+- **AND** 用户按下 `Cmd+Shift+D` 应当创建上下分屏
 
-#### Scenario: 进程异常退出
-- **WHEN** shell 进程意外崩溃或被杀死
-- **THEN** 终端应当显示"进程已退出（退出码 X）"
-- **AND** 提供"重新启动"按钮
+#### Scenario: 窗口与 pane 切换快捷键
+- **WHEN** 用户按下 `Cmd+[ / Cmd+]`
+- **THEN** 系统应当切换到上一/下一窗口
+- **AND** 用户按下 `Cmd+方向键` 应当切换 pane
+- **AND** 用户按下 `Cmd+1..9` 应当切换到对应窗口
 
-#### Scenario: 终端通信通道中断
-- **WHEN** 前后端终端通信通道中断
-- **THEN** 终端应当显示"连接已断开"警告
-- **AND** 尝试自动重连
-- **AND** 重连成功后恢复正常输出
+#### Scenario: 关闭与新建快捷键
+- **WHEN** 用户按下 `Cmd+W`
+- **THEN** 系统应当关闭当前 pane
+- **AND** 用户按下 `Cmd+T` 应当新建窗口
 
-### Requirement: 性能与资源管理
+### Requirement: macOS 平台限制
 
-系统应当(SHALL)有效管理终端会话的资源占用。
+系统应当(SHALL)仅在 macOS 启用 tmux 工作空间。
 
-#### Scenario: 内存占用监控
-- **WHEN** 单个终端会话内存占用超过 100MB
-- **THEN** 系统应当记录警告日志
-- **AND** （可选）提示用户该会话可能有内存泄漏
-
-#### Scenario: 输出缓冲限制
-- **WHEN** 终端输出速度过快（如 `cat` 大文件）
-- **THEN** xterm.js 应当启用输出节流
-- **AND** 避免前端界面卡顿
-
-#### Scenario: 会话清理
-- **WHEN** 应用退出时仍有活跃会话
-- **THEN** 系统应当向所有终端进程发起优雅终止请求
-- **AND** 等待最多 3 秒后按平台强制终止仍未退出的进程
-- **AND** 确保所有资源被释放
+#### Scenario: 非 macOS 平台
+- **WHEN** 应用运行在非 macOS 平台
+- **THEN** 开发模式入口应当不可用
+- **AND** 提示该功能仅支持 macOS

@@ -1,64 +1,41 @@
-# Change: 集成内置终端作为开发工作空间
+# Change: 集成 tmux 控制模式的终端工作空间
 
 ## Why
 
-当前 DevHaven 提供了"在终端打开"的快捷操作，但需要跳转到外部终端应用。开发者在管理多个项目时，经常需要在不同项目间切换命令行环境，这导致：
+当前的内置终端以单一 PTY 会话为核心，虽然能提供基础命令行体验，但存在关键缺口：
 
-1. **上下文切换成本高**：需要在 DevHaven 和外部终端之间反复切换
-2. **工作空间管理困难**：难以区分哪个终端窗口对应哪个项目
-3. **缺乏集成体验**：终端与项目管理分离，无法形成统一的开发流
+1. **缺少分屏与窗口管理**：多任务开发时需要快速拆分 pane 与切换窗口
+2. **会话恢复割裂**：希望在 DevHaven 与外部终端之间无缝恢复同一布局
+3. **全屏程序体验不足**：vim/fzf/htop 等需要稳定的终端状态管理
 
-通过集成内置终端组件，可以让开发者在 DevHaven 内直接进入项目的命令行环境，提升多项目管理效率。
+引入 tmux 控制模式后，tmux 负责会话与布局的真实状态，DevHaven 负责 UI 渲染与快捷操作，可以同时满足分屏、窗口切换和跨终端恢复的需求。
 
 ## What Changes
 
-- **新增开发模式视图**：双击项目卡片进入专用开发模式界面
-  - 上方：横向标签页栏，每个标签对应一个打开的项目
-  - 下方：终端实例，自动 cd 到对应项目目录
-- **终端集成**：使用 xterm.js + PTY 原生会话
-  - 每个项目维护独立的终端会话（独立 PTY + shell）
-  - 终端切换在前端完成，后端按会话写入/调整尺寸
-  - 支持完整的终端输入输出和 ANSI 控制序列
-  - 跨平台支持（macOS/Linux/Windows）
-- **工作空间管理**：
-  - 标签页支持关闭、切换
-  - 会话在后台保持活跃
-  - 从开发模式返回项目列表视图
-- **UI 布局调整**：
-  - 新增全屏开发模式布局（workspace-mode）
-  - 保持现有项目列表模式（gallery-mode）
-  - 两种模式间平滑切换
-
-**技术栈变更**：
-- 新增前端依赖：`xterm` + `xterm-addon-fit` + `xterm-addon-web-links`
-- 新增后端依赖：`portable-pty`（Rust crate）
-- Tauri 后端：PTY 进程管理、终端会话 API
-- React 前端：新增 WorkspaceView、TabBar、TerminalPanel 组件
+- **终端引擎切换**：使用 tmux 控制模式（`tmux -CC`）替代直接 PTY + shell
+- **项目即会话**：每个项目对应一个 tmux session，复用共享默认 tmux server
+- **布局同步**：UI 按 tmux pane 布局渲染，布局变化实时同步
+- **快捷键支持**：提供分屏、窗口切换、pane 切换等默认快捷键
+- **会话恢复**：外部终端可直接 `tmux attach -t <session>` 恢复
+- **平台范围**：目标仅限 macOS，非 macOS 给出不支持提示
 
 ## Impact
 
 ### 影响的能力规范
-- **新增**：`terminal-workspace` - 集成终端工作空间
-- **新增**：`project-interaction` - 项目交互方式扩展（双击行为）
-- **新增**：`ui-layout` - 应用布局系统（新增开发模式）
+- **更新**：`terminal-workspace` - 终端会话从 PTY 迁移到 tmux 控制模式
+- **沿用**：`project-interaction` - 项目卡片进入开发模式
+- **沿用**：`ui-layout` - 双模式布局（gallery/workspace）
 
 ### 影响的代码模块
 - **前端**：
-  - `src/App.tsx` - 新增模式状态管理
-  - `src/components/` - 新增 WorkspaceView、TabBar 组件
-  - `src/services/` - 新增 terminal 服务
+  - `src/hooks/useTerminalSession.ts` - 由单终端切换为 pane 布局驱动
+  - `src/components/` - 新增 pane 容器与窗口切换 UI
+  - `src/services/terminal.ts` - 调整为 tmux 控制命令接口
 - **后端**：
-  - `src-tauri/src/main.rs` - 新增终端进程管理命令
-  - `src-tauri/src/` - 新增 terminal 模块
+  - `src-tauri/src/terminal.rs` - 重写为 tmux 控制模式管理器
+  - `src-tauri/src/lib.rs` - 更新 Tauri 命令集合
 
 ### 风险评估
-- **跨平台兼容性**：Windows 的 PTY 实现与 Unix 系统有差异，需要充分测试
-- **资源占用**：多会话 PTY 进程会增加内存与 CPU 占用
-- **性能**：多个终端实例可能增加内存占用（每个会话约 20-50MB）
-- **复杂度**：进程生命周期管理、PTY 通信需谨慎处理
-- **依赖维护**：xterm.js 和 portable-pty 需要持续跟进更新
-
-### 用户体验影响
-- **正面**：大幅减少窗口切换，提升多项目开发效率
-- **学习曲线**：需要引导用户了解双击进入开发模式的交互
-- **可选性**：保持向后兼容，用户仍可选择使用外部终端
+- **依赖外部 tmux**：需要用户系统已安装 tmux
+- **解析复杂度**：控制模式输出解析与布局同步需保持稳定
+- **兼容性**：仅支持 macOS，需明确提示并阻断非目标平台
