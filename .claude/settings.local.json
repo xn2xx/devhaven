@@ -10,7 +10,15 @@
       "mcp__serena__list_dir",
       "Bash(openspec list:*)",
       "Bash(openspec validate:*)",
-      "Bash(openspec show:*)"
+      "Bash(openspec show:*)",
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev)",
+      "Bash(fc-list:*)",
+      "Bash(system_profiler:*)",
+      "Bash(mdfind:*)",
+      "Bash(curl:*)",
+      "Bash(git rev-parse:*)"
     ]
   }
 }
