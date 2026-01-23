@@ -11,6 +11,9 @@ import "xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
 
+// 全局缓冲区，独立于组件生命周期，防止组件重新挂载时数据丢失
+const globalOutputBuffers = new Map<string, string>();
+
 export type TerminalStatus = "idle" | "preparing" | "connecting" | "ready" | "error";
 
 type UseTerminalSessionOptions = {
@@ -38,7 +41,6 @@ export const useTerminalSession = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const outputBuffersRef = useRef<Map<string, string>>(new Map());
   const activeSessionRef = useRef<string | null>(null);
   const renderedSessionRef = useRef<string | null>(null);
   const readySessionRef = useRef<string | null>(null);
@@ -66,10 +68,17 @@ export const useTerminalSession = ({
     (sessionId: string) => {
       const terminal = terminalRef.current;
       if (!terminal) {
+        console.warn("[syncActiveBuffer] terminal not ready");
         return;
       }
       terminal.reset();
-      const buffered = outputBuffersRef.current.get(sessionId);
+      const buffered = globalOutputBuffers.get(sessionId);
+      console.log("[syncActiveBuffer]", {
+        sessionId,
+        bufferSize: buffered?.length ?? 0,
+        bufferPreview: buffered?.slice(0, 100),
+        allBuffers: Array.from(globalOutputBuffers.keys())
+      });
       if (buffered) {
         terminal.write(buffered);
       }
@@ -94,12 +103,20 @@ export const useTerminalSession = ({
       })();
       const sessionId = payload.sessionId ?? payload.session_id ?? activeSessionRef.current;
       const data = payload.data ?? "";
-      console.log("[terminal-output]", { sessionId, data });
+      console.log("[terminal-output]", { sessionId, data, activeSession: activeSessionRef.current });
       if (!sessionId || !data) {
+        console.warn("[terminal-output] skipped - missing sessionId or data", { sessionId, dataLength: data?.length });
         return;
       }
-      const next = appendBuffer(outputBuffersRef.current.get(sessionId), data);
-      outputBuffersRef.current.set(sessionId, next);
+      const before = globalOutputBuffers.get(sessionId);
+      const next = appendBuffer(before, data);
+      globalOutputBuffers.set(sessionId, next);
+      console.log("[terminal-output] stored", {
+        sessionId,
+        beforeSize: before?.length ?? 0,
+        afterSize: next.length,
+        allKeys: Array.from(globalOutputBuffers.keys())
+      });
       if (activeSessionRef.current === sessionId) {
         terminalRef.current?.write(data);
       }
@@ -250,12 +267,9 @@ export const useTerminalSession = ({
       }
       readySessionRef.current = sessionId;
       setStatus("ready");
-      if (renderedSessionRef.current !== sessionId) {
-        syncActiveBuffer(sessionId);
-        renderedSessionRef.current = sessionId;
-      } else {
-        refreshTerminal();
-      }
+      // 总是同步缓冲区，因为切换会话时终端会被 reset
+      syncActiveBuffer(sessionId);
+      renderedSessionRef.current = sessionId;
       if (terminal.cols > 0 && terminal.rows > 0) {
         try {
           await resizeTerminalSession(terminal.cols, terminal.rows);

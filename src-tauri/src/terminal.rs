@@ -209,6 +209,7 @@ fn spawn_terminal_reader(
 ) {
     thread::spawn(move || {
         let mut buffer = [0u8; 8192];
+        let mut logged = false;
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
@@ -217,6 +218,14 @@ fn spawn_terminal_reader(
                         session_id: session_id.clone(),
                         data: String::from_utf8_lossy(&buffer[..size]).to_string(),
                     };
+                    if !logged {
+                        log::info!(
+                            "terminal output session_id={} size={}",
+                            session_id,
+                            size
+                        );
+                        logged = true;
+                    }
                     let _ = app.emit(TERMINAL_OUTPUT_EVENT, payload);
                 }
                 Err(_) => break,
@@ -259,10 +268,12 @@ fn spawn_pty(
         .master
         .try_clone_reader()
         .map_err(|err| format!("读取终端失败: {err}"))?;
-    let writer = pair
+    let mut writer = pair
         .master
         .take_writer()
         .map_err(|err| format!("获取写入器失败: {err}"))?;
+    let _ = writer.write_all(b"\r");
+    let _ = writer.flush();
 
     let alive = Arc::new(AtomicBool::new(true));
     spawn_terminal_reader(app, session_id, reader, Arc::clone(&alive));
