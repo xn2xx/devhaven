@@ -2,15 +2,8 @@ import { memo } from "react";
 
 import type { Project } from "../models/types";
 import { swiftDateToJsDate } from "../models/types";
-import { openInFinder, openInTerminal } from "../services/system";
-import {
-  IconCalendar,
-  IconCopy,
-  IconFolder,
-  IconRefresh,
-  IconTerminal,
-  IconX,
-} from "./Icons";
+import { openInFinder } from "../services/system";
+import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTerminal, IconX } from "./Icons";
 
 export type ProjectCardProps = {
   project: Project;
@@ -23,6 +16,7 @@ export type ProjectCardProps = {
   getTagColor: (tag: string) => string;
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
+  onOpenInTerminal: (path: string) => void;
 };
 
 /** 格式化 Swift 时间戳为中文日期。 */
@@ -46,6 +40,7 @@ function ProjectCard({
   getTagColor,
   onRefreshProject,
   onCopyPath,
+  onOpenInTerminal,
 }: ProjectCardProps) {
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     const ids = selectedProjectIds.has(project.id)
@@ -85,7 +80,7 @@ function ProjectCard({
             className="icon-button"
             aria-label="在终端打开"
             title="在终端打开"
-            onClick={(event) => handleActionClick(event, () => void openInTerminal(project.path))}
+            onClick={(event) => handleActionClick(event, () => onOpenInTerminal(project.path))}
           >
             <IconTerminal size={16} />
           </button>

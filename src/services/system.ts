@@ -1,9 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type EditorOpenParams = {
+export type TerminalOpenParams = {
   path: string;
-  app_name?: string | null;
-  bundle_id?: string | null;
   command_path?: string | null;
   arguments?: string[] | null;
 };
@@ -14,13 +12,8 @@ export async function openInFinder(path: string) {
 }
 
 /** 在终端中打开指定目录。 */
-export async function openInTerminal(path: string) {
-  await invoke("open_in_terminal", { path });
-}
-
-/** 使用指定编辑器打开文件或目录。 */
-export async function openInEditor(params: EditorOpenParams) {
-  await invoke("open_in_editor", { params });
+export async function openInTerminal(params: TerminalOpenParams) {
+  await invoke("open_in_terminal", { params });
 }
 
 /** 将内容写入系统剪贴板。 */

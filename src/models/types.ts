@@ -13,10 +13,21 @@ export type TagData = {
   hidden: boolean;
 };
 
+export type OpenToolSettings = {
+  commandPath: string;
+  arguments: string[];
+};
+
+export type AppSettings = {
+  editorOpenTool: OpenToolSettings;
+  terminalOpenTool: OpenToolSettings;
+};
+
 export type AppStateFile = {
   version: number;
   tags: TagData[];
   directories: string[];
+  settings: AppSettings;
 };
 
 export type Project = {

@@ -13,9 +13,19 @@ import { collectGitDaily } from "../services/gitDaily";
 import { pickColorForTag } from "../utils/tagColors";
 
 const emptyState: AppStateFile = {
-  version: 2,
+  version: 3,
   tags: [],
   directories: [],
+  settings: {
+    editorOpenTool: {
+      commandPath: "",
+      arguments: [],
+    },
+    terminalOpenTool: {
+      commandPath: "",
+      arguments: [],
+    },
+  },
 };
 
 export type DevHavenState = {
@@ -32,6 +42,7 @@ export type DevHavenActions = {
   updateGitDaily: (paths?: string[]) => Promise<void>;
   addDirectory: (path: string) => Promise<void>;
   removeDirectory: (path: string) => Promise<void>;
+  updateSettings: (settings: AppStateFile["settings"]) => Promise<void>;
   updateTags: (tags: TagData[]) => Promise<void>;
   addTag: (name: string, colorHex?: string) => Promise<void>;
   renameTag: (from: string, to: string) => Promise<void>;
@@ -220,6 +231,16 @@ export function useDevHaven(): DevHavenStore {
     [appState],
   );
 
+  /** 更新应用设置并持久化。 */
+  const updateSettings = useCallback(
+    async (settings: AppStateFile["settings"]) => {
+      const nextState = { ...appState, settings };
+      setAppState(nextState);
+      await saveAppState(nextState);
+    },
+    [appState],
+  );
+
   /** 新建标签并自动分配颜色。 */
   const addTag = useCallback(
     async (name: string, colorHex?: string) => {
@@ -356,6 +377,7 @@ export function useDevHaven(): DevHavenStore {
     updateGitDaily,
     addDirectory,
     removeDirectory,
+    updateSettings,
     updateTags,
     addTag,
     renameTag,
