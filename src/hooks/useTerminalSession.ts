@@ -217,6 +217,81 @@ export const useTerminalSession = ({
           }
           return;
         }
+        if (event.code === "KeyT") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            sendToTmux("\x01c", "Failed to send tmux new window command.");
+          }
+          return;
+        }
+        if (event.code === "KeyF") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            sendToTmux("\x01[", "Failed to send tmux copy mode command.");
+          }
+          return;
+        }
+        if (event.code === "KeyR") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            sendToTmux("\x01,", "Failed to send tmux rename window command.");
+          }
+          return;
+        }
+        if (event.code === "BracketLeft") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            sendToTmux("\x01p", "Failed to send tmux previous window command.");
+          }
+          return;
+        }
+        if (event.code === "BracketRight") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!event.repeat) {
+            sendToTmux("\x01n", "Failed to send tmux next window command.");
+          }
+          return;
+        }
+        if (event.code.startsWith("Digit")) {
+          const digit = event.code.slice(5);
+          if (digit >= "1" && digit <= "9") {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) {
+              sendToTmux(`\x01${digit}`, "Failed to send tmux select window command.");
+            }
+            return;
+          }
+        }
+        if (event.code === "ArrowLeft") {
+          event.preventDefault();
+          event.stopPropagation();
+          sendToTmux("\x01\x1b[D", "Failed to send tmux select pane left command.");
+          return;
+        }
+        if (event.code === "ArrowRight") {
+          event.preventDefault();
+          event.stopPropagation();
+          sendToTmux("\x01\x1b[C", "Failed to send tmux select pane right command.");
+          return;
+        }
+        if (event.code === "ArrowUp") {
+          event.preventDefault();
+          event.stopPropagation();
+          sendToTmux("\x01\x1b[A", "Failed to send tmux select pane up command.");
+          return;
+        }
+        if (event.code === "ArrowDown") {
+          event.preventDefault();
+          event.stopPropagation();
+          sendToTmux("\x01\x1b[B", "Failed to send tmux select pane down command.");
+          return;
+        }
       }
       // 检查是否是需要传递给终端的组合键
       const isModifierKey = event.ctrlKey || event.metaKey || event.altKey;
