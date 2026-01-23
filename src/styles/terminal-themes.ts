@@ -1,4 +1,4 @@
-import type { ITheme } from "xterm";
+import type { ITheme } from "@xterm/xterm";
 
 /**
  * iTerm2 Solarized Dark 主题

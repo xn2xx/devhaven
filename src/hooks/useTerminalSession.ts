@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import { listen } from "@tauri-apps/api/event";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import { WebLinksAddon } from "xterm-addon-web-links";
-import { Unicode11Addon } from "xterm-addon-unicode11";
-import { WebglAddon } from "xterm-addon-webgl";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 
 import { resizeTerminalSession, switchTerminalSession, TERMINAL_OUTPUT_EVENT, writeToTerminal } from "../services/terminal";
 import { solarizedDark } from "../styles/terminal-themes";
-import "xterm/css/xterm.css";
+import "@xterm/xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
 
@@ -196,6 +196,9 @@ export const useTerminalSession = ({
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing || event.key === "Process" || event.key === "Unidentified" || event.keyCode === 229) {
+        return;
+      }
       if (event.metaKey && !event.ctrlKey && !event.altKey) {
         if (event.code === "KeyD") {
           event.preventDefault();
