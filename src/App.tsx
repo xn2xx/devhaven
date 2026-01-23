@@ -12,7 +12,7 @@ import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
-import type { WorkspaceSession } from "./models/terminal";
+import type { TmuxSupportStatus, WorkspaceSession } from "./models/terminal";
 import type { ColorData, Project, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
@@ -22,7 +22,7 @@ import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, openInTerminal } from "./services/system";
-import { closeTerminalSession, createTerminalSession } from "./services/terminal";
+import { closeTerminalSession, createTerminalSession, getTmuxSupportStatus } from "./services/terminal";
 
 type AppMode = "gallery" | "workspace";
 
@@ -69,6 +69,7 @@ function AppLayout() {
   const [appMode, setAppMode] = useState<AppMode>("gallery");
   const [workspaceSessions, setWorkspaceSessions] = useState<WorkspaceSession[]>([]);
   const [activeWorkspaceSessionId, setActiveWorkspaceSessionId] = useState<string | null>(null);
+  const [tmuxSupport, setTmuxSupport] = useState<TmuxSupportStatus>({ supported: true });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -223,6 +224,26 @@ function AppLayout() {
   }, []);
 
   useEffect(() => {
+    let canceled = false;
+    void (async () => {
+      try {
+        const status = await getTmuxSupportStatus();
+        if (!canceled) {
+          setTmuxSupport(status);
+        }
+      } catch (error) {
+        console.error("获取 tmux 支持状态失败。", error);
+        if (!canceled) {
+          setTmuxSupport({ supported: false, reason: "无法检测 tmux 状态" });
+        }
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (isLoading) {
       return;
     }
@@ -360,6 +381,10 @@ function AppLayout() {
 
   const handleEnterWorkspace = useCallback(
     async (project: Project) => {
+      if (!tmuxSupport.supported) {
+        showToast(tmuxSupport.reason ?? "tmux 工作空间不可用", "error");
+        return;
+      }
       const existing = workspaceSessions.find((session) => session.projectId === project.id);
       if (existing) {
         setActiveWorkspaceSessionId(existing.id);
@@ -383,7 +408,7 @@ function AppLayout() {
         showToast("终端启动失败，请检查默认 shell 与权限", "error");
       }
     },
-    [showToast, workspaceSessions],
+    [showToast, tmuxSupport.reason, tmuxSupport.supported, workspaceSessions],
   );
 
   const handleCloseWorkspaceSession = useCallback(

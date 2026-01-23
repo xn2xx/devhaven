@@ -1079,6 +1079,94 @@
   background: #002b36; /* Solarized Dark 背景色 */
   border-top: 1px solid var(--color-divider);
   display: flex;
+  flex-direction: column;
+}
+
+.workspace-windowbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-divider);
+  background: rgba(3, 22, 28, 0.7);
+}
+
+.window-list {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.window-empty {
+  color: var(--color-secondary-text);
+  font-size: 12px;
+}
+
+.window-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(8, 37, 46, 0.85);
+  color: var(--color-secondary-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.window-tab.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  background: rgba(69, 59, 231, 0.25);
+}
+
+.window-tab-index {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.window-tab-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.window-action-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(8, 37, 46, 0.85);
+  color: var(--color-secondary-text);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.window-action-button:hover {
+  color: var(--color-text);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.window-copy-hint {
+  font-size: 12px;
+  color: var(--color-secondary-text);
+}
+
+.workspace-attach-command {
+  font-size: 12px;
+  color: var(--color-secondary-text);
+  padding: 4px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(3, 22, 28, 0.6);
+  font-family: "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", monospace;
 }
 
 .terminal-shell {
@@ -1096,14 +1184,37 @@
   height: 100%;
   overflow: hidden;
   background: #002b36; /* Solarized Dark 背景色 */
-  padding-top: 8px;
   box-sizing: border-box;
+  position: relative;
+}
+
+.terminal-panes {
+  position: absolute;
+  inset: 0;
+}
+
+.terminal-pane {
+  position: absolute;
+  padding: 2px;
+  box-sizing: border-box;
+  background: #002b36;
+}
+
+.terminal-pane.is-active {
+  outline: 1px solid rgba(69, 59, 231, 0.6);
+  outline-offset: -1px;
+}
+
+.terminal-pane-surface {
+  width: 100%;
+  height: 100%;
+  background: #002b36;
 }
 
 .terminal-surface .xterm,
 .terminal-surface .xterm-screen,
 .terminal-surface .xterm-viewport {
-  /* 移除强制透明，让主题背景色生效 */
+  background: #002b36;
 }
 
 .terminal-surface .xterm {
