@@ -20,7 +20,8 @@
       "Bash(curl:*)",
       "Bash(git rev-parse:*)",
       "Bash(cargo check:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(tmux show-options:*)"
     ]
   }
 }

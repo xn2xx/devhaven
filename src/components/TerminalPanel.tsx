@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 
 import type { WorkspaceSession } from "../models/terminal";
 import { copyToClipboard } from "../services/system";
@@ -9,6 +10,27 @@ export type TerminalPanelProps = {
 };
 
 const COPY_HINT_DURATION = 1600;
+
+type DividerOrientation = "vertical" | "horizontal";
+
+type Divider = {
+  id: string;
+  orientation: DividerOrientation;
+  paneId: string;
+  position: number;
+  start: number;
+  length: number;
+};
+
+type DividerDragState = {
+  divider: Divider;
+  startX: number;
+  startY: number;
+  cellWidth: number;
+  cellHeight: number;
+  lastDelta: number;
+  previousUserSelect: string;
+};
 
 /** 工作空间终端展示区域。 */
 export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
@@ -22,6 +44,7 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
     registerPane,
     focusPane,
     focusPaneDirection,
+    resizePane,
     splitActivePane,
     killActivePane,
     selectWindow,
@@ -34,6 +57,9 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
     isVisible: Boolean(activeSession),
   });
   const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [draggingDividerId, setDraggingDividerId] = useState<string | null>(null);
+  const dividerDragRef = useRef<DividerDragState | null>(null);
+  const dividerDragHandlersRef = useRef<{ move: (event: PointerEvent) => void; up: () => void } | null>(null);
 
   const attachCommand = useMemo(() => {
     if (!activeSession) {
@@ -46,6 +72,142 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
     () => windows.find((window) => window.id === activeWindowId) ?? windows.find((window) => window.isActive) ?? null,
     [activeWindowId, windows],
   );
+
+  const windowWidth = activeWindow?.width ?? 0;
+  const windowHeight = activeWindow?.height ?? 0;
+
+  const dividers = useMemo(() => {
+    if (!activeSession || windowWidth <= 0 || windowHeight <= 0) {
+      return [];
+    }
+    const nextDividers: Divider[] = [];
+    panes.forEach((pane) => {
+      const paneRight = pane.left + pane.width;
+      const paneBottom = pane.top + pane.height;
+      panes.forEach((other) => {
+        if (pane.id === other.id) {
+          return;
+        }
+        const verticalGap = other.left - paneRight;
+        if (verticalGap >= 0 && verticalGap <= 1) {
+          const overlapTop = Math.max(pane.top, other.top);
+          const overlapBottom = Math.min(paneBottom, other.top + other.height);
+          if (overlapBottom > overlapTop) {
+            const position = (paneRight + other.left) / 2;
+            nextDividers.push({
+              id: `v-${pane.id}-${other.id}-${overlapTop}`,
+              orientation: "vertical",
+              paneId: pane.id,
+              position: (position / windowWidth) * 100,
+              start: (overlapTop / windowHeight) * 100,
+              length: ((overlapBottom - overlapTop) / windowHeight) * 100,
+            });
+          }
+        }
+        const horizontalGap = other.top - paneBottom;
+        if (horizontalGap >= 0 && horizontalGap <= 1) {
+          const overlapLeft = Math.max(pane.left, other.left);
+          const overlapRight = Math.min(paneRight, other.left + other.width);
+          if (overlapRight > overlapLeft) {
+            const position = (paneBottom + other.top) / 2;
+            nextDividers.push({
+              id: `h-${pane.id}-${other.id}-${overlapLeft}`,
+              orientation: "horizontal",
+              paneId: pane.id,
+              position: (position / windowHeight) * 100,
+              start: (overlapLeft / windowWidth) * 100,
+              length: ((overlapRight - overlapLeft) / windowWidth) * 100,
+            });
+          }
+        }
+      });
+    });
+    return nextDividers;
+  }, [activeSession, panes, windowHeight, windowWidth]);
+
+  const stopDividerDrag = useCallback(() => {
+    if (dividerDragHandlersRef.current) {
+      window.removeEventListener("pointermove", dividerDragHandlersRef.current.move);
+      window.removeEventListener("pointerup", dividerDragHandlersRef.current.up);
+      dividerDragHandlersRef.current = null;
+    }
+    if (dividerDragRef.current) {
+      document.body.style.userSelect = dividerDragRef.current.previousUserSelect;
+      dividerDragRef.current = null;
+      setDraggingDividerId(null);
+    }
+  }, []);
+
+  const handleDividerPointerDown = useCallback(
+    (divider: Divider, event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const container = containerRef.current;
+      if (!container || windowWidth <= 0 || windowHeight <= 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = container.getBoundingClientRect();
+      const cellWidth = rect.width / windowWidth;
+      const cellHeight = rect.height / windowHeight;
+      if (!cellWidth || !cellHeight) {
+        return;
+      }
+      const previousUserSelect = document.body.style.userSelect;
+      document.body.style.userSelect = "none";
+      dividerDragRef.current = {
+        divider,
+        startX: event.clientX,
+        startY: event.clientY,
+        cellWidth,
+        cellHeight,
+        lastDelta: 0,
+        previousUserSelect,
+      };
+      setDraggingDividerId(divider.id);
+
+      const move = (moveEvent: PointerEvent) => {
+        const dragState = dividerDragRef.current;
+        if (!dragState) {
+          return;
+        }
+        const deltaPixels =
+          dragState.divider.orientation === "vertical"
+            ? moveEvent.clientX - dragState.startX
+            : moveEvent.clientY - dragState.startY;
+        const cellSize =
+          dragState.divider.orientation === "vertical" ? dragState.cellWidth : dragState.cellHeight;
+        const deltaCells = Math.round(deltaPixels / cellSize);
+        const deltaDiff = deltaCells - dragState.lastDelta;
+        if (deltaDiff === 0) {
+          return;
+        }
+        dragState.lastDelta = deltaCells;
+        const direction =
+          dragState.divider.orientation === "vertical"
+            ? deltaDiff > 0
+              ? "right"
+              : "left"
+            : deltaDiff > 0
+              ? "down"
+              : "up";
+        resizePane(dragState.divider.paneId, direction, Math.abs(deltaDiff));
+      };
+
+      const up = () => {
+        stopDividerDrag();
+      };
+
+      dividerDragHandlersRef.current = { move, up };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    },
+    [containerRef, resizePane, stopDividerDrag, windowHeight, windowWidth],
+  );
+
+  useEffect(() => stopDividerDrag, [stopDividerDrag]);
 
   const handleCopyAttachCommand = useCallback(async () => {
     if (!attachCommand) {
@@ -158,9 +320,6 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
     );
   }
 
-  const windowWidth = activeWindow?.width ?? 0;
-  const windowHeight = activeWindow?.height ?? 0;
-
   return (
     <div className="workspace-terminal">
       <div className="workspace-windowbar">
@@ -218,6 +377,27 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
                 >
                   <div ref={(element) => registerPane(pane.id, element)} className="terminal-pane-surface" />
                 </div>
+              );
+            })}
+            {dividers.map((divider) => {
+              const position = `${divider.position}%`;
+              const start = `${divider.start}%`;
+              const length = `${divider.length}%`;
+              const style =
+                divider.orientation === "vertical"
+                  ? { left: position, top: start, height: length }
+                  : { top: position, left: start, width: length };
+              return (
+                <div
+                  key={divider.id}
+                  className={`terminal-divider is-${divider.orientation}${
+                    draggingDividerId === divider.id ? " is-dragging" : ""
+                  }`}
+                  style={style}
+                  role="separator"
+                  aria-orientation={divider.orientation === "vertical" ? "vertical" : "horizontal"}
+                  onPointerDown={(event) => handleDividerPointerDown(divider, event)}
+                />
               );
             })}
           </div>

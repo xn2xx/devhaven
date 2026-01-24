@@ -283,6 +283,21 @@ fn select_tmux_pane_direction(
 }
 
 #[tauri::command]
+fn resize_tmux_pane(
+    state: State<'_, Mutex<TerminalManager>>,
+    pane_id: String,
+    direction: String,
+    count: u16,
+) -> Result<(), String> {
+    log_command_result("resize_tmux_pane", || {
+        state
+            .lock()
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .resize_pane(&pane_id, &direction, count)
+    })
+}
+
+#[tauri::command]
 fn kill_tmux_pane(
     state: State<'_, Mutex<TerminalManager>>,
     pane_id: String,
@@ -439,6 +454,7 @@ pub fn run() {
             split_tmux_pane,
             select_tmux_pane,
             select_tmux_pane_direction,
+            resize_tmux_pane,
             kill_tmux_pane,
             new_tmux_window,
             select_tmux_window,

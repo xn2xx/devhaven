@@ -5,6 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 
 import type {
   TmuxOutputPayload,
@@ -28,9 +30,9 @@ import {
   TMUX_STATE_EVENT,
   nextTmuxWindow,
   previousTmuxWindow,
-  resizeTmuxClient,
   newTmuxWindow,
   killTmuxPane,
+  resizeTmuxPane,
 } from "../services/terminal";
 import { solarizedDark } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
@@ -56,6 +58,7 @@ export type TmuxWorkspaceState = {
   registerPane: (paneId: string, element: HTMLDivElement | null) => void;
   focusPane: (paneId: string) => void;
   focusPaneDirection: (direction: "left" | "right" | "up" | "down") => void;
+  resizePane: (paneId: string, direction: "left" | "right" | "up" | "down", count: number) => void;
   splitActivePane: (direction: "horizontal" | "vertical") => void;
   killActivePane: () => void;
   selectWindow: (windowId: string) => void;
@@ -73,12 +76,61 @@ const appendBuffer = (existing: string | undefined, data: string) => {
   return next.slice(next.length - MAX_BUFFER_CHARS);
 };
 
+const THEME_BACKGROUND_SGR = "48;2;0;43;54";
+const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
+
+const normalizeAnsiBackground = (data: string) =>
+  data.replace(ANSI_SGR_PATTERN, (match, params) => {
+    const normalizedParams = typeof params === "string" ? params : "";
+    if (!normalizedParams) {
+      return match;
+    }
+    const parts = normalizedParams.split(";").map((value: string) => Number(value));
+    if (parts.some((value: number) => Number.isNaN(value))) {
+      return match;
+    }
+    let changed = false;
+    const nextParts: number[] = [];
+    for (let index = 0; index < parts.length; index += 1) {
+      const code = parts[index];
+      if (code === 40 || code === 100) {
+        changed = true;
+        continue;
+      }
+      if (code === 48) {
+        const mode = parts[index + 1];
+        if (mode === 5 && parts[index + 2] === 0) {
+          changed = true;
+          index += 2;
+          continue;
+        }
+        if (
+          mode === 2 &&
+          parts[index + 2] === 0 &&
+          parts[index + 3] === 0 &&
+          parts[index + 4] === 0
+        ) {
+          changed = true;
+          index += 4;
+          continue;
+        }
+      }
+      nextParts.push(code);
+    }
+    if (!changed) {
+      return match;
+    }
+    const prefix = nextParts.length > 0 ? `${nextParts.join(";")};` : "";
+    return `\x1b[${prefix}${THEME_BACKGROUND_SGR}m`;
+  });
+
 export const useTmuxWorkspace = ({
   activeSession,
   isVisible,
 }: UseTmuxWorkspaceOptions): TmuxWorkspaceState => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef(new Map<string, Terminal>());
+  const fitAddonsRef = useRef(new Map<string, FitAddon>());
   const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
   const activeSessionRef = useRef<WorkspaceSession | null>(null);
   const activePaneRef = useRef<string | null>(null);
@@ -128,7 +180,7 @@ export const useTmuxWorkspace = ({
             return;
           }
           try {
-            const snapshot = await captureTmuxPane(pane.id);
+            const snapshot = normalizeAnsiBackground(await captureTmuxPane(pane.id));
             globalOutputBuffers.set(pane.id, snapshot);
           } catch (error) {
             console.warn("capture-pane failed", error);
@@ -165,11 +217,12 @@ export const useTmuxWorkspace = ({
       if (!paneId || !data) {
         return;
       }
-      const next = appendBuffer(globalOutputBuffers.get(paneId), data);
+      const normalized = normalizeAnsiBackground(data);
+      const next = appendBuffer(globalOutputBuffers.get(paneId), normalized);
       globalOutputBuffers.set(paneId, next);
       const terminal = terminalsRef.current.get(paneId);
       if (terminal) {
-        terminal.write(data);
+        terminal.write(normalized);
       }
     })
       .then((unlisten) => {
@@ -232,33 +285,21 @@ export const useTmuxWorkspace = ({
     })();
   }, [activeSession, isVisible, refreshState]);
 
-  const getCellSize = useCallback(() => {
-    for (const terminal of terminalsRef.current.values()) {
-      const renderService = (terminal as { _core?: { _renderService?: { dimensions?: { actualCellWidth: number; actualCellHeight: number } } } })
-        ._core?._renderService;
-      const dimensions = renderService?.dimensions;
-      if (dimensions?.actualCellWidth && dimensions?.actualCellHeight) {
-        return { width: dimensions.actualCellWidth, height: dimensions.actualCellHeight };
+  const updateClientSize = useCallback(() => {
+    // 对所有终端调用 fit，确保每个 pane 都正确适应其容器
+    // 在 tmux control mode 中，tmux 会自动管理每个窗格的大小
+    // 我们不需要手动调用 resizeTmuxClient，因为那会导致所有窗格使用相同的尺寸
+    for (const [paneId] of terminalsRef.current.entries()) {
+      const fitAddon = fitAddonsRef.current.get(paneId);
+      if (fitAddon) {
+        try {
+          fitAddon.fit();
+        } catch (error) {
+          console.warn("Failed to fit terminal", error);
+        }
       }
     }
-    return null;
   }, []);
-
-  const updateClientSize = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return;
-    }
-    const cell = getCellSize();
-    if (!cell) {
-      return;
-    }
-    const cols = Math.max(1, Math.floor(container.clientWidth / cell.width));
-    const rows = Math.max(1, Math.floor(container.clientHeight / cell.height));
-    void resizeTmuxClient(cols, rows).catch((error) => {
-      console.error("Failed to resize tmux client.", error);
-    });
-  }, [getCellSize]);
 
   useEffect(() => {
     if (!isVisible) {
@@ -272,46 +313,81 @@ export const useTmuxWorkspace = ({
       updateClientSize();
     });
     resizeObserver.observe(container);
+
+    // 同时监听每个窗格容器的大小变化
+    paneElementsRef.current.forEach((element) => {
+      resizeObserver.observe(element);
+    });
+
     return () => {
       resizeObserver.disconnect();
     };
-  }, [isVisible, updateClientSize]);
+  }, [isVisible, updateClientSize, panes]);
 
   const createTerminalForPane = useCallback(
     (pane: TmuxPaneInfo, element: HTMLDivElement) => {
       if (terminalsRef.current.has(pane.id)) {
-        const terminal = terminalsRef.current.get(pane.id);
-        if (terminal && pane.width > 0 && pane.height > 0) {
-          terminal.resize(pane.width, pane.height);
+        const fitAddon = fitAddonsRef.current.get(pane.id);
+        if (fitAddon) {
+          // 使用 FitAddon 重新适应容器大小
+          setTimeout(() => {
+            fitAddon.fit();
+          }, 0);
         }
         return;
       }
       const terminal = new Terminal({
         cursorBlink: true,
         fontSize: 12,
-        fontFamily: "'Hack Nerd Font', monospace",
+        fontFamily: "'Hack Nerd Font', 'Apple Color Emoji', monospace",
         allowTransparency: false,
         allowProposedApi: true,
         theme: solarizedDark,
         scrollback: 5000,
       });
+
+      // 加载 Unicode11 支持（必须在 open 之前）
       const unicode11Addon = new Unicode11Addon();
       terminal.loadAddon(unicode11Addon);
-      terminal.loadAddon(new WebLinksAddon());
       terminal.unicode.activeVersion = "11";
+
+      // 加载其他插件
+      terminal.loadAddon(new WebLinksAddon());
+
+      // 创建并加载 FitAddon
+      const fitAddon = new FitAddon();
+      terminal.loadAddon(fitAddon);
+
       terminal.open(element);
+
+      // 尝试启用 WebGL 渲染器以改善 Unicode 渲染
+      try {
+        const webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon.dispose();
+        });
+        terminal.loadAddon(webglAddon);
+      } catch (error) {
+        console.warn("WebGL 渲染器加载失败，使用默认渲染器", error);
+      }
+
+      // 使用 FitAddon 自动适应容器大小
+      setTimeout(() => {
+        fitAddon.fit();
+      }, 0);
+
       terminal.onData((data) => {
         void sendTmuxInput(pane.id, data).catch((error) => {
           console.error("Failed to send tmux input.", error);
         });
       });
-      if (pane.width > 0 && pane.height > 0) {
-        terminal.resize(pane.width, pane.height);
-      }
+
       terminalsRef.current.set(pane.id, terminal);
+      fitAddonsRef.current.set(pane.id, fitAddon);
+
       const buffered = globalOutputBuffers.get(pane.id);
       if (buffered) {
-        terminal.write(buffered);
+        terminal.write(normalizeAnsiBackground(buffered));
       }
       updateClientSize();
     },
@@ -339,6 +415,7 @@ export const useTmuxWorkspace = ({
       if (!paneIds.has(paneId)) {
         terminal.dispose();
         terminalsRef.current.delete(paneId);
+        fitAddonsRef.current.delete(paneId);
         paneElementsRef.current.delete(paneId);
       }
     });
@@ -350,7 +427,12 @@ export const useTmuxWorkspace = ({
       }
       createTerminalForPane(pane, element);
     });
-  }, [createTerminalForPane, isVisible, panes]);
+
+    // 窗格布局变化后，强制刷新所有终端尺寸
+    setTimeout(() => {
+      updateClientSize();
+    }, 100);
+  }, [createTerminalForPane, isVisible, panes, updateClientSize]);
 
   useEffect(() => {
     if (!activePaneId) {
@@ -378,6 +460,22 @@ export const useTmuxWorkspace = ({
       console.error("Failed to select tmux pane direction.", error);
     });
   }, []);
+
+  const resizePane = useCallback(
+    (paneId: string, direction: "left" | "right" | "up" | "down", count: number) => {
+      if (!paneId || count <= 0) {
+        return;
+      }
+      void resizeTmuxPane(paneId, direction, count)
+        .then(() => {
+          scheduleRefresh();
+        })
+        .catch((error) => {
+          console.error("Failed to resize tmux pane.", error);
+        });
+    },
+    [scheduleRefresh],
+  );
 
   const splitActivePane = useCallback((direction: "horizontal" | "vertical") => {
     const paneId = activePaneRef.current;
@@ -451,6 +549,7 @@ export const useTmuxWorkspace = ({
     registerPane,
     focusPane,
     focusPaneDirection,
+    resizePane,
     splitActivePane,
     killActivePane,
     selectWindow,

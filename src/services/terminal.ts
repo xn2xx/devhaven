@@ -81,6 +81,15 @@ export async function selectTmuxPaneDirection(
   await invoke("select_tmux_pane_direction", { paneId, direction });
 }
 
+/** 调整 pane 大小。 */
+export async function resizeTmuxPane(
+  paneId: string,
+  direction: "left" | "right" | "up" | "down",
+  count: number,
+): Promise<void> {
+  await invoke("resize_tmux_pane", { paneId, direction, count });
+}
+
 /** 关闭 pane。 */
 export async function killTmuxPane(paneId: string): Promise<void> {
   await invoke("kill_tmux_pane", { paneId });

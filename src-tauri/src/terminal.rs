@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter};
 const TMUX_OUTPUT_EVENT: &str = "tmux-output";
 const TMUX_STATE_EVENT: &str = "tmux-state";
 const TMUX_BIN: &str = "tmux";
+const TMUX_PANE_BORDER_STYLE: &str = "fg=#586e75,bg=default";
+const TMUX_PANE_ACTIVE_BORDER_STYLE: &str = "fg=#268bd2,bg=default";
 const TMUX_SESSION_PREFIX: &str = "devhaven_";
 
 #[derive(Clone, serde::Serialize)]
@@ -112,6 +114,7 @@ impl TerminalManager {
 
         self.ensure_control_client(app)?;
         self.switch_session_internal(&session_name)?;
+        apply_tmux_pane_style(&session_name)?;
 
         Ok(TerminalSessionInfo {
             id: session_name,
@@ -124,7 +127,8 @@ impl TerminalManager {
     pub fn switch_session(&mut self, app: AppHandle, session_id: &str) -> Result<(), String> {
         ensure_supported()?;
         self.ensure_control_client(app)?;
-        self.switch_session_internal(session_id)
+        self.switch_session_internal(session_id)?;
+        apply_tmux_pane_style(session_id)
     }
 
     pub fn close_session(&mut self, session_id: &str) -> Result<(), String> {
@@ -253,6 +257,27 @@ impl TerminalManager {
             flag.to_string(),
             "-t".to_string(),
             pane_id.to_string(),
+        ])
+    }
+
+    pub fn resize_pane(&self, pane_id: &str, direction: &str, count: u16) -> Result<(), String> {
+        ensure_supported()?;
+        if count == 0 {
+            return Ok(());
+        }
+        let flag = match direction {
+            "left" => "-L",
+            "right" => "-R",
+            "up" => "-U",
+            "down" => "-D",
+            _ => return Err("未知的 pane 方向".to_string()),
+        };
+        run_tmux_status(&[
+            "resize-pane".to_string(),
+            flag.to_string(),
+            "-t".to_string(),
+            pane_id.to_string(),
+            count.to_string(),
         ])
     }
 
@@ -431,6 +456,23 @@ fn run_tmux_status(args: &[String]) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn apply_tmux_pane_style(session_id: &str) -> Result<(), String> {
+    run_tmux_status(&[
+        "set-option".to_string(),
+        "-t".to_string(),
+        session_id.to_string(),
+        "pane-border-style".to_string(),
+        TMUX_PANE_BORDER_STYLE.to_string(),
+    ])?;
+    run_tmux_status(&[
+        "set-option".to_string(),
+        "-t".to_string(),
+        session_id.to_string(),
+        "pane-active-border-style".to_string(),
+        TMUX_PANE_ACTIVE_BORDER_STYLE.to_string(),
+    ])
 }
 
 fn parse_tmux_flag(value: &str) -> bool {
