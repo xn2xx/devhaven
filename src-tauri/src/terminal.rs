@@ -99,14 +99,16 @@ impl TerminalManager {
     ) -> Result<TerminalSessionInfo, String> {
         ensure_supported()?;
         let session_name = session_name_for_project(project_id);
-        run_tmux_status(&[
-            "new-session".to_string(),
-            "-Ad".to_string(),
-            "-s".to_string(),
-            session_name.clone(),
-            "-c".to_string(),
-            project_path.to_string(),
-        ])?;
+        if !tmux_session_exists(&session_name)? {
+            run_tmux_status(&[
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                session_name.clone(),
+                "-c".to_string(),
+                project_path.to_string(),
+            ])?;
+        }
 
         self.ensure_control_client(app)?;
         self.switch_session_internal(&session_name)?;
@@ -393,6 +395,14 @@ fn is_tmux_available() -> bool {
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
+}
+
+fn tmux_session_exists(session_id: &str) -> Result<bool, String> {
+    let output = Command::new(TMUX_BIN)
+        .args(["has-session", "-t", session_id])
+        .output()
+        .map_err(|err| format!("tmux 命令执行失败: {err}"))?;
+    Ok(output.status.success())
 }
 
 fn run_tmux_command(args: &[String]) -> Result<String, String> {
