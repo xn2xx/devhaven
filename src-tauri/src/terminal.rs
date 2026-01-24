@@ -531,12 +531,16 @@ fn spawn_tmux_reader(app: AppHandle, mut reader: Box<dyn Read + Send>, alive: Ar
     thread::spawn(move || {
         let mut buffer = [0u8; 8192];
         let mut pending = String::new();
+        let mut pending_bytes: Vec<u8> = Vec::new();
         while alive.load(Ordering::SeqCst) {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(size) => {
-                    let chunk = String::from_utf8_lossy(&buffer[..size]);
-                    pending.push_str(&chunk);
+                    pending_bytes.extend_from_slice(&buffer[..size]);
+                    let chunk = drain_utf8_bytes(&mut pending_bytes);
+                    if !chunk.is_empty() {
+                        pending.push_str(&chunk);
+                    }
                     while let Some(pos) = pending.find('\n') {
                         let line = pending[..pos].trim_end_matches('\r').to_string();
                         pending = pending[pos + 1..].to_string();
@@ -548,6 +552,35 @@ fn spawn_tmux_reader(app: AppHandle, mut reader: Box<dyn Read + Send>, alive: Ar
         }
         alive.store(false, Ordering::SeqCst);
     });
+}
+
+fn drain_utf8_bytes(buffer: &mut Vec<u8>) -> String {
+    let mut output = String::new();
+    loop {
+        match std::str::from_utf8(buffer) {
+            Ok(valid) => {
+                output.push_str(valid);
+                buffer.clear();
+                break;
+            }
+            Err(err) => {
+                let valid_up_to = err.valid_up_to();
+                if valid_up_to > 0 {
+                    let valid = std::str::from_utf8(&buffer[..valid_up_to]).unwrap_or("");
+                    output.push_str(valid);
+                    buffer.drain(..valid_up_to);
+                }
+                match err.error_len() {
+                    None => break,
+                    Some(len) => {
+                        buffer.drain(..len);
+                        output.push(std::char::REPLACEMENT_CHARACTER);
+                    }
+                }
+            }
+        }
+    }
+    output
 }
 
 fn handle_tmux_line(app: &AppHandle, line: &str, alive: &Arc<AtomicBool>) {
@@ -639,7 +672,10 @@ fn decode_tmux_output(value: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8_lossy(&out).to_string()
+    // 使用 drain_utf8_bytes 来正确处理 UTF-8 边界
+    // 虽然 tmux 控制模式通常保证完整的 UTF-8 序列，但在快速输入时
+    // 八进制解码后可能产生不完整的字节序列，需要正确处理
+    drain_utf8_bytes(&mut out)
 }
 
 fn is_octal_digit(value: u8) -> bool {
