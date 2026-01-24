@@ -46,6 +46,7 @@ export type TerminalStatus = "idle" | "preparing" | "connecting" | "ready" | "er
 type UseTmuxWorkspaceOptions = {
   activeSession: WorkspaceSession | null;
   isVisible: boolean;
+  useWebglRenderer: boolean;
 };
 
 export type TmuxWorkspaceState = {
@@ -127,10 +128,12 @@ const normalizeAnsiBackground = (data: string) =>
 export const useTmuxWorkspace = ({
   activeSession,
   isVisible,
+  useWebglRenderer,
 }: UseTmuxWorkspaceOptions): TmuxWorkspaceState => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef(new Map<string, Terminal>());
   const fitAddonsRef = useRef(new Map<string, FitAddon>());
+  const webglAddonsRef = useRef(new Map<string, WebglAddon>());
   const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
   const activeSessionRef = useRef<WorkspaceSession | null>(null);
   const activePaneRef = useRef<string | null>(null);
@@ -324,6 +327,32 @@ export const useTmuxWorkspace = ({
     };
   }, [isVisible, updateClientSize, panes]);
 
+  const attachWebglRenderer = useCallback((paneId: string, terminal: Terminal) => {
+    if (webglAddonsRef.current.has(paneId)) {
+      return;
+    }
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddon.onContextLoss(() => {
+        webglAddon.dispose();
+        webglAddonsRef.current.delete(paneId);
+      });
+      terminal.loadAddon(webglAddon);
+      webglAddonsRef.current.set(paneId, webglAddon);
+    } catch (error) {
+      console.warn("WebGL 渲染器加载失败，使用默认渲染器", error);
+    }
+  }, []);
+
+  const detachWebglRenderer = useCallback((paneId: string) => {
+    const webglAddon = webglAddonsRef.current.get(paneId);
+    if (!webglAddon) {
+      return;
+    }
+    webglAddon.dispose();
+    webglAddonsRef.current.delete(paneId);
+  }, []);
+
   const createTerminalForPane = useCallback(
     (pane: TmuxPaneInfo, element: HTMLDivElement) => {
       if (terminalsRef.current.has(pane.id)) {
@@ -360,15 +389,8 @@ export const useTmuxWorkspace = ({
 
       terminal.open(element);
 
-      // 尝试启用 WebGL 渲染器以改善 Unicode 渲染
-      try {
-        const webglAddon = new WebglAddon();
-        webglAddon.onContextLoss(() => {
-          webglAddon.dispose();
-        });
-        terminal.loadAddon(webglAddon);
-      } catch (error) {
-        console.warn("WebGL 渲染器加载失败，使用默认渲染器", error);
+      if (useWebglRenderer) {
+        attachWebglRenderer(pane.id, terminal);
       }
 
       // 使用 FitAddon 自动适应容器大小
@@ -391,7 +413,7 @@ export const useTmuxWorkspace = ({
       }
       updateClientSize();
     },
-    [updateClientSize],
+    [attachWebglRenderer, updateClientSize, useWebglRenderer],
   );
 
   const registerPane = useCallback(
@@ -416,6 +438,7 @@ export const useTmuxWorkspace = ({
         terminal.dispose();
         terminalsRef.current.delete(paneId);
         fitAddonsRef.current.delete(paneId);
+        detachWebglRenderer(paneId);
         paneElementsRef.current.delete(paneId);
       }
     });
@@ -432,7 +455,17 @@ export const useTmuxWorkspace = ({
     setTimeout(() => {
       updateClientSize();
     }, 100);
-  }, [createTerminalForPane, isVisible, panes, updateClientSize]);
+  }, [createTerminalForPane, detachWebglRenderer, isVisible, panes, updateClientSize]);
+
+  useEffect(() => {
+    terminalsRef.current.forEach((terminal, paneId) => {
+      if (useWebglRenderer) {
+        attachWebglRenderer(paneId, terminal);
+      } else {
+        detachWebglRenderer(paneId);
+      }
+    });
+  }, [attachWebglRenderer, detachWebglRenderer, useWebglRenderer]);
 
   useEffect(() => {
     if (!activePaneId) {

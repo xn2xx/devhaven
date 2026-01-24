@@ -25,6 +25,7 @@ const emptyState: AppStateFile = {
       commandPath: "",
       arguments: [],
     },
+    terminalUseWebglRenderer: true,
     gitIdentities: [],
   },
 };

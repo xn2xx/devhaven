@@ -26,6 +26,7 @@ export type GitIdentity = {
 export type AppSettings = {
   editorOpenTool: OpenToolSettings;
   terminalOpenTool: OpenToolSettings;
+  terminalUseWebglRenderer: boolean;
   gitIdentities: GitIdentity[];
 };
 

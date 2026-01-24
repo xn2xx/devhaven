@@ -66,6 +66,7 @@ function AppLayout() {
   );
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [previewTerminalUseWebglRenderer, setPreviewTerminalUseWebglRenderer] = useState<boolean | null>(null);
   const [appMode, setAppMode] = useState<AppMode>("gallery");
   const [workspaceSessions, setWorkspaceSessions] = useState<WorkspaceSession[]>([]);
   const [activeWorkspaceSessionId, setActiveWorkspaceSessionId] = useState<string | null>(null);
@@ -83,6 +84,8 @@ function AppLayout() {
   );
 
   const terminalSettings = appState.settings.terminalOpenTool;
+  const terminalUseWebglRenderer =
+    previewTerminalUseWebglRenderer ?? appState.settings.terminalUseWebglRenderer;
 
   const hiddenTags = useMemo(
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
@@ -432,6 +435,15 @@ function AppLayout() {
     setAppMode("gallery");
   }, []);
 
+  const handleCloseSettings = useCallback(() => {
+    setShowSettings(false);
+    setPreviewTerminalUseWebglRenderer(null);
+  }, []);
+
+  const handlePreviewTerminalRenderer = useCallback((enabled: boolean) => {
+    setPreviewTerminalUseWebglRenderer(enabled);
+  }, []);
+
   const handleSaveSettings = useCallback(
     async (settings: typeof appState.settings) => {
       try {
@@ -453,6 +465,7 @@ function AppLayout() {
           onSelectSession={handleSelectWorkspaceSession}
           onCloseSession={handleCloseWorkspaceSession}
           onExitWorkspace={handleExitWorkspace}
+          terminalUseWebglRenderer={terminalUseWebglRenderer}
         />
       ) : (
         <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
@@ -543,8 +556,9 @@ function AppLayout() {
         <SettingsModal
           settings={appState.settings}
           projects={projects}
-          onClose={() => setShowSettings(false)}
+          onClose={handleCloseSettings}
           onSaveSettings={handleSaveSettings}
+          onPreviewTerminalRenderer={handlePreviewTerminalRenderer}
         />
       ) : null}
       {toast ? (

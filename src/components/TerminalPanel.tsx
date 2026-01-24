@@ -7,6 +7,7 @@ import { useTmuxWorkspace } from "../hooks/useTmuxWorkspace";
 
 export type TerminalPanelProps = {
   activeSession: WorkspaceSession | null;
+  terminalUseWebglRenderer: boolean;
 };
 
 const COPY_HINT_DURATION = 1600;
@@ -33,7 +34,7 @@ type DividerDragState = {
 };
 
 /** 工作空间终端展示区域。 */
-export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
+export default function TerminalPanel({ activeSession, terminalUseWebglRenderer }: TerminalPanelProps) {
   const {
     status,
     containerRef,
@@ -55,6 +56,7 @@ export default function TerminalPanel({ activeSession }: TerminalPanelProps) {
   } = useTmuxWorkspace({
     activeSession,
     isVisible: Boolean(activeSession),
+    useWebglRenderer: terminalUseWebglRenderer,
   });
   const [copyHint, setCopyHint] = useState<string | null>(null);
   const [draggingDividerId, setDraggingDividerId] = useState<string | null>(null);

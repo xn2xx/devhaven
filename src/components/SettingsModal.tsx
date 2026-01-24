@@ -63,10 +63,17 @@ export type SettingsModalProps = {
   projects: Project[];
   onClose: () => void;
   onSaveSettings: (settings: AppSettings) => Promise<void>;
+  onPreviewTerminalRenderer: (enabled: boolean) => void;
 };
 
 /** 设置弹窗，提供更新检查、终端工具与 Git 身份配置。 */
-export default function SettingsModal({ settings, projects, onClose, onSaveSettings }: SettingsModalProps) {
+export default function SettingsModal({
+  settings,
+  projects,
+  onClose,
+  onSaveSettings,
+  onPreviewTerminalRenderer,
+}: SettingsModalProps) {
   const [terminalCommandPath, setTerminalCommandPath] = useState(settings.terminalOpenTool.commandPath);
   const [terminalArgumentsText, setTerminalArgumentsText] = useState(
     settings.terminalOpenTool.arguments.join("\n"),
@@ -75,6 +82,7 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
     resolveTerminalPresetId(settings.terminalOpenTool.commandPath, settings.terminalOpenTool.arguments),
   );
   const [gitIdentities, setGitIdentities] = useState<GitIdentity[]>(settings.gitIdentities);
+  const [useWebglRenderer, setUseWebglRenderer] = useState(settings.terminalUseWebglRenderer);
   const [versionLabel, setVersionLabel] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [isSaving, setIsSaving] = useState(false);
@@ -88,9 +96,10 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
         commandPath: terminalCommandPath.trim(),
         arguments: parsedTerminalArguments,
       },
+      terminalUseWebglRenderer: useWebglRenderer,
       gitIdentities: normalizedGitIdentities,
     }),
-    [normalizedGitIdentities, parsedTerminalArguments, settings, terminalCommandPath],
+    [normalizedGitIdentities, parsedTerminalArguments, settings, terminalCommandPath, useWebglRenderer],
   );
   const isDirty = useMemo(() => {
     const currentTerminalArguments = normalizeArgs(settings.terminalOpenTool.arguments);
@@ -98,7 +107,8 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
     return !(
       nextSettings.terminalOpenTool.commandPath === settings.terminalOpenTool.commandPath &&
       isSameArguments(nextSettings.terminalOpenTool.arguments, currentTerminalArguments) &&
-      isSameIdentities(nextSettings.gitIdentities, normalizedStoredIdentities)
+      isSameIdentities(nextSettings.gitIdentities, normalizedStoredIdentities) &&
+      nextSettings.terminalUseWebglRenderer === settings.terminalUseWebglRenderer
     );
   }, [nextSettings, settings]);
 
@@ -118,10 +128,12 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
     setTerminalArgumentsText(settings.terminalOpenTool.arguments.join("\n"));
     setTerminalPresetId(resolveTerminalPresetId(settings.terminalOpenTool.commandPath, settings.terminalOpenTool.arguments));
     setGitIdentities(settings.gitIdentities);
+    setUseWebglRenderer(settings.terminalUseWebglRenderer);
   }, [
     settings.terminalOpenTool.arguments,
     settings.terminalOpenTool.commandPath,
     settings.gitIdentities,
+    settings.terminalUseWebglRenderer,
   ]);
 
   const handleTerminalPresetChange = (nextPresetId: string) => {
@@ -151,6 +163,11 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
 
   const handleRemoveGitIdentity = (index: number) => {
     setGitIdentities((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const handleToggleWebglRenderer = (enabled: boolean) => {
+    setUseWebglRenderer(enabled);
+    onPreviewTerminalRenderer(enabled);
   };
 
   useEffect(() => {
@@ -271,6 +288,19 @@ export default function SettingsModal({ settings, projects, onClose, onSaveSetti
             ) : null}
           </div>
           <UpdateStatusLine state={updateState} />
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-title">终端渲染</div>
+          <label className="settings-inline settings-toggle">
+            <input
+              type="checkbox"
+              checked={useWebglRenderer}
+              onChange={(event) => handleToggleWebglRenderer(event.target.checked)}
+            />
+            <span>启用 WebGL 渲染（更流畅，可能受驱动影响）</span>
+          </label>
+          <div className="settings-note">切换后立即生效，关闭窗口后保存。</div>
         </section>
 
         <section className="settings-section">

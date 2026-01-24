@@ -954,6 +954,15 @@
   gap: 10px;
 }
 
+.settings-toggle {
+  color: var(--color-text);
+}
+
+.settings-toggle input {
+  width: 14px;
+  height: 14px;
+}
+
 .settings-chip {
   padding: 6px 10px;
   border-radius: 999px;

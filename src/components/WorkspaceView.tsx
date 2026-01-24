@@ -8,6 +8,7 @@ export type WorkspaceViewProps = {
   onSelectSession: (sessionId: string) => void;
   onCloseSession: (sessionId: string) => void;
   onExitWorkspace: () => void;
+  terminalUseWebglRenderer: boolean;
 };
 
 /** 开发模式主视图。 */
@@ -17,6 +18,7 @@ export default function WorkspaceView({
   onSelectSession,
   onCloseSession,
   onExitWorkspace,
+  terminalUseWebglRenderer,
 }: WorkspaceViewProps) {
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
@@ -29,7 +31,7 @@ export default function WorkspaceView({
         onCloseSession={onCloseSession}
         onExitWorkspace={onExitWorkspace}
       />
-      <TerminalPanel activeSession={activeSession} />
+      <TerminalPanel activeSession={activeSession} terminalUseWebglRenderer={terminalUseWebglRenderer} />
     </div>
   );
 }
