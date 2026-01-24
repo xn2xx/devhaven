@@ -34,12 +34,12 @@ import {
   killTmuxPane,
   resizeTmuxPane,
 } from "../services/terminal";
-import { solarizedDarkTransparent } from "../styles/terminal-themes";
+import { solarizedDark } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
 
-const globalOutputBuffers = new Map<string, string>();
+const pendingOutputBuffers = new Map<string, string>();
 
 export type TerminalStatus = "idle" | "preparing" | "connecting" | "ready" | "error";
 
@@ -76,54 +76,6 @@ const appendBuffer = (existing: string | undefined, data: string) => {
   }
   return next.slice(next.length - MAX_BUFFER_CHARS);
 };
-
-const THEME_BACKGROUND_SGR = "48;2;0;43;54";
-const ANSI_SGR_PATTERN = /\x1b\[([0-9;]*)m/g;
-
-const normalizeAnsiBackground = (data: string) =>
-  data.replace(ANSI_SGR_PATTERN, (match, params) => {
-    const normalizedParams = typeof params === "string" ? params : "";
-    if (!normalizedParams) {
-      return match;
-    }
-    const parts = normalizedParams.split(";").map((value: string) => Number(value));
-    if (parts.some((value: number) => Number.isNaN(value))) {
-      return match;
-    }
-    let changed = false;
-    const nextParts: number[] = [];
-    for (let index = 0; index < parts.length; index += 1) {
-      const code = parts[index];
-      if (code === 40 || code === 100) {
-        changed = true;
-        continue;
-      }
-      if (code === 48) {
-        const mode = parts[index + 1];
-        if (mode === 5 && parts[index + 2] === 0) {
-          changed = true;
-          index += 2;
-          continue;
-        }
-        if (
-          mode === 2 &&
-          parts[index + 2] === 0 &&
-          parts[index + 3] === 0 &&
-          parts[index + 4] === 0
-        ) {
-          changed = true;
-          index += 4;
-          continue;
-        }
-      }
-      nextParts.push(code);
-    }
-    if (!changed) {
-      return match;
-    }
-    const prefix = nextParts.length > 0 ? `${nextParts.join(";")};` : "";
-    return `\x1b[${prefix}${THEME_BACKGROUND_SGR}m`;
-  });
 
 export const useTmuxWorkspace = ({
   activeSession,
@@ -179,12 +131,12 @@ export const useTmuxWorkspace = ({
 
       await Promise.all(
         nextPanes.map(async (pane) => {
-          if (globalOutputBuffers.has(pane.id)) {
+          if (terminalsRef.current.has(pane.id) || pendingOutputBuffers.has(pane.id)) {
             return;
           }
           try {
-            const snapshot = normalizeAnsiBackground(await captureTmuxPane(pane.id));
-            globalOutputBuffers.set(pane.id, snapshot);
+            const snapshot = await captureTmuxPane(pane.id);
+            pendingOutputBuffers.set(pane.id, appendBuffer(undefined, snapshot));
           } catch (error) {
             console.warn("capture-pane failed", error);
           }
@@ -220,13 +172,13 @@ export const useTmuxWorkspace = ({
       if (!paneId || !data) {
         return;
       }
-      const normalized = normalizeAnsiBackground(data);
-      const next = appendBuffer(globalOutputBuffers.get(paneId), normalized);
-      globalOutputBuffers.set(paneId, next);
       const terminal = terminalsRef.current.get(paneId);
       if (terminal) {
-        terminal.write(normalized);
+        terminal.write(data);
+        return;
       }
+      const next = appendBuffer(pendingOutputBuffers.get(paneId), data);
+      pendingOutputBuffers.set(paneId, next);
     })
       .then((unlisten) => {
         if (canceled) {
@@ -369,9 +321,8 @@ export const useTmuxWorkspace = ({
         cursorBlink: true,
         fontSize: 12,
         fontFamily: "'Hack Nerd Font', 'Apple Color Emoji', monospace",
-        allowTransparency: true,
         allowProposedApi: true,
-        theme: solarizedDarkTransparent,
+        theme: solarizedDark,
         scrollback: 5000,
       });
 
@@ -407,9 +358,10 @@ export const useTmuxWorkspace = ({
       terminalsRef.current.set(pane.id, terminal);
       fitAddonsRef.current.set(pane.id, fitAddon);
 
-      const buffered = globalOutputBuffers.get(pane.id);
+      const buffered = pendingOutputBuffers.get(pane.id);
       if (buffered) {
-        terminal.write(normalizeAnsiBackground(buffered));
+        terminal.write(buffered);
+        pendingOutputBuffers.delete(pane.id);
       }
       updateClientSize();
     },
