@@ -34,7 +34,7 @@ import {
   killTmuxPane,
   resizeTmuxPane,
 } from "../services/terminal";
-import { solarizedDark } from "../styles/terminal-themes";
+import { solarizedDarkTransparent } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
@@ -369,9 +369,9 @@ export const useTmuxWorkspace = ({
         cursorBlink: true,
         fontSize: 12,
         fontFamily: "'Hack Nerd Font', 'Apple Color Emoji', monospace",
-        allowTransparency: false,
+        allowTransparency: true,
         allowProposedApi: true,
-        theme: solarizedDark,
+        theme: solarizedDarkTransparent,
         scrollback: 5000,
       });
 

@@ -1249,9 +1249,13 @@
 
 .terminal-surface .xterm,
 .terminal-surface .xterm-screen,
-.terminal-surface .xterm-viewport {
-  background: #002b36;
+.terminal-surface .xterm .xterm-viewport {
+  background: transparent;
   width: 100% !important;
+}
+
+.terminal-surface .xterm .xterm-scrollable-element {
+  background: transparent !important;
 }
 
 .terminal-surface .xterm {
@@ -1259,7 +1263,7 @@
   height: 100% !important;
 }
 
-.terminal-surface .xterm-viewport {
+.terminal-surface .xterm .xterm-viewport {
   height: 100% !important;
 }
 
