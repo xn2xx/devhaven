@@ -52,7 +52,6 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
     selectWindowIndex,
     nextWindow,
     previousWindow,
-    newWindow,
   } = useTmuxWorkspace({
     activeSession,
     isVisible: Boolean(activeSession),
@@ -253,11 +252,6 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
         killActivePane();
         return;
       }
-      if (event.code === "KeyT") {
-        event.preventDefault();
-        newWindow();
-        return;
-      }
       if (event.code === "BracketLeft") {
         event.preventDefault();
         previousWindow();
@@ -306,7 +300,6 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
     containerRef,
     focusPaneDirection,
     killActivePane,
-    newWindow,
     nextWindow,
     previousWindow,
     selectWindowIndex,
@@ -325,30 +318,7 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
   return (
     <div className="workspace-terminal">
       <div className="workspace-windowbar">
-        <div className="window-list">
-          {windows.length === 0 ? (
-            <div className="window-empty">暂无窗口</div>
-          ) : (
-            windows.map((window) => {
-              const isActive = window.id === activeWindowId || window.isActive;
-              return (
-                <button
-                  key={window.id}
-                  type="button"
-                  className={`window-tab${isActive ? " is-active" : ""}`}
-                  onClick={() => selectWindow(window.id)}
-                >
-                  <span className="window-tab-index">{window.index}</span>
-                  <span className="window-tab-name">{window.name || "window"}</span>
-                </button>
-              );
-            })
-          )}
-        </div>
         <div className="window-actions">
-          <button className="window-action-button" type="button" onClick={newWindow}>
-            新建窗口
-          </button>
           {attachCommand ? (
             <button className="window-action-button" type="button" onClick={handleCopyAttachCommand}>
               复制恢复命令

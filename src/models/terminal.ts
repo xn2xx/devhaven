@@ -23,6 +23,11 @@ export type TmuxPaneInfo = {
   isActive: boolean;
 };
 
+export type TmuxPaneCursor = {
+  col: number;
+  row: number;
+};
+
 export type TmuxSupportStatus = {
   supported: boolean;
   reason?: string | null;

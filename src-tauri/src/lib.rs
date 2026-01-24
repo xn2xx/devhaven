@@ -17,7 +17,9 @@ use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{AppStateFile, BranchListItem, GitDailyResult, GitIdentity, HeatmapCacheFile, Project};
 use crate::system::{EditorOpenParams, TerminalOpenParams};
-use crate::terminal::{TerminalManager, TerminalSessionInfo, TmuxPaneInfo, TmuxSupportStatus, TmuxWindowInfo};
+use crate::terminal::{
+    TerminalManager, TerminalSessionInfo, TmuxPaneCursor, TmuxPaneInfo, TmuxSupportStatus, TmuxWindowInfo,
+};
 
 #[tauri::command]
 /// 读取应用状态。
@@ -158,17 +160,19 @@ fn create_terminal_session(
     state: State<'_, Mutex<TerminalManager>>,
     project_id: String,
     project_path: String,
+    project_name: String,
 ) -> Result<TerminalSessionInfo, String> {
     log_command_result("create_terminal_session", || {
         log::info!(
-            "create_terminal_session project_id={} project_path={}",
+            "create_terminal_session project_id={} project_path={} project_name={}",
             project_id,
-            project_path
+            project_path,
+            project_name
         );
         state
             .lock()
             .map_err(|_| "终端状态锁异常".to_string())?
-            .create_session(app, &project_id, &project_path)
+            .create_session(app, &project_id, &project_path, &project_name)
     })
 }
 
@@ -206,12 +210,10 @@ fn list_tmux_windows(
     state: State<'_, Mutex<TerminalManager>>,
     session_id: String,
 ) -> Result<Vec<TmuxWindowInfo>, String> {
-    log_command_result("list_tmux_windows", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .list_windows(&session_id)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .list_windows(&session_id)
 }
 
 #[tauri::command]
@@ -219,12 +221,10 @@ fn list_tmux_panes(
     state: State<'_, Mutex<TerminalManager>>,
     window_id: String,
 ) -> Result<Vec<TmuxPaneInfo>, String> {
-    log_command_result("list_tmux_panes", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .list_panes(&window_id)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .list_panes(&window_id)
 }
 
 #[tauri::command]
@@ -233,12 +233,10 @@ fn send_tmux_input(
     pane_id: String,
     data: String,
 ) -> Result<(), String> {
-    log_command_result("send_tmux_input", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .send_input(&pane_id, &data)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .send_input(&pane_id, &data)
 }
 
 #[tauri::command]
@@ -247,12 +245,10 @@ fn split_tmux_pane(
     pane_id: String,
     direction: String,
 ) -> Result<(), String> {
-    log_command_result("split_tmux_pane", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .split_pane(&pane_id, &direction)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .split_pane(&pane_id, &direction)
 }
 
 #[tauri::command]
@@ -260,12 +256,10 @@ fn select_tmux_pane(
     state: State<'_, Mutex<TerminalManager>>,
     pane_id: String,
 ) -> Result<(), String> {
-    log_command_result("select_tmux_pane", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .select_pane(&pane_id)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .select_pane(&pane_id)
 }
 
 #[tauri::command]
@@ -289,12 +283,10 @@ fn resize_tmux_pane(
     direction: String,
     count: u16,
 ) -> Result<(), String> {
-    log_command_result("resize_tmux_pane", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .resize_pane(&pane_id, &direction, count)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .resize_pane(&pane_id, &direction, count)
 }
 
 #[tauri::command]
@@ -302,12 +294,10 @@ fn kill_tmux_pane(
     state: State<'_, Mutex<TerminalManager>>,
     pane_id: String,
 ) -> Result<(), String> {
-    log_command_result("kill_tmux_pane", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .kill_pane(&pane_id)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .kill_pane(&pane_id)
 }
 
 #[tauri::command]
@@ -378,12 +368,10 @@ fn resize_tmux_client(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    log_command_result("resize_tmux_client", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .resize_client(app, cols, rows)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .resize_client(app, cols, rows)
 }
 
 #[tauri::command]
@@ -391,12 +379,21 @@ fn capture_tmux_pane(
     state: State<'_, Mutex<TerminalManager>>,
     pane_id: String,
 ) -> Result<String, String> {
-    log_command_result("capture_tmux_pane", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .capture_pane(&pane_id)
-    })
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .capture_pane(&pane_id)
+}
+
+#[tauri::command]
+fn get_tmux_pane_cursor(
+    state: State<'_, Mutex<TerminalManager>>,
+    pane_id: String,
+) -> Result<TmuxPaneCursor, String> {
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .get_pane_cursor(&pane_id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -463,6 +460,7 @@ pub fn run() {
             previous_tmux_window,
             resize_tmux_client,
             capture_tmux_pane,
+            get_tmux_pane_cursor,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

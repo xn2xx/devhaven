@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   TerminalSessionInfo,
+  TmuxPaneCursor,
   TmuxPaneInfo,
   TmuxSupportStatus,
   TmuxWindowInfo,
@@ -30,10 +31,15 @@ export async function getTmuxSupportStatus(): Promise<TmuxSupportStatus> {
 }
 
 /** 创建或复用 tmux 会话并返回会话信息。 */
-export async function createTerminalSession(projectId: string, projectPath: string): Promise<TerminalSessionInfo> {
+export async function createTerminalSession(
+  projectId: string,
+  projectPath: string,
+  projectName: string,
+): Promise<TerminalSessionInfo> {
   const payload = await invoke<TerminalSessionPayload>("create_terminal_session", {
     projectId,
     projectPath,
+    projectName,
   });
   return normalizeSession(payload);
 }
@@ -128,4 +134,9 @@ export async function resizeTmuxClient(cols: number, rows: number): Promise<void
 /** 拉取 pane 历史缓冲。 */
 export async function captureTmuxPane(paneId: string): Promise<string> {
   return invoke<string>("capture_tmux_pane", { paneId });
+}
+
+/** 获取 pane 光标位置。 */
+export async function getTmuxPaneCursor(paneId: string): Promise<TmuxPaneCursor> {
+  return invoke<TmuxPaneCursor>("get_tmux_pane_cursor", { paneId });
 }

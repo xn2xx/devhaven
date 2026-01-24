@@ -14,7 +14,7 @@ const TMUX_STATE_EVENT: &str = "tmux-state";
 const TMUX_BIN: &str = "tmux";
 const TMUX_PANE_BORDER_STYLE: &str = "fg=#586e75,bg=default";
 const TMUX_PANE_ACTIVE_BORDER_STYLE: &str = "fg=#268bd2,bg=default";
-const TMUX_SESSION_PREFIX: &str = "devhaven_";
+const LEGACY_TMUX_SESSION_PREFIX: &str = "devhaven_";
 
 #[derive(Clone, serde::Serialize)]
 pub struct TerminalSessionInfo {
@@ -55,6 +55,13 @@ pub struct TmuxSupportStatus {
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TmuxPaneCursor {
+    pub col: u16,
+    pub row: u16,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TmuxOutputPayload {
     pane_id: String,
     data: String,
@@ -89,27 +96,29 @@ impl TerminalManager {
         }
     }
 
-    pub fn is_supported(&self) -> bool {
-        cfg!(target_os = "macos") && is_tmux_available()
-    }
-
     pub fn create_session(
         &mut self,
         app: AppHandle,
         project_id: &str,
         project_path: &str,
+        project_name: &str,
     ) -> Result<TerminalSessionInfo, String> {
         ensure_supported()?;
-        let session_name = session_name_for_project(project_id);
+        let session_name = session_name_for_project(project_name);
         if !tmux_session_exists(&session_name)? {
-            run_tmux_status(&[
-                "new-session".to_string(),
-                "-d".to_string(),
-                "-s".to_string(),
-                session_name.clone(),
-                "-c".to_string(),
-                project_path.to_string(),
-            ])?;
+            let legacy_session_name = legacy_session_name_for_project_id(project_id);
+            if tmux_session_exists(&legacy_session_name)? {
+                rename_tmux_session(&legacy_session_name, &session_name)?;
+            } else {
+                run_tmux_status(&[
+                    "new-session".to_string(),
+                    "-d".to_string(),
+                    "-s".to_string(),
+                    session_name.clone(),
+                    "-c".to_string(),
+                    project_path.to_string(),
+                ])?;
+            }
         }
 
         self.ensure_control_client(app)?;
@@ -342,9 +351,31 @@ impl TerminalManager {
         run_tmux_command(&[
             "capture-pane".to_string(),
             "-pJ".to_string(),
+            "-e".to_string(),
             "-t".to_string(),
             pane_id.to_string(),
         ])
+    }
+
+    pub fn get_pane_cursor(&self, pane_id: &str) -> Result<TmuxPaneCursor, String> {
+        ensure_supported()?;
+        let output = run_tmux_command(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            pane_id.to_string(),
+            "#{cursor_x}\t#{cursor_y}".to_string(),
+        ])?;
+        let mut parts = output.trim().split('\t');
+        let col = parts
+            .next()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(0);
+        let row = parts
+            .next()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(0);
+        Ok(TmuxPaneCursor { col, row })
     }
 
     fn ensure_control_client(&mut self, app: AppHandle) -> Result<(), String> {
@@ -479,12 +510,35 @@ fn parse_tmux_flag(value: &str) -> bool {
     matches!(value, "1" | "true" | "yes")
 }
 
-fn session_name_for_project(project_id: &str) -> String {
+fn session_name_for_project(project_name: &str) -> String {
+    let sanitized: String = project_name
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_alphanumeric() || ch == '-' || ch == '_' || ch == ' ' { ch } else { '_' })
+        .collect();
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        "devhaven".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn legacy_session_name_for_project_id(project_id: &str) -> String {
     let sanitized: String = project_id
         .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch } else { '_' })
         .collect();
-    format!("{TMUX_SESSION_PREFIX}{sanitized}")
+    format!("{LEGACY_TMUX_SESSION_PREFIX}{sanitized}")
+}
+
+fn rename_tmux_session(old_name: &str, new_name: &str) -> Result<(), String> {
+    run_tmux_status(&[
+        "rename-session".to_string(),
+        "-t".to_string(),
+        old_name.to_string(),
+        new_name.to_string(),
+    ])
 }
 
 fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String> {

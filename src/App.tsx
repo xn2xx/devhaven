@@ -396,7 +396,7 @@ function AppLayout() {
       }
 
       try {
-        const sessionInfo = await createTerminalSession(project.id, project.path);
+        const sessionInfo = await createTerminalSession(project.id, project.path, project.name);
         const nextSession: WorkspaceSession = { ...sessionInfo, projectName: project.name };
         setWorkspaceSessions((prev) => {
           if (prev.some((session) => session.id === sessionInfo.id || session.projectId === project.id)) {

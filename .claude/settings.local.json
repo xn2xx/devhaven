@@ -21,7 +21,15 @@
       "Bash(git rev-parse:*)",
       "Bash(cargo check:*)",
       "Bash(npm run build:*)",
-      "Bash(tmux show-options:*)"
+      "Bash(tmux show-options:*)",
+      "Bash(cargo test:*)",
+      "Bash(echo:*)",
+      "Bash(cargo build:*)",
+      "Bash(tput:*)",
+      "Bash(if [ -f ~/.zshrc ])",
+      "Bash(then)",
+      "Bash(elif [ -f ~/.bashrc ])",
+      "Bash(fi)"
     ]
   }
 }

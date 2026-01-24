@@ -10,6 +10,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 
 import type {
   TmuxOutputPayload,
+  TmuxPaneCursor,
   TmuxPaneInfo,
   TmuxStatePayload,
   TmuxWindowInfo,
@@ -17,6 +18,7 @@ import type {
 } from "../models/terminal";
 import {
   captureTmuxPane,
+  getTmuxPaneCursor,
   listTmuxPanes,
   listTmuxWindows,
   sendTmuxInput,
@@ -41,6 +43,7 @@ import "@xterm/xterm/css/xterm.css";
 const MAX_BUFFER_CHARS = 200_000;
 
 const pendingOutputBuffers = new Map<string, string>();
+const pendingCursorPositions = new Map<string, TmuxPaneCursor>();
 
 export type TerminalStatus = "idle" | "preparing" | "connecting" | "ready" | "error";
 
@@ -78,6 +81,15 @@ function appendBuffer(existing: string | undefined, data: string): string {
   return next.slice(next.length - MAX_BUFFER_CHARS);
 }
 
+function applyCursorToTerminal(terminal: Terminal, cursor: TmuxPaneCursor | undefined): void {
+  if (!cursor) {
+    return;
+  }
+  const row = Math.max(1, Math.min(terminal.rows || cursor.row + 1, cursor.row + 1));
+  const col = Math.max(1, Math.min(terminal.cols || cursor.col + 1, cursor.col + 1));
+  terminal.write(`\x1b[${row};${col}H`);
+}
+
 export function useTmuxWorkspace({
   activeSession,
   isVisible,
@@ -88,6 +100,8 @@ export function useTmuxWorkspace({
   const fitAddonsRef = useRef(new Map<string, FitAddon>());
   const webglAddonsRef = useRef(new Map<string, WebglAddon>());
   const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
+  const paneHasOutputRef = useRef(new Set<string>());
+  const paneSnapshotAppliedRef = useRef(new Set<string>());
   const activeSessionRef = useRef<WorkspaceSession | null>(null);
   const activePaneRef = useRef<string | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
@@ -137,12 +151,56 @@ export function useTmuxWorkspace({
 
       await Promise.all(
         nextPanes.map(async (pane) => {
-          if (terminalsRef.current.has(pane.id) || pendingOutputBuffers.has(pane.id)) {
+          const buffered = pendingOutputBuffers.get(pane.id);
+          const hasOutput = paneHasOutputRef.current.has(pane.id);
+          const snapshotApplied = paneSnapshotAppliedRef.current.has(pane.id);
+          if (
+            terminalsRef.current.has(pane.id) ||
+            hasOutput ||
+            snapshotApplied ||
+            (buffered !== undefined && buffered.length > 0)
+          ) {
             return;
           }
           try {
             const snapshot = await captureTmuxPane(pane.id);
-            pendingOutputBuffers.set(pane.id, appendBuffer(undefined, snapshot));
+            if (snapshot.length === 0) {
+              return;
+            }
+            if (paneHasOutputRef.current.has(pane.id) || paneSnapshotAppliedRef.current.has(pane.id)) {
+              return;
+            }
+            try {
+              const cursor = await getTmuxPaneCursor(pane.id);
+              const terminal = terminalsRef.current.get(pane.id);
+              if (terminal) {
+                if (!paneHasOutputRef.current.has(pane.id) && !paneSnapshotAppliedRef.current.has(pane.id)) {
+                  terminal.write(snapshot);
+                  applyCursorToTerminal(terminal, cursor);
+                  paneSnapshotAppliedRef.current.add(pane.id);
+                }
+                pendingOutputBuffers.delete(pane.id);
+                pendingCursorPositions.delete(pane.id);
+                return;
+              }
+              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, snapshot));
+              pendingCursorPositions.set(pane.id, cursor);
+              paneSnapshotAppliedRef.current.add(pane.id);
+            } catch (error) {
+              console.warn("get cursor position failed", error);
+              const terminal = terminalsRef.current.get(pane.id);
+              if (terminal) {
+                if (!paneHasOutputRef.current.has(pane.id) && !paneSnapshotAppliedRef.current.has(pane.id)) {
+                  terminal.write(snapshot);
+                  paneSnapshotAppliedRef.current.add(pane.id);
+                }
+                pendingOutputBuffers.delete(pane.id);
+                pendingCursorPositions.delete(pane.id);
+                return;
+              }
+              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, snapshot));
+              paneSnapshotAppliedRef.current.add(pane.id);
+            }
           } catch (error) {
             console.warn("capture-pane failed", error);
           }
@@ -181,10 +239,13 @@ export function useTmuxWorkspace({
       const terminal = terminalsRef.current.get(paneId);
       if (terminal) {
         terminal.write(data);
+        paneHasOutputRef.current.add(paneId);
         return;
       }
       const next = appendBuffer(pendingOutputBuffers.get(paneId), data);
       pendingOutputBuffers.set(paneId, next);
+      pendingCursorPositions.delete(paneId);
+      paneHasOutputRef.current.add(paneId);
     })
       .then((unlisten) => {
         if (canceled) {
@@ -433,10 +494,17 @@ export function useTmuxWorkspace({
       fitAddonsRef.current.set(pane.id, fitAddon);
 
       const buffered = pendingOutputBuffers.get(pane.id);
-      if (buffered) {
-        terminal.write(buffered);
+      if (buffered !== undefined) {
+        if (buffered.length > 0) {
+          terminal.write(buffered);
+          paneHasOutputRef.current.add(pane.id);
+          paneSnapshotAppliedRef.current.add(pane.id);
+        }
         pendingOutputBuffers.delete(pane.id);
       }
+      const cursor = pendingCursorPositions.get(pane.id);
+      applyCursorToTerminal(terminal, cursor);
+      pendingCursorPositions.delete(pane.id);
       updateClientSize();
     },
     [attachWebglRenderer, updateClientSize, useWebglRenderer],
@@ -466,6 +534,10 @@ export function useTmuxWorkspace({
         fitAddonsRef.current.delete(paneId);
         detachWebglRenderer(paneId);
         paneElementsRef.current.delete(paneId);
+        pendingOutputBuffers.delete(paneId);
+        pendingCursorPositions.delete(paneId);
+        paneHasOutputRef.current.delete(paneId);
+        paneSnapshotAppliedRef.current.delete(paneId);
       }
     });
 
