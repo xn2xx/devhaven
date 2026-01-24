@@ -333,7 +333,7 @@ impl TerminalManager {
     pub fn resize_client(&mut self, app: AppHandle, cols: u16, rows: u16) -> Result<(), String> {
         ensure_supported()?;
         self.ensure_control_client(app)?;
-        let command = format!("refresh-client -C {},{}", cols, rows);
+        let command = format!("refresh-client -C {}x{}", cols, rows);
         self.send_control_command(&command)
     }
 

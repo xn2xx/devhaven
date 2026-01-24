@@ -33,6 +33,7 @@ import {
   newTmuxWindow,
   killTmuxPane,
   resizeTmuxPane,
+  resizeTmuxClient,
 } from "../services/terminal";
 import { solarizedDark } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
@@ -69,19 +70,19 @@ export type TmuxWorkspaceState = {
   newWindow: () => void;
 };
 
-const appendBuffer = (existing: string | undefined, data: string) => {
+function appendBuffer(existing: string | undefined, data: string): string {
   const next = (existing ?? "") + data;
   if (next.length <= MAX_BUFFER_CHARS) {
     return next;
   }
   return next.slice(next.length - MAX_BUFFER_CHARS);
-};
+}
 
-export const useTmuxWorkspace = ({
+export function useTmuxWorkspace({
   activeSession,
   isVisible,
   useWebglRenderer,
-}: UseTmuxWorkspaceOptions): TmuxWorkspaceState => {
+}: UseTmuxWorkspaceOptions): TmuxWorkspaceState {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef(new Map<string, Terminal>());
   const fitAddonsRef = useRef(new Map<string, FitAddon>());
@@ -91,6 +92,11 @@ export const useTmuxWorkspace = ({
   const activePaneRef = useRef<string | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
   const refreshingRef = useRef(false);
+  const lastClientSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const pendingClientSizeRef = useRef<{ cols: number; rows: number } | null>(null);
+  const resizeTimerRef = useRef<number | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
+  const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(null);
 
   const [status, setStatus] = useState<TerminalStatus>("idle");
   const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
@@ -241,19 +247,87 @@ export const useTmuxWorkspace = ({
   }, [activeSession, isVisible, refreshState]);
 
   const updateClientSize = useCallback(() => {
-    // 对所有终端调用 fit，确保每个 pane 都正确适应其容器
-    // 在 tmux control mode 中，tmux 会自动管理每个窗格的大小
-    // 我们不需要手动调用 resizeTmuxClient，因为那会导致所有窗格使用相同的尺寸
-    for (const [paneId] of terminalsRef.current.entries()) {
-      const fitAddon = fitAddonsRef.current.get(paneId);
-      if (fitAddon) {
-        try {
-          fitAddon.fit();
-        } catch (error) {
-          console.warn("Failed to fit terminal", error);
+    if (resizeFrameRef.current !== null) {
+      return;
+    }
+    resizeFrameRef.current = window.requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      // 对所有终端调用 fit，确保每个 pane 都正确适应其容器
+      // 在 tmux control mode 中需要明确同步客户端尺寸，否则 tmux 会停留在默认 80x24
+      for (const paneId of terminalsRef.current.keys()) {
+        const fitAddon = fitAddonsRef.current.get(paneId);
+        if (fitAddon) {
+          try {
+            fitAddon.fit();
+          } catch (error) {
+            console.warn("Failed to fit terminal", error);
+          }
         }
       }
-    }
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      const lastContainer = lastContainerSizeRef.current;
+      if (lastContainer?.width === containerWidth && lastContainer?.height === containerHeight) {
+        return;
+      }
+      lastContainerSizeRef.current = { width: containerWidth, height: containerHeight };
+      const firstEntry = terminalsRef.current.entries().next();
+      if (firstEntry.done) {
+        return;
+      }
+      const [paneId, terminal] = firstEntry.value;
+      const paneElement = paneElementsRef.current.get(paneId);
+      if (!paneElement || terminal.cols <= 0 || terminal.rows <= 0) {
+        return;
+      }
+      const cellWidth = paneElement.clientWidth / terminal.cols;
+      const cellHeight = paneElement.clientHeight / terminal.rows;
+      if (!Number.isFinite(cellWidth) || !Number.isFinite(cellHeight) || cellWidth <= 0 || cellHeight <= 0) {
+        return;
+      }
+      const cols = Math.max(2, Math.floor(containerWidth / cellWidth));
+      const rows = Math.max(2, Math.floor(containerHeight / cellHeight));
+      pendingClientSizeRef.current = { cols, rows };
+      const last = lastClientSizeRef.current;
+      if (last?.cols === cols && last?.rows === rows) {
+        return;
+      }
+      if (resizeTimerRef.current !== null) {
+        return;
+      }
+      resizeTimerRef.current = window.setTimeout(() => {
+        resizeTimerRef.current = null;
+        const pending = pendingClientSizeRef.current;
+        if (!pending) {
+          return;
+        }
+        const latest = lastClientSizeRef.current;
+        if (latest?.cols === pending.cols && latest?.rows === pending.rows) {
+          return;
+        }
+        lastClientSizeRef.current = pending;
+        void resizeTmuxClient(pending.cols, pending.rows).catch((error) => {
+          console.error("Failed to resize tmux client.", error);
+        });
+      }, 80);
+    });
+  }, [resizeTmuxClient]);
+
+  useEffect(() => {
+    return () => {
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
+      if (resizeTimerRef.current !== null) {
+        window.clearTimeout(resizeTimerRef.current);
+        resizeTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -543,4 +617,4 @@ export const useTmuxWorkspace = ({
     previousWindow,
     newWindow,
   };
-};
+}
