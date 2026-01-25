@@ -2,7 +2,34 @@
   "permissions": {
     "allow": [
       "mcp__ace-tool__search_context",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "mcp__serena__list_dir",
+      "Bash(openspec list:*)",
+      "Bash(openspec validate:*)",
+      "Bash(openspec show:*)",
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev)",
+      "Bash(fc-list:*)",
+      "Bash(system_profiler:*)",
+      "Bash(mdfind:*)",
+      "Bash(curl:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(cargo check:*)",
+      "Bash(npm run build:*)",
+      "Bash(tmux show-options:*)",
+      "Bash(cargo test:*)",
+      "Bash(echo:*)",
+      "Bash(cargo build:*)",
+      "Bash(tput:*)",
+      "Bash(if [ -f ~/.zshrc ])",
+      "Bash(then)",
+      "Bash(elif [ -f ~/.bashrc ])",
+      "Bash(fi)"
     ]
   }
 }

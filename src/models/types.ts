@@ -18,9 +18,16 @@ export type OpenToolSettings = {
   arguments: string[];
 };
 
+export type GitIdentity = {
+  name: string;
+  email: string;
+};
+
 export type AppSettings = {
   editorOpenTool: OpenToolSettings;
   terminalOpenTool: OpenToolSettings;
+  terminalUseWebglRenderer: boolean;
+  gitIdentities: GitIdentity[];
 };
 
 export type AppStateFile = {
