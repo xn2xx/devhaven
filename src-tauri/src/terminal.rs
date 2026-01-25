@@ -350,7 +350,9 @@ impl TerminalManager {
         ensure_supported()?;
         run_tmux_command(&[
             "capture-pane".to_string(),
-            "-pJ".to_string(),
+            "-p".to_string(),
+            "-S".to_string(),
+            "-".to_string(),
             "-e".to_string(),
             "-t".to_string(),
             pane_id.to_string(),

@@ -90,6 +90,10 @@ function applyCursorToTerminal(terminal: Terminal, cursor: TmuxPaneCursor | unde
   terminal.write(`\x1b[${row};${col}H`);
 }
 
+function normalizeSnapshot(snapshot: string): string {
+  return snapshot.replace(/\r?\n/g, "\r\n");
+}
+
 export function useTmuxWorkspace({
   activeSession,
   isVisible,
@@ -164,7 +168,8 @@ export function useTmuxWorkspace({
           }
           try {
             const snapshot = await captureTmuxPane(pane.id);
-            if (snapshot.length === 0) {
+            const normalizedSnapshot = normalizeSnapshot(snapshot);
+            if (normalizedSnapshot.length === 0) {
               return;
             }
             if (paneHasOutputRef.current.has(pane.id) || paneSnapshotAppliedRef.current.has(pane.id)) {
@@ -175,7 +180,7 @@ export function useTmuxWorkspace({
               const terminal = terminalsRef.current.get(pane.id);
               if (terminal) {
                 if (!paneHasOutputRef.current.has(pane.id) && !paneSnapshotAppliedRef.current.has(pane.id)) {
-                  terminal.write(snapshot);
+                  terminal.write(normalizedSnapshot);
                   applyCursorToTerminal(terminal, cursor);
                   paneSnapshotAppliedRef.current.add(pane.id);
                 }
@@ -183,7 +188,7 @@ export function useTmuxWorkspace({
                 pendingCursorPositions.delete(pane.id);
                 return;
               }
-              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, snapshot));
+              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, normalizedSnapshot));
               pendingCursorPositions.set(pane.id, cursor);
               paneSnapshotAppliedRef.current.add(pane.id);
             } catch (error) {
@@ -191,14 +196,14 @@ export function useTmuxWorkspace({
               const terminal = terminalsRef.current.get(pane.id);
               if (terminal) {
                 if (!paneHasOutputRef.current.has(pane.id) && !paneSnapshotAppliedRef.current.has(pane.id)) {
-                  terminal.write(snapshot);
+                  terminal.write(normalizedSnapshot);
                   paneSnapshotAppliedRef.current.add(pane.id);
                 }
                 pendingOutputBuffers.delete(pane.id);
                 pendingCursorPositions.delete(pane.id);
                 return;
               }
-              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, snapshot));
+              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, normalizedSnapshot));
               paneSnapshotAppliedRef.current.add(pane.id);
             }
           } catch (error) {
