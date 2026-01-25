@@ -41,6 +41,8 @@ import { solarizedDark } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
 
 const MAX_BUFFER_CHARS = 200_000;
+const MAX_REFRESH_RETRIES = 8;
+const REFRESH_RETRY_DELAY = 200;
 
 const pendingOutputBuffers = new Map<string, string>();
 const pendingCursorPositions = new Map<string, TmuxPaneCursor>();
@@ -108,6 +110,7 @@ export function useTmuxWorkspace({
   const paneSnapshotAppliedRef = useRef(new Set<string>());
   const activeSessionRef = useRef<WorkspaceSession | null>(null);
   const activePaneRef = useRef<string | null>(null);
+  const refreshStateRef = useRef<() => void>(() => {});
   const refreshTimerRef = useRef<number | null>(null);
   const refreshingRef = useRef(false);
   const lastClientSizeRef = useRef<{ cols: number; rows: number } | null>(null);
@@ -121,10 +124,41 @@ export function useTmuxWorkspace({
   const [windows, setWindows] = useState<TmuxWindowInfo[]>([]);
   const [activePaneId, setActivePaneId] = useState<string | null>(null);
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
+  const statusRef = useRef<TerminalStatus>("idle");
+  const refreshRetryRef = useRef(0);
+  const refreshRetryTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  const clearRefreshRetry = useCallback(() => {
+    refreshRetryRef.current = 0;
+    if (refreshRetryTimerRef.current !== null) {
+      window.clearTimeout(refreshRetryTimerRef.current);
+      refreshRetryTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleRefreshRetry = useCallback(() => {
+    if (refreshRetryTimerRef.current !== null) {
+      return;
+    }
+    if (refreshRetryRef.current >= MAX_REFRESH_RETRIES) {
+      if (statusRef.current !== "error") {
+        setStatus("error");
+      }
+      return;
+    }
+    refreshRetryTimerRef.current = window.setTimeout(() => {
+      refreshRetryTimerRef.current = null;
+      refreshStateRef.current();
+    }, REFRESH_RETRY_DELAY);
+  }, []);
 
   const refreshState = useCallback(async () => {
     const session = activeSessionRef.current;
@@ -143,6 +177,11 @@ export function useTmuxWorkspace({
         setPanes([]);
         setActivePaneId(null);
         activePaneRef.current = null;
+        refreshRetryRef.current += 1;
+        if (statusRef.current !== "error") {
+          setStatus("connecting");
+        }
+        scheduleRefreshRetry();
         return;
       }
 
@@ -152,6 +191,14 @@ export function useTmuxWorkspace({
       const paneId = activePane?.id ?? null;
       setActivePaneId(paneId);
       activePaneRef.current = paneId;
+      if (nextPanes.length === 0) {
+        refreshRetryRef.current += 1;
+        if (statusRef.current !== "error") {
+          setStatus("connecting");
+        }
+        scheduleRefreshRetry();
+        return;
+      }
 
       await Promise.all(
         nextPanes.map(async (pane) => {
@@ -211,13 +258,31 @@ export function useTmuxWorkspace({
           }
         }),
       );
+      clearRefreshRetry();
+      if (statusRef.current !== "ready") {
+        setStatus("ready");
+      }
     } catch (error) {
       console.error("Failed to refresh tmux state.", error);
-      setStatus("error");
+      refreshRetryRef.current += 1;
+      if (refreshRetryRef.current >= MAX_REFRESH_RETRIES) {
+        setStatus("error");
+        return;
+      }
+      if (statusRef.current !== "error") {
+        setStatus("connecting");
+      }
+      scheduleRefreshRetry();
     } finally {
       refreshingRef.current = false;
     }
-  }, []);
+  }, [clearRefreshRetry, scheduleRefreshRetry]);
+
+  useEffect(() => {
+    refreshStateRef.current = () => {
+      void refreshState();
+    };
+  }, [refreshState]);
 
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) {
@@ -286,6 +351,7 @@ export function useTmuxWorkspace({
 
   useEffect(() => {
     if (!isVisible) {
+      clearRefreshRetry();
       setStatus("idle");
       setPanes([]);
       setWindows([]);
@@ -299,18 +365,18 @@ export function useTmuxWorkspace({
       return;
     }
 
+    clearRefreshRetry();
     setStatus("connecting");
     void (async () => {
       try {
         await switchTerminalSession(activeSession.id);
         await refreshState();
-        setStatus("ready");
       } catch (error) {
         console.error("Failed to switch tmux session.", error);
         setStatus("error");
       }
     })();
-  }, [activeSession, isVisible, refreshState]);
+  }, [activeSession, clearRefreshRetry, isVisible, refreshState]);
 
   const updateClientSize = useCallback(() => {
     if (resizeFrameRef.current !== null) {

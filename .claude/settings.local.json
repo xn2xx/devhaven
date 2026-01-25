@@ -29,7 +29,13 @@
       "Bash(if [ -f ~/.zshrc ])",
       "Bash(then)",
       "Bash(elif [ -f ~/.bashrc ])",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(cargo tauri build:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "mcp__serena__get_symbols_overview",
+      "Bash(npm run tauri:*)",
+      "Bash(chmod:*)"
     ]
   }
 }

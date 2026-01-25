@@ -1,4 +1,6 @@
+use std::ffi::OsString;
 use std::io::{Read, Write};
+use std::path::Path;
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -9,12 +11,190 @@ use std::thread;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter};
 
+// 获取用户的 HOME 目录
+fn get_user_home() -> Option<String> {
+    // 优先使用环境变量
+    if let Ok(home) = std::env::var("HOME") {
+        if !home.is_empty() {
+            return Some(home);
+        }
+    }
+
+    // 使用 macOS 系统调用获取
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CStr;
+
+        extern "C" {
+            fn getpwuid(uid: u32) -> *const libc::passwd;
+            fn getuid() -> u32;
+        }
+
+        unsafe {
+            let uid = getuid();
+            let pw = getpwuid(uid);
+            if !pw.is_null() {
+                let home_dir = (*pw).pw_dir;
+                if !home_dir.is_null() {
+                    if let Ok(home_str) = CStr::from_ptr(home_dir).to_str() {
+                        return Some(home_str.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+// 获取用户的默认 shell
+fn get_user_shell() -> String {
+    // 优先使用环境变量
+    if let Ok(shell) = std::env::var("SHELL") {
+        if !shell.is_empty() && Path::new(&shell).exists() {
+            return shell;
+        }
+    }
+
+    // 使用 macOS 系统调用获取
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CStr;
+
+        extern "C" {
+            fn getpwuid(uid: u32) -> *const libc::passwd;
+            fn getuid() -> u32;
+        }
+
+        unsafe {
+            let uid = getuid();
+            let pw = getpwuid(uid);
+            if !pw.is_null() {
+                let shell_path = (*pw).pw_shell;
+                if !shell_path.is_null() {
+                    if let Ok(shell_str) = CStr::from_ptr(shell_path).to_str() {
+                        let shell = shell_str.to_string();
+                        if Path::new(&shell).exists() {
+                            return shell;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 回退到常见的 shell
+    if Path::new("/bin/zsh").exists() {
+        "/bin/zsh".to_string()
+    } else if Path::new("/bin/bash").exists() {
+        "/bin/bash".to_string()
+    } else {
+        "/bin/sh".to_string()
+    }
+}
+
+struct TmuxEnv {
+    path: String,
+    shell: String,
+    home: Option<String>,
+    lang: String,
+    lc_all: String,
+    term: String,
+}
+
+impl TmuxEnv {
+    fn apply_to_command(&self, cmd: &mut Command) {
+        cmd.env("PATH", &self.path);
+        cmd.env("SHELL", &self.shell);
+        cmd.env("LANG", &self.lang);
+        cmd.env("LC_ALL", &self.lc_all);
+        cmd.env("TERM", &self.term);
+        if let Some(home) = &self.home {
+            cmd.env("HOME", home);
+        }
+    }
+
+    fn apply_to_builder(&self, cmd: &mut CommandBuilder) {
+        cmd.env("PATH", &self.path);
+        cmd.env("SHELL", &self.shell);
+        cmd.env("LANG", &self.lang);
+        cmd.env("LC_ALL", &self.lc_all);
+        cmd.env("TERM", &self.term);
+        if let Some(home) = &self.home {
+            cmd.env("HOME", home);
+        }
+    }
+}
+
 const TMUX_OUTPUT_EVENT: &str = "tmux-output";
 const TMUX_STATE_EVENT: &str = "tmux-state";
 const TMUX_BIN: &str = "tmux";
+const TMUX_BIN_ENV: &str = "DEVHAVEN_TMUX_BIN";
+const TMUX_BIN_CANDIDATES: [&str; 4] = [
+    "/opt/homebrew/bin/tmux",
+    "/usr/local/bin/tmux",
+    "/opt/local/bin/tmux",
+    "/usr/bin/tmux",
+];
 const TMUX_PANE_BORDER_STYLE: &str = "fg=#586e75,bg=default";
 const TMUX_PANE_ACTIVE_BORDER_STYLE: &str = "fg=#268bd2,bg=default";
 const LEGACY_TMUX_SESSION_PREFIX: &str = "devhaven_";
+const DEFAULT_PATH: &str =
+    "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/local/bin";
+
+fn build_tmux_env() -> TmuxEnv {
+    let current_path = std::env::var("PATH").unwrap_or_else(|_| DEFAULT_PATH.to_string());
+    let full_path = if current_path.contains("/opt/homebrew/bin") && current_path.contains("/usr/local/bin") {
+        current_path
+    } else {
+        format!("{}:{}", DEFAULT_PATH, current_path)
+    };
+    let shell = get_user_shell();
+    let home = get_user_home();
+    let lang = std::env::var("LANG")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "en_US.UTF-8".to_string());
+    let lc_all = std::env::var("LC_ALL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| lang.clone());
+    let term = std::env::var("TERM")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "xterm-256color".to_string());
+
+    TmuxEnv {
+        path: full_path,
+        shell,
+        home,
+        lang,
+        lc_all,
+        term,
+    }
+}
+
+fn resolve_tmux_bin() -> OsString {
+    if let Some(path) = std::env::var_os(TMUX_BIN_ENV) {
+        if Path::new(&path).is_file() {
+            return path;
+        }
+    }
+    for candidate in TMUX_BIN_CANDIDATES {
+        if Path::new(candidate).is_file() {
+            return OsString::from(candidate);
+        }
+    }
+    OsString::from(TMUX_BIN)
+}
+
+fn tmux_command() -> Command {
+    let mut cmd = Command::new(resolve_tmux_bin());
+    let tmux_env = build_tmux_env();
+    tmux_env.apply_to_command(&mut cmd);
+
+    cmd
+}
 
 #[derive(Clone, serde::Serialize)]
 pub struct TerminalSessionInfo {
@@ -110,6 +290,9 @@ impl TerminalManager {
             if tmux_session_exists(&legacy_session_name)? {
                 rename_tmux_session(&legacy_session_name, &session_name)?;
             } else {
+                // 使用系统调用获取 shell 路径
+                let shell_path = get_user_shell();
+
                 run_tmux_status(&[
                     "new-session".to_string(),
                     "-d".to_string(),
@@ -117,6 +300,7 @@ impl TerminalManager {
                     session_name.clone(),
                     "-c".to_string(),
                     project_path.to_string(),
+                    shell_path, // 显式指定 shell
                 ])?;
             }
         }
@@ -448,7 +632,7 @@ fn ensure_supported() -> Result<(), String> {
 }
 
 fn is_tmux_available() -> bool {
-    Command::new(TMUX_BIN)
+    tmux_command()
         .arg("-V")
         .output()
         .map(|output| output.status.success())
@@ -456,7 +640,7 @@ fn is_tmux_available() -> bool {
 }
 
 fn tmux_session_exists(session_id: &str) -> Result<bool, String> {
-    let output = Command::new(TMUX_BIN)
+    let output = tmux_command()
         .args(["has-session", "-t", session_id])
         .output()
         .map_err(|err| format!("tmux 命令执行失败: {err}"))?;
@@ -464,7 +648,7 @@ fn tmux_session_exists(session_id: &str) -> Result<bool, String> {
 }
 
 fn run_tmux_command(args: &[String]) -> Result<String, String> {
-    let output = Command::new(TMUX_BIN)
+    let output = tmux_command()
         .args(args)
         .output()
         .map_err(|err| format!("tmux 命令执行失败: {err}"))?;
@@ -478,7 +662,7 @@ fn run_tmux_command(args: &[String]) -> Result<String, String> {
 }
 
 fn run_tmux_status(args: &[String]) -> Result<(), String> {
-    let output = Command::new(TMUX_BIN)
+    let output = tmux_command()
         .args(args)
         .output()
         .map_err(|err| format!("tmux 命令执行失败: {err}"))?;
@@ -554,9 +738,17 @@ fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String
         })
         .map_err(|err| format!("创建 tmux 控制终端失败: {err}"))?;
 
-    let mut command = CommandBuilder::new(TMUX_BIN);
+    let mut command = CommandBuilder::new(resolve_tmux_bin());
     command.arg("-CC");
+    let tmux_env = build_tmux_env();
+    tmux_env.apply_to_builder(&mut command);
     command.env("TERM", "xterm-256color");
+
+    // 打印调试信息
+    eprintln!("启动 tmux 控制模式:");
+    eprintln!("  PATH: {}", tmux_env.path);
+    eprintln!("  SHELL: {}", tmux_env.shell);
+    eprintln!("  tmux 路径: {:?}", resolve_tmux_bin());
 
     let child = pair
         .slave

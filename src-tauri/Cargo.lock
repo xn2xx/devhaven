@@ -4057,9 +4057,10 @@ dependencies = [
 
 [[package]]
 name = "tauri-app"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "chrono",
+ "libc",
  "log",
  "portable-pty",
  "serde",
@@ -4068,6 +4069,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
+ "tauri-plugin-fs",
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "uuid",
