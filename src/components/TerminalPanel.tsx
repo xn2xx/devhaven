@@ -48,7 +48,6 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
     resizePane,
     splitActivePane,
     killActivePane,
-    selectWindow,
     selectWindowIndex,
     nextWindow,
     previousWindow,
@@ -320,15 +319,15 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
       <div className="workspace-windowbar">
         <div className="window-actions">
           {attachCommand ? (
-            <button className="window-action-button" type="button" onClick={handleCopyAttachCommand}>
-              复制恢复命令
-            </button>
+            <>
+              <button className="window-action-button" type="button" onClick={handleCopyAttachCommand}>
+                复制恢复命令
+              </button>
+              <span className="window-attach-command">{attachCommand}</span>
+            </>
           ) : null}
           {copyHint ? <span className="window-copy-hint">{copyHint}</span> : null}
         </div>
-      </div>
-      <div className="workspace-attach-command">
-        {attachCommand ? <span>{attachCommand}</span> : null}
       </div>
       <div className="terminal-shell">
         <div ref={containerRef} className="terminal-surface">
