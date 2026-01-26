@@ -40,6 +40,7 @@ export type TmuxStatePayload = {
 };
 
 export type TmuxOutputPayload = {
+  sessionId: string;
   paneId: string;
   data: string;
 };

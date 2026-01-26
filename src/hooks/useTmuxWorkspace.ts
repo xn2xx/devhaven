@@ -40,12 +40,12 @@ import {
 import { solarizedDark } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
 
-const MAX_BUFFER_CHARS = 200_000;
+const MAX_BUFFER_CHARS = 20_000_000;
 const MAX_REFRESH_RETRIES = 8;
 const REFRESH_RETRY_DELAY = 200;
 
-const pendingOutputBuffers = new Map<string, string>();
-const pendingCursorPositions = new Map<string, TmuxPaneCursor>();
+const pendingOutputBuffers = new Map<string, Map<string, string>>();
+const pendingCursorPositions = new Map<string, Map<string, TmuxPaneCursor>>();
 
 export type TerminalStatus = "idle" | "preparing" | "connecting" | "ready" | "error";
 
@@ -53,6 +53,7 @@ type UseTmuxWorkspaceOptions = {
   activeSession: WorkspaceSession | null;
   isVisible: boolean;
   useWebglRenderer: boolean;
+  sessionIds: string[];
 };
 
 export type TmuxWorkspaceState = {
@@ -96,20 +97,40 @@ function normalizeSnapshot(snapshot: string): string {
   return snapshot.replace(/\r?\n/g, "\r\n");
 }
 
+function getSessionMap<T>(store: Map<string, Map<string, T>>, sessionId: string): Map<string, T> {
+  let sessionMap = store.get(sessionId);
+  if (!sessionMap) {
+    sessionMap = new Map<string, T>();
+    store.set(sessionId, sessionMap);
+  }
+  return sessionMap;
+}
+
+function getSessionSet(store: Map<string, Set<string>>, sessionId: string): Set<string> {
+  let sessionSet = store.get(sessionId);
+  if (!sessionSet) {
+    sessionSet = new Set<string>();
+    store.set(sessionId, sessionSet);
+  }
+  return sessionSet;
+}
+
 export function useTmuxWorkspace({
   activeSession,
   isVisible,
   useWebglRenderer,
+  sessionIds,
 }: UseTmuxWorkspaceOptions): TmuxWorkspaceState {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef(new Map<string, Terminal>());
   const fitAddonsRef = useRef(new Map<string, FitAddon>());
   const webglAddonsRef = useRef(new Map<string, WebglAddon>());
   const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
-  const paneHasOutputRef = useRef(new Set<string>());
-  const paneSnapshotAppliedRef = useRef(new Set<string>());
+  const paneSnapshotAppliedRef = useRef(new Map<string, Set<string>>());
   const activeSessionRef = useRef<WorkspaceSession | null>(null);
   const activePaneRef = useRef<string | null>(null);
+  const lastSessionIdRef = useRef<string | null>(null);
+  const forceSnapshotSessionRef = useRef<string | null>(null);
   const refreshStateRef = useRef<() => void>(() => {});
   const refreshTimerRef = useRef<number | null>(null);
   const refreshingRef = useRef(false);
@@ -128,9 +149,44 @@ export function useTmuxWorkspace({
   const refreshRetryRef = useRef(0);
   const refreshRetryTimerRef = useRef<number | null>(null);
 
+  const clearSessionCaches = useCallback((sessionId: string) => {
+    pendingOutputBuffers.delete(sessionId);
+    pendingCursorPositions.delete(sessionId);
+    paneSnapshotAppliedRef.current.delete(sessionId);
+  }, []);
+
+  const clearAllSessionCaches = useCallback(() => {
+    pendingOutputBuffers.clear();
+    pendingCursorPositions.clear();
+    paneSnapshotAppliedRef.current.clear();
+  }, []);
+
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    if (sessionIds.length === 0) {
+      clearAllSessionCaches();
+      return;
+    }
+    const activeSessions = new Set(sessionIds);
+    for (const sessionId of pendingOutputBuffers.keys()) {
+      if (!activeSessions.has(sessionId)) {
+        clearSessionCaches(sessionId);
+      }
+    }
+    for (const sessionId of pendingCursorPositions.keys()) {
+      if (!activeSessions.has(sessionId)) {
+        clearSessionCaches(sessionId);
+      }
+    }
+    for (const sessionId of paneSnapshotAppliedRef.current.keys()) {
+      if (!activeSessions.has(sessionId)) {
+        clearSessionCaches(sessionId);
+      }
+    }
+  }, [clearAllSessionCaches, clearSessionCaches, sessionIds]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -165,9 +221,15 @@ export function useTmuxWorkspace({
     if (!session || refreshingRef.current) {
       return;
     }
+    const sessionId = session.id;
+    const isActiveSession = () => activeSessionRef.current?.id === sessionId;
+    const forceSnapshot = forceSnapshotSessionRef.current === sessionId;
     refreshingRef.current = true;
     try {
-      const nextWindows = await listTmuxWindows(session.id);
+      const nextWindows = await listTmuxWindows(sessionId);
+      if (!isActiveSession()) {
+        return;
+      }
       setWindows(nextWindows);
       const activeWindow = nextWindows.find((item) => item.isActive) ?? nextWindows[0] ?? null;
       const windowId = activeWindow?.id ?? null;
@@ -186,6 +248,9 @@ export function useTmuxWorkspace({
       }
 
       const nextPanes = await listTmuxPanes(windowId);
+      if (!isActiveSession()) {
+        return;
+      }
       setPanes(nextPanes);
       const activePane = nextPanes.find((item) => item.isActive) ?? nextPanes[0] ?? null;
       const paneId = activePane?.id ?? null;
@@ -202,62 +267,101 @@ export function useTmuxWorkspace({
 
       await Promise.all(
         nextPanes.map(async (pane) => {
-          const buffered = pendingOutputBuffers.get(pane.id);
-          const hasOutput = paneHasOutputRef.current.has(pane.id);
-          const snapshotApplied = paneSnapshotAppliedRef.current.has(pane.id);
+          const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
+          const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
+          const sessionSnapshots = getSessionSet(paneSnapshotAppliedRef.current, sessionId);
+          const buffered = sessionBuffers.get(pane.id);
+          const snapshotApplied = sessionSnapshots.has(pane.id);
           if (
-            terminalsRef.current.has(pane.id) ||
-            hasOutput ||
-            snapshotApplied ||
-            (buffered !== undefined && buffered.length > 0)
+            !forceSnapshot &&
+            (terminalsRef.current.has(pane.id) || snapshotApplied || (buffered !== undefined && buffered.length > 0))
           ) {
             return;
           }
           try {
-            const snapshot = await captureTmuxPane(pane.id);
-            const normalizedSnapshot = normalizeSnapshot(snapshot);
-            if (normalizedSnapshot.length === 0) {
+            if (!isActiveSession()) {
               return;
             }
-            if (paneHasOutputRef.current.has(pane.id) || paneSnapshotAppliedRef.current.has(pane.id)) {
+            const snapshot = await captureTmuxPane(pane.id);
+            if (!isActiveSession()) {
+              return;
+            }
+            const normalizedSnapshot = normalizeSnapshot(snapshot);
+            if (normalizedSnapshot.length === 0) {
+              if (forceSnapshot) {
+                const terminal = terminalsRef.current.get(pane.id);
+                if (terminal) {
+                  terminal.reset();
+                }
+                sessionBuffers.set(pane.id, "");
+                sessionCursors.delete(pane.id);
+                sessionSnapshots.add(pane.id);
+              }
+              return;
+            }
+            if (!forceSnapshot && sessionSnapshots.has(pane.id)) {
               return;
             }
             try {
               const cursor = await getTmuxPaneCursor(pane.id);
               const terminal = terminalsRef.current.get(pane.id);
               if (terminal) {
-                if (!paneHasOutputRef.current.has(pane.id) && !paneSnapshotAppliedRef.current.has(pane.id)) {
+                if (forceSnapshot) {
+                  terminal.reset();
+                }
+                if (forceSnapshot || !sessionSnapshots.has(pane.id)) {
                   terminal.write(normalizedSnapshot);
                   applyCursorToTerminal(terminal, cursor);
-                  paneSnapshotAppliedRef.current.add(pane.id);
+                  sessionSnapshots.add(pane.id);
                 }
-                pendingOutputBuffers.delete(pane.id);
-                pendingCursorPositions.delete(pane.id);
+                if (forceSnapshot) {
+                  sessionBuffers.set(pane.id, normalizedSnapshot);
+                } else {
+                  sessionBuffers.set(pane.id, appendBuffer(sessionBuffers.get(pane.id), normalizedSnapshot));
+                }
+                sessionCursors.set(pane.id, cursor);
                 return;
               }
-              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, normalizedSnapshot));
-              pendingCursorPositions.set(pane.id, cursor);
-              paneSnapshotAppliedRef.current.add(pane.id);
+              if (forceSnapshot) {
+                sessionBuffers.set(pane.id, normalizedSnapshot);
+              } else {
+                sessionBuffers.set(pane.id, appendBuffer(sessionBuffers.get(pane.id), normalizedSnapshot));
+              }
+              sessionCursors.set(pane.id, cursor);
+              sessionSnapshots.add(pane.id);
             } catch (error) {
               console.warn("get cursor position failed", error);
               const terminal = terminalsRef.current.get(pane.id);
               if (terminal) {
-                if (!paneHasOutputRef.current.has(pane.id) && !paneSnapshotAppliedRef.current.has(pane.id)) {
-                  terminal.write(normalizedSnapshot);
-                  paneSnapshotAppliedRef.current.add(pane.id);
+                if (forceSnapshot) {
+                  terminal.reset();
                 }
-                pendingOutputBuffers.delete(pane.id);
-                pendingCursorPositions.delete(pane.id);
+                if (forceSnapshot || !sessionSnapshots.has(pane.id)) {
+                  terminal.write(normalizedSnapshot);
+                  sessionSnapshots.add(pane.id);
+                }
+                if (forceSnapshot) {
+                  sessionBuffers.set(pane.id, normalizedSnapshot);
+                } else {
+                  sessionBuffers.set(pane.id, appendBuffer(sessionBuffers.get(pane.id), normalizedSnapshot));
+                }
                 return;
               }
-              pendingOutputBuffers.set(pane.id, appendBuffer(undefined, normalizedSnapshot));
-              paneSnapshotAppliedRef.current.add(pane.id);
+              if (forceSnapshot) {
+                sessionBuffers.set(pane.id, normalizedSnapshot);
+              } else {
+                sessionBuffers.set(pane.id, appendBuffer(sessionBuffers.get(pane.id), normalizedSnapshot));
+              }
+              sessionSnapshots.add(pane.id);
             }
           } catch (error) {
             console.warn("capture-pane failed", error);
           }
         }),
       );
+      if (forceSnapshot) {
+        forceSnapshotSessionRef.current = null;
+      }
       clearRefreshRetry();
       if (statusRef.current !== "ready") {
         setStatus("ready");
@@ -301,21 +405,22 @@ export function useTmuxWorkspace({
 
     void listen<TmuxOutputPayload>(TMUX_OUTPUT_EVENT, (event) => {
       const payload = event.payload;
+      const sessionId = payload.sessionId;
       const paneId = payload.paneId;
       const data = payload.data ?? "";
-      if (!paneId || !data) {
+      if (!sessionId || !paneId || !data) {
+        return;
+      }
+      const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
+      const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
+      const next = appendBuffer(sessionBuffers.get(paneId), data);
+      sessionBuffers.set(paneId, next);
+      sessionCursors.delete(paneId);
+      if (activeSessionRef.current?.id !== sessionId) {
         return;
       }
       const terminal = terminalsRef.current.get(paneId);
-      if (terminal) {
-        terminal.write(data);
-        paneHasOutputRef.current.add(paneId);
-        return;
-      }
-      const next = appendBuffer(pendingOutputBuffers.get(paneId), data);
-      pendingOutputBuffers.set(paneId, next);
-      pendingCursorPositions.delete(paneId);
-      paneHasOutputRef.current.add(paneId);
+      terminal?.write(data);
     })
       .then((unlisten) => {
         if (canceled) {
@@ -351,6 +456,10 @@ export function useTmuxWorkspace({
 
   useEffect(() => {
     if (!isVisible) {
+      lastSessionIdRef.current = null;
+      lastClientSizeRef.current = null;
+      pendingClientSizeRef.current = null;
+      lastContainerSizeRef.current = null;
       clearRefreshRetry();
       setStatus("idle");
       setPanes([]);
@@ -358,6 +467,15 @@ export function useTmuxWorkspace({
       setActivePaneId(null);
       setActiveWindowId(null);
       return;
+    }
+
+    const sessionId = activeSession?.id ?? null;
+    if (lastSessionIdRef.current !== sessionId) {
+      lastSessionIdRef.current = sessionId;
+      lastClientSizeRef.current = null;
+      pendingClientSizeRef.current = null;
+      lastContainerSizeRef.current = null;
+      forceSnapshotSessionRef.current = sessionId;
     }
 
     if (!activeSession) {
@@ -437,12 +555,16 @@ export function useTmuxWorkspace({
         if (!pending) {
           return;
         }
+        const sessionId = activeSessionRef.current?.id;
+        if (!sessionId) {
+          return;
+        }
         const latest = lastClientSizeRef.current;
         if (latest?.cols === pending.cols && latest?.rows === pending.rows) {
           return;
         }
         lastClientSizeRef.current = pending;
-        void resizeTmuxClient(pending.cols, pending.rows).catch((error) => {
+        void resizeTmuxClient(sessionId, pending.cols, pending.rows).catch((error) => {
           console.error("Failed to resize tmux client.", error);
         });
       }, 80);
@@ -525,11 +647,14 @@ export function useTmuxWorkspace({
       }
       const terminal = new Terminal({
         cursorBlink: true,
+        cursorStyle: "block",
         fontSize: 12,
-        fontFamily: "'Hack Nerd Font', 'Apple Color Emoji', monospace",
+        fontFamily: "'Hack', 'Noto Sans SC', monospace",
+        fontWeight: "600",
+        convertEol: true,
         allowProposedApi: true,
         theme: solarizedDark,
-        scrollback: 5000,
+        scrollback: 100000,
       });
 
       // 加载 Unicode11 支持（必须在 open 之前）
@@ -564,18 +689,19 @@ export function useTmuxWorkspace({
       terminalsRef.current.set(pane.id, terminal);
       fitAddonsRef.current.set(pane.id, fitAddon);
 
-      const buffered = pendingOutputBuffers.get(pane.id);
-      if (buffered !== undefined) {
-        if (buffered.length > 0) {
+      const sessionId = activeSessionRef.current?.id;
+      if (sessionId) {
+        const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
+        const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
+        const sessionSnapshots = getSessionSet(paneSnapshotAppliedRef.current, sessionId);
+        const buffered = sessionBuffers.get(pane.id);
+        if (buffered && buffered.length > 0) {
           terminal.write(buffered);
-          paneHasOutputRef.current.add(pane.id);
-          paneSnapshotAppliedRef.current.add(pane.id);
+          sessionSnapshots.add(pane.id);
         }
-        pendingOutputBuffers.delete(pane.id);
+        const cursor = sessionCursors.get(pane.id);
+        applyCursorToTerminal(terminal, cursor);
       }
-      const cursor = pendingCursorPositions.get(pane.id);
-      applyCursorToTerminal(terminal, cursor);
-      pendingCursorPositions.delete(pane.id);
       updateClientSize();
     },
     [attachWebglRenderer, updateClientSize, useWebglRenderer],
@@ -605,10 +731,6 @@ export function useTmuxWorkspace({
         fitAddonsRef.current.delete(paneId);
         detachWebglRenderer(paneId);
         paneElementsRef.current.delete(paneId);
-        pendingOutputBuffers.delete(paneId);
-        pendingCursorPositions.delete(paneId);
-        paneHasOutputRef.current.delete(paneId);
-        paneSnapshotAppliedRef.current.delete(paneId);
       }
     });
 

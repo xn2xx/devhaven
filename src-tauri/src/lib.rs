@@ -365,13 +365,14 @@ fn previous_tmux_window(state: State<'_, Mutex<TerminalManager>>) -> Result<(), 
 fn resize_tmux_client(
     app: AppHandle,
     state: State<'_, Mutex<TerminalManager>>,
+    session_id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
     state
         .lock()
         .map_err(|_| "终端状态锁异常".to_string())?
-        .resize_client(app, cols, rows)
+        .resize_client(app, &session_id, cols, rows)
 }
 
 #[tauri::command]

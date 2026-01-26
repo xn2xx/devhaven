@@ -31,7 +31,11 @@ export default function WorkspaceView({
         onCloseSession={onCloseSession}
         onExitWorkspace={onExitWorkspace}
       />
-      <TerminalPanel activeSession={activeSession} terminalUseWebglRenderer={terminalUseWebglRenderer} />
+      <TerminalPanel
+        sessions={sessions}
+        activeSession={activeSession}
+        terminalUseWebglRenderer={terminalUseWebglRenderer}
+      />
     </div>
   );
 }

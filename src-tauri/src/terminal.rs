@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -138,6 +139,7 @@ const TMUX_BIN_CANDIDATES: [&str; 4] = [
 ];
 const TMUX_PANE_BORDER_STYLE: &str = "fg=#586e75,bg=default";
 const TMUX_PANE_ACTIVE_BORDER_STYLE: &str = "fg=#268bd2,bg=default";
+const TMUX_HISTORY_LIMIT: &str = "200000";
 const LEGACY_TMUX_SESSION_PREFIX: &str = "devhaven_";
 const DEFAULT_PATH: &str =
     "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/local/bin";
@@ -243,6 +245,7 @@ pub struct TmuxPaneCursor {
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TmuxOutputPayload {
+    session_id: String,
     pane_id: String,
     data: String,
 }
@@ -256,8 +259,7 @@ struct TmuxStatePayload {
 }
 
 pub struct TerminalManager {
-    control: Option<TmuxControlClient>,
-    active_session: Option<String>,
+    controls: HashMap<String, TmuxControlClient>,
 }
 
 #[allow(dead_code)]
@@ -271,8 +273,7 @@ struct TmuxControlClient {
 impl TerminalManager {
     pub fn new() -> Self {
         Self {
-            control: None,
-            active_session: None,
+            controls: HashMap::new(),
         }
     }
 
@@ -305,8 +306,7 @@ impl TerminalManager {
             }
         }
 
-        self.ensure_control_client(app)?;
-        self.switch_session_internal(&session_name)?;
+        self.ensure_control_client(app, &session_name)?;
         apply_tmux_pane_style(&session_name)?;
 
         Ok(TerminalSessionInfo {
@@ -319,15 +319,12 @@ impl TerminalManager {
 
     pub fn switch_session(&mut self, app: AppHandle, session_id: &str) -> Result<(), String> {
         ensure_supported()?;
-        self.ensure_control_client(app)?;
-        self.switch_session_internal(session_id)?;
+        self.ensure_control_client(app, session_id)?;
         apply_tmux_pane_style(session_id)
     }
 
     pub fn close_session(&mut self, session_id: &str) -> Result<(), String> {
-        if self.active_session.as_deref() == Some(session_id) {
-            self.active_session = None;
-        }
+        self.drop_control_client(session_id);
         Ok(())
     }
 
@@ -523,11 +520,17 @@ impl TerminalManager {
         run_tmux_status(&["select-window".to_string(), "-p".to_string()])
     }
 
-    pub fn resize_client(&mut self, app: AppHandle, cols: u16, rows: u16) -> Result<(), String> {
+    pub fn resize_client(
+        &mut self,
+        app: AppHandle,
+        session_id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<(), String> {
         ensure_supported()?;
-        self.ensure_control_client(app)?;
+        self.ensure_control_client(app, session_id)?;
         let command = format!("refresh-client -C {}x{}", cols, rows);
-        self.send_control_command(&command)
+        self.send_control_command(session_id, &command)
     }
 
     pub fn capture_pane(&self, pane_id: &str) -> Result<String, String> {
@@ -564,26 +567,33 @@ impl TerminalManager {
         Ok(TmuxPaneCursor { col, row })
     }
 
-    fn ensure_control_client(&mut self, app: AppHandle) -> Result<(), String> {
-        if let Some(control) = self.control.as_ref() {
+    fn ensure_control_client(&mut self, app: AppHandle, session_id: &str) -> Result<(), String> {
+        if let Some(control) = self.controls.get(session_id) {
             if control.alive.load(Ordering::SeqCst) {
                 return Ok(());
             }
         }
-        self.control = Some(spawn_tmux_control_client(app)?);
+        self.drop_control_client(session_id);
+        let control = spawn_tmux_control_client(app, session_id)?;
+        self.controls.insert(session_id.to_string(), control);
         Ok(())
     }
 
-    fn switch_session_internal(&mut self, session_id: &str) -> Result<(), String> {
-        self.send_control_command(&format!("switch-client -t {}", session_id))?;
-        self.active_session = Some(session_id.to_string());
-        Ok(())
+    fn drop_control_client(&mut self, session_id: &str) {
+        let Some(control) = self.controls.remove(session_id) else {
+            return;
+        };
+        control.alive.store(false, Ordering::SeqCst);
+        let child_lock = control.child.lock();
+        if let Ok(mut child) = child_lock {
+            let _ = child.kill();
+        }
     }
 
-    fn send_control_command(&self, command: &str) -> Result<(), String> {
+    fn send_control_command(&self, session_id: &str, command: &str) -> Result<(), String> {
         let control = self
-            .control
-            .as_ref()
+            .controls
+            .get(session_id)
             .ok_or_else(|| "控制客户端未启动".to_string())?;
         let mut writer = control
             .writer
@@ -680,6 +690,13 @@ fn apply_tmux_pane_style(session_id: &str) -> Result<(), String> {
         "set-option".to_string(),
         "-t".to_string(),
         session_id.to_string(),
+        "history-limit".to_string(),
+        TMUX_HISTORY_LIMIT.to_string(),
+    ])?;
+    run_tmux_status(&[
+        "set-option".to_string(),
+        "-t".to_string(),
+        session_id.to_string(),
         "pane-border-style".to_string(),
         TMUX_PANE_BORDER_STYLE.to_string(),
     ])?;
@@ -727,7 +744,7 @@ fn rename_tmux_session(old_name: &str, new_name: &str) -> Result<(), String> {
     ])
 }
 
-fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String> {
+fn spawn_tmux_control_client(app: AppHandle, session_id: &str) -> Result<TmuxControlClient, String> {
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -740,6 +757,9 @@ fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String
 
     let mut command = CommandBuilder::new(resolve_tmux_bin());
     command.arg("-CC");
+    command.arg("attach-session");
+    command.arg("-t");
+    command.arg(session_id);
     let tmux_env = build_tmux_env();
     tmux_env.apply_to_builder(&mut command);
     command.env("TERM", "xterm-256color");
@@ -749,6 +769,7 @@ fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String
     eprintln!("  PATH: {}", tmux_env.path);
     eprintln!("  SHELL: {}", tmux_env.shell);
     eprintln!("  tmux 路径: {:?}", resolve_tmux_bin());
+    eprintln!("  session: {}", session_id);
 
     let child = pair
         .slave
@@ -765,7 +786,7 @@ fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String
         .map_err(|err| format!("获取 tmux 写入器失败: {err}"))?;
 
     let alive = Arc::new(AtomicBool::new(true));
-    spawn_tmux_reader(app, reader, Arc::clone(&alive));
+    spawn_tmux_reader(app, reader, Arc::clone(&alive), session_id.to_string());
 
     Ok(TmuxControlClient {
         master: Mutex::new(pair.master),
@@ -775,7 +796,12 @@ fn spawn_tmux_control_client(app: AppHandle) -> Result<TmuxControlClient, String
     })
 }
 
-fn spawn_tmux_reader(app: AppHandle, mut reader: Box<dyn Read + Send>, alive: Arc<AtomicBool>) {
+fn spawn_tmux_reader(
+    app: AppHandle,
+    mut reader: Box<dyn Read + Send>,
+    alive: Arc<AtomicBool>,
+    session_id: String,
+) {
     thread::spawn(move || {
         let mut buffer = [0u8; 8192];
         let mut pending = String::new();
@@ -792,7 +818,7 @@ fn spawn_tmux_reader(app: AppHandle, mut reader: Box<dyn Read + Send>, alive: Ar
                     while let Some(pos) = pending.find('\n') {
                         let line = pending[..pos].trim_end_matches('\r').to_string();
                         pending = pending[pos + 1..].to_string();
-                        handle_tmux_line(&app, &line, &alive);
+                        handle_tmux_line(&app, &line, &alive, &session_id);
                     }
                 }
                 Err(_) => break,
@@ -831,7 +857,7 @@ fn drain_utf8_bytes(buffer: &mut Vec<u8>) -> String {
     output
 }
 
-fn handle_tmux_line(app: &AppHandle, line: &str, alive: &Arc<AtomicBool>) {
+fn handle_tmux_line(app: &AppHandle, line: &str, alive: &Arc<AtomicBool>, session_id: &str) {
     if line.starts_with("%output ") {
         let rest = &line[8..];
         let mut parts = rest.splitn(2, ' ');
@@ -842,6 +868,7 @@ fn handle_tmux_line(app: &AppHandle, line: &str, alive: &Arc<AtomicBool>) {
             let _ = app.emit(
                 TMUX_OUTPUT_EVENT,
                 TmuxOutputPayload {
+                    session_id: session_id.to_string(),
                     pane_id: pane_id.to_string(),
                     data,
                 },

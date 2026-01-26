@@ -6,6 +6,7 @@ import { copyToClipboard } from "../services/system";
 import { useTmuxWorkspace } from "../hooks/useTmuxWorkspace";
 
 export type TerminalPanelProps = {
+  sessions: WorkspaceSession[];
   activeSession: WorkspaceSession | null;
   terminalUseWebglRenderer: boolean;
 };
@@ -34,7 +35,7 @@ type DividerDragState = {
 };
 
 /** 工作空间终端展示区域。 */
-export default function TerminalPanel({ activeSession, terminalUseWebglRenderer }: TerminalPanelProps) {
+export default function TerminalPanel({ sessions, activeSession, terminalUseWebglRenderer }: TerminalPanelProps) {
   const {
     status,
     containerRef,
@@ -55,6 +56,7 @@ export default function TerminalPanel({ activeSession, terminalUseWebglRenderer 
     activeSession,
     isVisible: Boolean(activeSession),
     useWebglRenderer: terminalUseWebglRenderer,
+    sessionIds: sessions.map((session) => session.id),
   });
   const [copyHint, setCopyHint] = useState<string | null>(null);
   const [draggingDividerId, setDraggingDividerId] = useState<string | null>(null);

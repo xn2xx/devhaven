@@ -126,9 +126,9 @@ export async function previousTmuxWindow(): Promise<void> {
   await invoke("previous_tmux_window");
 }
 
-/** 同步 tmux 控制客户端大小。 */
-export async function resizeTmuxClient(cols: number, rows: number): Promise<void> {
-  await invoke("resize_tmux_client", { cols, rows });
+/** 同步指定会话的 tmux 控制客户端大小。 */
+export async function resizeTmuxClient(sessionId: string, cols: number, rows: number): Promise<void> {
+  await invoke("resize_tmux_client", { sessionId, cols, rows });
 }
 
 /** 拉取 pane 历史缓冲。 */
