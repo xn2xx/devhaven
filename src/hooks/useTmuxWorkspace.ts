@@ -93,8 +93,20 @@ function applyCursorToTerminal(terminal: Terminal, cursor: TmuxPaneCursor | unde
   terminal.write(`\x1b[${row};${col}H`);
 }
 
+function normalizeLineBreaks(value: string): string {
+  return value.replace(/\r?\n/g, "\r\n");
+}
+
+function stripLegacyTitleSequences(value: string): string {
+  return value.replace(/\x1bk[\s\S]*?\x1b\\/g, "");
+}
+
+function sanitizeTmuxOutput(value: string): string {
+  return normalizeLineBreaks(stripLegacyTitleSequences(value));
+}
+
 function normalizeSnapshot(snapshot: string): string {
-  return snapshot.replace(/\r?\n/g, "\r\n");
+  return normalizeLineBreaks(snapshot);
 }
 
 function getSessionMap<T>(store: Map<string, Map<string, T>>, sessionId: string): Map<string, T> {
@@ -411,16 +423,17 @@ export function useTmuxWorkspace({
       if (!sessionId || !paneId || !data) {
         return;
       }
+      const normalizedData = sanitizeTmuxOutput(data);
       const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
       const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
-      const next = appendBuffer(sessionBuffers.get(paneId), data);
+      const next = appendBuffer(sessionBuffers.get(paneId), normalizedData);
       sessionBuffers.set(paneId, next);
       sessionCursors.delete(paneId);
       if (activeSessionRef.current?.id !== sessionId) {
         return;
       }
       const terminal = terminalsRef.current.get(paneId);
-      terminal?.write(data);
+      terminal?.write(normalizedData);
     })
       .then((unlisten) => {
         if (canceled) {
@@ -651,7 +664,7 @@ export function useTmuxWorkspace({
         fontSize: 12,
         fontFamily: "'Hack', 'Noto Sans SC', monospace",
         fontWeight: "600",
-        convertEol: true,
+        convertEol: false,
         allowProposedApi: true,
         theme: solarizedDark,
         scrollback: 100000,
