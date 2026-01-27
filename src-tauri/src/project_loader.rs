@@ -10,7 +10,7 @@ use crate::time_utils::{now_swift, system_time_to_swift, system_time_to_unix_sec
 pub fn discover_projects(directories: &[String]) -> Vec<String> {
     let mut all_paths = Vec::new();
     for directory in directories {
-        let mut found = scan_directory_two_levels(directory);
+        let mut found = scan_directory_with_git(directory);
         all_paths.append(&mut found);
     }
     all_paths.sort();
@@ -31,12 +31,18 @@ pub fn build_projects(paths: &[String], existing: &[Project]) -> Vec<Project> {
         .collect()
 }
 
-// 扫描指定目录及其直接子目录。
-fn scan_directory_two_levels(path: &str) -> Vec<String> {
+// 扫描指定目录：收录根目录（若为 Git 仓库）、其直接子目录，以及更深层的 Git 仓库。
+fn scan_directory_with_git(path: &str) -> Vec<String> {
     let mut results = Vec::new();
     let root = Path::new(path);
     if !root.exists() {
         return results;
+    }
+
+    if is_git_repo(root) {
+        if let Some(as_str) = root.to_str() {
+            results.push(as_str.to_string());
+        }
     }
 
     let entries = match fs::read_dir(root) {
@@ -45,39 +51,115 @@ fn scan_directory_two_levels(path: &str) -> Vec<String> {
     };
 
     for entry in entries.flatten() {
-        let entry_path = entry.path();
-        if entry_path.is_dir() {
-            if let Some(as_str) = entry_path.to_str() {
-                results.push(as_str.to_string());
-            }
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if file_type.is_symlink() || !file_type.is_dir() {
+            continue;
         }
+
+        let entry_path = entry.path();
+        let name = entry.file_name();
+        if should_skip_direct_dir(&name) {
+            continue;
+        }
+
+        if let Some(as_str) = entry_path.to_str() {
+            results.push(as_str.to_string());
+        }
+
+        collect_git_repos(&entry_path, &mut results);
     }
 
     results
 }
 
+fn collect_git_repos(path: &Path, results: &mut Vec<String>) {
+    if is_git_repo(path) {
+        if let Some(as_str) = path.to_str() {
+            results.push(as_str.to_string());
+        }
+        return;
+    }
+
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if file_type.is_symlink() || !file_type.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name();
+        if should_skip_recursive_dir(&name) {
+            continue;
+        }
+
+        collect_git_repos(&entry.path(), results);
+    }
+}
+
+fn should_skip_direct_dir(name: &std::ffi::OsStr) -> bool {
+    let name = name.to_string_lossy();
+    name.starts_with('.')
+}
+
+fn should_skip_recursive_dir(name: &std::ffi::OsStr) -> bool {
+    let name = name.to_string_lossy();
+    if name == ".git" {
+        return true;
+    }
+    if name.starts_with('.') {
+        return true;
+    }
+    matches!(name.as_ref(), "node_modules" | "target" | "dist" | "build")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::scan_directory_two_levels;
+    use super::scan_directory_with_git;
     use std::fs;
     use std::path::PathBuf;
 
     #[test]
-    fn scan_directory_two_levels_excludes_root() {
+    fn scan_directory_with_git_handles_root_and_nested_repos() {
         let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
         let sub_a = root.join("alpha");
         let sub_b = root.join("beta");
+        let sub_c = root.join("gamma");
+        let hidden = root.join(".hidden");
+        let nested_repo = sub_a.join("project-x").join(".git");
+        let nested_hidden_repo = hidden.join("project-y").join(".git");
+        let nested_in_git = sub_b.join("ignored").join(".git");
 
+        fs::create_dir_all(root.join(".git")).expect("create root git");
         fs::create_dir_all(&sub_a).expect("create alpha dir");
-        fs::create_dir_all(&sub_b).expect("create beta dir");
+        fs::create_dir_all(sub_b.join(".git")).expect("create beta git");
+        fs::create_dir_all(&sub_c).expect("create gamma dir");
+        fs::create_dir_all(&hidden).expect("create hidden dir");
+        fs::create_dir_all(&nested_repo).expect("create nested git");
+        fs::create_dir_all(&nested_hidden_repo).expect("create hidden nested git");
+        fs::create_dir_all(&nested_in_git).expect("create nested in git");
 
         let root_str = root.to_string_lossy().to_string();
-        let results = scan_directory_two_levels(&root_str);
+        let results = scan_directory_with_git(&root_str);
         let result_paths: Vec<PathBuf> = results.into_iter().map(PathBuf::from).collect();
 
-        assert!(!result_paths.contains(&root));
+        assert!(result_paths.contains(&root));
         assert!(result_paths.contains(&sub_a));
         assert!(result_paths.contains(&sub_b));
+        assert!(result_paths.contains(&sub_c));
+        assert!(result_paths.contains(&sub_a.join("project-x")));
+        assert!(!result_paths.contains(&hidden));
+        assert!(!result_paths.contains(&hidden.join("project-y")));
+        assert!(!result_paths.contains(&sub_b.join("ignored")));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -170,6 +252,10 @@ fn load_git_info(path: &str) -> GitInfo {
         commit_count,
         last_commit: crate::time_utils::unix_to_swift(last_commit),
     }
+}
+
+fn is_git_repo(path: &Path) -> bool {
+    path.join(".git").exists()
 }
 
 // 执行 Git 命令并返回输出内容。
