@@ -13,9 +13,10 @@ import { collectGitDaily } from "../services/gitDaily";
 import { pickColorForTag } from "../utils/tagColors";
 
 const emptyState: AppStateFile = {
-  version: 3,
+  version: 4,
   tags: [],
   directories: [],
+  recycleBin: [],
   settings: {
     editorOpenTool: {
       commandPath: "",
@@ -29,6 +30,11 @@ const emptyState: AppStateFile = {
     gitIdentities: [],
   },
 };
+
+const normalizeAppState = (state: AppStateFile): AppStateFile => ({
+  ...state,
+  recycleBin: state.recycleBin ?? [],
+});
 
 export type DevHavenState = {
   appState: AppStateFile;
@@ -44,6 +50,8 @@ export type DevHavenActions = {
   updateGitDaily: (paths?: string[]) => Promise<void>;
   addDirectory: (path: string) => Promise<void>;
   removeDirectory: (path: string) => Promise<void>;
+  moveProjectToRecycleBin: (path: string) => Promise<void>;
+  restoreProjectFromRecycleBin: (path: string) => Promise<void>;
   updateSettings: (settings: AppStateFile["settings"]) => Promise<void>;
   updateTags: (tags: TagData[]) => Promise<void>;
   addTag: (name: string, colorHex?: string) => Promise<void>;
@@ -110,7 +118,7 @@ export function useDevHaven(): DevHavenStore {
     setError(null);
     try {
       const [state, cachedProjects] = await Promise.all([loadAppState(), loadProjects()]);
-      const resolvedState = state ?? emptyState;
+      const resolvedState = normalizeAppState(state ?? emptyState);
       const resolvedProjects = cachedProjects ?? [];
       setAppState(resolvedState);
       if (resolvedState.directories.length === 0) {
@@ -172,10 +180,13 @@ export function useDevHaven(): DevHavenStore {
   /** 更新项目的 Git 每日提交统计（支持指定路径）。 */
   const updateGitDaily = useCallback(
     async (paths?: string[]) => {
+      const hiddenPaths = new Set(appState.recycleBin);
       const targetPaths =
         paths && paths.length > 0
-          ? paths
-          : projects.filter((project) => project.git_commits > 0).map((project) => project.path);
+          ? paths.filter((path) => !hiddenPaths.has(path))
+          : projects
+              .filter((project) => project.git_commits > 0 && !hiddenPaths.has(project.path))
+              .map((project) => project.path);
       if (targetPaths.length === 0) {
         return;
       }
@@ -198,7 +209,7 @@ export function useDevHaven(): DevHavenStore {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [appState.settings.gitIdentities, projects],
+    [appState.recycleBin, appState.settings.gitIdentities, projects],
   );
 
   /** 添加需要扫描的工作目录并持久化。 */
@@ -217,6 +228,34 @@ export function useDevHaven(): DevHavenStore {
     async (path: string) => {
       const nextDirectories = appState.directories.filter((item) => item !== path);
       const nextState = { ...appState, directories: nextDirectories };
+      setAppState(nextState);
+      await saveAppState(nextState);
+    },
+    [appState],
+  );
+
+  /** 将项目路径移入回收站并持久化。 */
+  const moveProjectToRecycleBin = useCallback(
+    async (path: string) => {
+      if (!path) {
+        return;
+      }
+      const nextRecycleBin = Array.from(new Set([...appState.recycleBin, path]));
+      const nextState = { ...appState, recycleBin: nextRecycleBin };
+      setAppState(nextState);
+      await saveAppState(nextState);
+    },
+    [appState],
+  );
+
+  /** 从回收站恢复项目路径并持久化。 */
+  const restoreProjectFromRecycleBin = useCallback(
+    async (path: string) => {
+      if (!path) {
+        return;
+      }
+      const nextRecycleBin = appState.recycleBin.filter((item) => item !== path);
+      const nextState = { ...appState, recycleBin: nextRecycleBin };
       setAppState(nextState);
       await saveAppState(nextState);
     },
@@ -379,6 +418,8 @@ export function useDevHaven(): DevHavenStore {
     updateGitDaily,
     addDirectory,
     removeDirectory,
+    moveProjectToRecycleBin,
+    restoreProjectFromRecycleBin,
     updateSettings,
     updateTags,
     addTag,

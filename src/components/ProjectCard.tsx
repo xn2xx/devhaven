@@ -3,7 +3,7 @@ import { memo } from "react";
 import type { Project } from "../models/types";
 import { swiftDateToJsDate } from "../models/types";
 import { openInFinder } from "../services/system";
-import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTerminal, IconX } from "./Icons";
+import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTerminal, IconTrash, IconX } from "./Icons";
 
 export type ProjectCardProps = {
   project: Project;
@@ -17,6 +17,7 @@ export type ProjectCardProps = {
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
   onOpenInTerminal: (path: string) => void;
+  onMoveToRecycleBin: (project: Project) => void;
 };
 
 /** 格式化 Swift 时间戳为中文日期。 */
@@ -41,6 +42,7 @@ function ProjectCard({
   onRefreshProject,
   onCopyPath,
   onOpenInTerminal,
+  onMoveToRecycleBin,
 }: ProjectCardProps) {
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     const ids = selectedProjectIds.has(project.id)
@@ -99,6 +101,14 @@ function ProjectCard({
             onClick={(event) => handleActionClick(event, () => void onRefreshProject(project.path))}
           >
             <IconRefresh size={16} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="移入回收站"
+            title="移入回收站"
+            onClick={(event) => handleActionClick(event, () => void onMoveToRecycleBin(project))}
+          >
+            <IconTrash size={16} />
           </button>
         </div>
       </div>

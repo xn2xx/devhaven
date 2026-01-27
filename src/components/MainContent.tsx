@@ -14,6 +14,7 @@ import {
 export type MainContentProps = {
   projects: Project[];
   filteredProjects: Project[];
+  recycleBinCount: number;
   isLoading: boolean;
   error: string | null;
   searchText: string;
@@ -34,6 +35,7 @@ export type MainContentProps = {
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
   onOpenInTerminal: (path: string) => void;
+  onMoveToRecycleBin: (project: Project) => void;
   getTagColor: (tag: string) => string;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
 };
@@ -42,6 +44,7 @@ export type MainContentProps = {
 export default function MainContent({
   projects,
   filteredProjects,
+  recycleBinCount,
   isLoading,
   error,
   searchText,
@@ -62,6 +65,7 @@ export default function MainContent({
   onRefreshProject,
   onCopyPath,
   onOpenInTerminal,
+  onMoveToRecycleBin,
   getTagColor,
   searchInputRef,
 }: MainContentProps) {
@@ -112,8 +116,17 @@ export default function MainContent({
           <div className="empty-state">{error}</div>
         ) : projects.length === 0 ? (
           <div className="empty-state">
-            <div>暂未添加项目目录</div>
-            <div>请在左侧添加工作目录或直接导入项目</div>
+            {recycleBinCount > 0 ? (
+              <>
+                <div>当前没有可见项目</div>
+                <div>可在左侧回收站恢复隐藏项目</div>
+              </>
+            ) : (
+              <>
+                <div>暂未添加项目目录</div>
+                <div>请在左侧添加工作目录或直接导入项目</div>
+              </>
+            )}
           </div>
         ) : filteredProjects.length === 0 ? (
           <div className="empty-state">
@@ -137,6 +150,7 @@ export default function MainContent({
                 onRefreshProject={onRefreshProject}
                 onCopyPath={onCopyPath}
                 onOpenInTerminal={onOpenInTerminal}
+                onMoveToRecycleBin={onMoveToRecycleBin}
               />
             ))}
           </div>

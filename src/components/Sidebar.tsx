@@ -7,7 +7,7 @@ import type { AppStateFile, Project, TagData } from "../models/types";
 import { colorDataToHex } from "../utils/colors";
 import Heatmap from "./Heatmap";
 import DropdownMenu from "./DropdownMenu";
-import { IconEye, IconEyeOff, IconMoreHorizontal, IconPlusCircle } from "./Icons";
+import { IconEye, IconEyeOff, IconMoreHorizontal, IconPlusCircle, IconTrash } from "./Icons";
 import { openInFinder } from "../services/system";
 
 export type SidebarProps = {
@@ -28,6 +28,7 @@ export type SidebarProps = {
   onAssignTagToProjects: (tag: string, projectIds: string[]) => void;
   onAddDirectory: (path: string) => Promise<void>;
   onRemoveDirectory: (path: string) => Promise<void>;
+  onOpenRecycleBin: () => void;
   onRefresh: () => Promise<void>;
   onAddProjects: (paths: string[]) => Promise<void>;
   isHeatmapLoading: boolean;
@@ -52,6 +53,7 @@ export default function Sidebar({
   onAssignTagToProjects,
   onAddDirectory,
   onRemoveDirectory,
+  onOpenRecycleBin,
   onRefresh,
   onAddProjects,
   isHeatmapLoading,
@@ -227,6 +229,16 @@ export default function Sidebar({
             ))}
           </div>
         </section>
+      </div>
+      <div className="sidebar-footer">
+        <button
+          className="icon-button recycle-bin-icon"
+          onClick={onOpenRecycleBin}
+          aria-label="回收站"
+          title="回收站"
+        >
+          <IconTrash size={18} />
+        </button>
       </div>
     </aside>
   );

@@ -9,6 +9,8 @@ pub struct AppStateFile {
     pub version: i32,
     pub tags: Vec<TagData>,
     pub directories: Vec<String>,
+    #[serde(default, rename = "recycleBin")]
+    pub recycle_bin: Vec<String>,
     #[serde(default)]
     pub settings: AppSettings,
 }
@@ -17,9 +19,10 @@ impl Default for AppStateFile {
     /// 默认应用状态结构。
     fn default() -> Self {
         Self {
-            version: 3,
+            version: 4,
             tags: Vec::new(),
             directories: Vec::new(),
+            recycle_bin: Vec::new(),
             settings: AppSettings::default(),
         }
     }

@@ -34,6 +34,7 @@ export type AppStateFile = {
   version: number;
   tags: TagData[];
   directories: string[];
+  recycleBin: string[];
   settings: AppSettings;
 };
 

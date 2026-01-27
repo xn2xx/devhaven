@@ -8,6 +8,7 @@ import TagEditDialog from "./components/TagEditDialog";
 import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import WorkspaceView from "./components/WorkspaceView";
+import RecycleBinModal from "./components/RecycleBinModal";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
@@ -53,6 +54,8 @@ function AppLayout() {
     refreshProject,
     updateGitDaily,
     updateSettings,
+    moveProjectToRecycleBin,
+    restoreProjectFromRecycleBin,
   } = useDevHavenContext();
 
   const [searchText, setSearchText] = useState("");
@@ -77,13 +80,32 @@ function AppLayout() {
   const [activeWorkspaceSessionId, setActiveWorkspaceSessionId] = useState<string | null>(null);
   const [tmuxSupport, setTmuxSupport] = useState<TmuxSupportStatus>({ supported: true });
   const [tmuxSessionsLoaded, setTmuxSessionsLoaded] = useState(false);
+  const [showRecycleBin, setShowRecycleBin] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
   const gitIdentitySignatureRef = useRef<string | null>(null);
-  const heatmapStore = useHeatmapData(projects, appState.settings.gitIdentities);
+  const recycleBinPaths = appState.recycleBin ?? [];
+  const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
+  const recycleBinCount = recycleBinPaths.length;
+  const visibleProjects = useMemo(
+    () => projects.filter((project) => !recycleBinSet.has(project.path)),
+    [projects, recycleBinSet],
+  );
+  const recycleBinItems = useMemo(() => {
+    const projectsByPath = new Map(projects.map((project) => [project.path, project]));
+    return recycleBinPaths.map((path) => {
+      const project = projectsByPath.get(path);
+      return {
+        path,
+        name: project?.name ?? path.split("/").pop() ?? path,
+        missing: !project,
+      };
+    });
+  }, [projects, recycleBinPaths]);
+  const heatmapStore = useHeatmapData(visibleProjects, appState.settings.gitIdentities);
   const sidebarHeatmapData = useMemo(
     () => heatmapStore.getHeatmapData(HEATMAP_CONFIG.sidebar.days),
     [heatmapStore],
@@ -118,7 +140,7 @@ function AppLayout() {
   );
 
   const filteredProjects = useMemo(() => {
-    let result = [...projects];
+    let result = [...visibleProjects];
 
     if (selectedDirectory) {
       result = result.filter((project) => project.path.startsWith(selectedDirectory));
@@ -169,9 +191,20 @@ function AppLayout() {
     });
 
     return result;
-  }, [projects, selectedDirectory, selectedTags, heatmapFilteredProjectIds, searchText, dateFilter, gitFilter, hiddenTags]);
+  }, [
+    visibleProjects,
+    selectedDirectory,
+    selectedTags,
+    heatmapFilteredProjectIds,
+    searchText,
+    dateFilter,
+    gitFilter,
+    hiddenTags,
+  ]);
 
   const selectedProject = selectedProjectId ? projectMap.get(selectedProjectId) ?? null : null;
+  const resolvedSelectedProject =
+    selectedProject && recycleBinSet.has(selectedProject.path) ? null : selectedProject;
 
   const handleSelectTag = useCallback((tag: string) => {
     if (tag === "全部") {
@@ -243,6 +276,49 @@ function AppLayout() {
     }, 1600);
   }, []);
 
+  const handleMoveProjectToRecycleBin = useCallback(
+    async (project: Project) => {
+      try {
+        await moveProjectToRecycleBin(project.path);
+        showToast("已移入回收站");
+        setSelectedProjects((prev) => {
+          if (!prev.has(project.id)) {
+            return prev;
+          }
+          const next = new Set(prev);
+          next.delete(project.id);
+          return next;
+        });
+        setSelectedProjectId((prev) => (prev === project.id ? null : prev));
+        setHeatmapFilteredProjectIds((prev) => {
+          if (!prev.has(project.id)) {
+            return prev;
+          }
+          const next = new Set(prev);
+          next.delete(project.id);
+          return next;
+        });
+      } catch (error) {
+        console.error("移入回收站失败。", error);
+        showToast("移入回收站失败，请稍后重试", "error");
+      }
+    },
+    [moveProjectToRecycleBin, showToast],
+  );
+
+  const handleRestoreProjectFromRecycleBin = useCallback(
+    async (path: string) => {
+      try {
+        await restoreProjectFromRecycleBin(path);
+        showToast("已从回收站恢复");
+      } catch (error) {
+        console.error("恢复项目失败。", error);
+        showToast("回收站恢复失败，请稍后重试", "error");
+      }
+    },
+    [restoreProjectFromRecycleBin, showToast],
+  );
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
@@ -299,7 +375,7 @@ function AppLayout() {
     if (isLoading) {
       return;
     }
-    const missingDaily = projects.filter((project) => project.git_commits > 0 && !project.git_daily);
+    const missingDaily = visibleProjects.filter((project) => project.git_commits > 0 && !project.git_daily);
     if (missingDaily.length === 0) {
       gitDailyRefreshRef.current = null;
       return;
@@ -320,7 +396,7 @@ function AppLayout() {
         gitDailyUpdatingRef.current = false;
       }
     })();
-  }, [isLoading, projects, updateGitDaily]);
+  }, [isLoading, updateGitDaily, visibleProjects]);
 
   const gitIdentitySignature = useMemo(
     () => buildGitIdentitySignature(appState.settings.gitIdentities),
@@ -339,12 +415,12 @@ function AppLayout() {
       return;
     }
     gitIdentitySignatureRef.current = gitIdentitySignature;
-    const gitPaths = projects.filter((project) => project.git_commits > 0).map((project) => project.path);
+    const gitPaths = visibleProjects.filter((project) => project.git_commits > 0).map((project) => project.path);
     if (gitPaths.length === 0) {
       return;
     }
     void updateGitDaily(gitPaths);
-  }, [gitIdentitySignature, isLoading, projects, updateGitDaily]);
+  }, [gitIdentitySignature, isLoading, updateGitDaily, visibleProjects]);
 
   useEffect(() => {
     if (workspaceSessions.length === 0) {
@@ -525,7 +601,7 @@ function AppLayout() {
         <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
           <Sidebar
             appState={appState}
-            projects={projects}
+            projects={visibleProjects}
             heatmapData={sidebarHeatmapData}
             heatmapSelectedDateKey={heatmapSelectedDateKey}
             selectedTags={selectedTags}
@@ -544,13 +620,15 @@ function AppLayout() {
             onAssignTagToProjects={handleAssignTagToProjects}
             onAddDirectory={addDirectory}
             onRemoveDirectory={removeDirectory}
+            onOpenRecycleBin={() => setShowRecycleBin(true)}
             onRefresh={refresh}
             onAddProjects={addProjects}
             isHeatmapLoading={heatmapStore.isLoading}
           />
           <MainContent
-            projects={projects}
+            projects={visibleProjects}
             filteredProjects={filteredProjects}
+            recycleBinCount={recycleBinCount}
             isLoading={isLoading}
             error={error}
             searchText={searchText}
@@ -571,12 +649,13 @@ function AppLayout() {
             onRefreshProject={refreshProject}
             onCopyPath={handleCopyPath}
             onOpenInTerminal={handleOpenInTerminal}
+            onMoveToRecycleBin={handleMoveProjectToRecycleBin}
             getTagColor={getTagColor}
             searchInputRef={searchInputRef}
           />
           {showDetailPanel ? (
             <DetailPanel
-              project={selectedProject}
+              project={resolvedSelectedProject}
               tags={appState.tags}
               onClose={() => setShowDetailPanel(false)}
               onAddTagToProject={addTagToProject}
@@ -597,9 +676,17 @@ function AppLayout() {
         onSubmit={(name, color) => void handleTagSubmit(name, color)}
       />
 
+      {showRecycleBin ? (
+        <RecycleBinModal
+          items={recycleBinItems}
+          onClose={() => setShowRecycleBin(false)}
+          onRestore={handleRestoreProjectFromRecycleBin}
+        />
+      ) : null}
+
       {showDashboard ? (
         <DashboardModal
-          projects={projects}
+          projects={visibleProjects}
           tags={appState.tags}
           heatmapStore={heatmapStore}
           onClose={() => setShowDashboard(false)}
@@ -609,7 +696,7 @@ function AppLayout() {
       {showSettings ? (
         <SettingsModal
           settings={appState.settings}
-          projects={projects}
+          projects={visibleProjects}
           onClose={handleCloseSettings}
           onSaveSettings={handleSaveSettings}
           onPreviewTerminalRenderer={handlePreviewTerminalRenderer}
