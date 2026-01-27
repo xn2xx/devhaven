@@ -206,6 +206,16 @@ fn switch_terminal_session(
 }
 
 #[tauri::command]
+fn list_terminal_sessions(
+    state: State<'_, Mutex<TerminalManager>>,
+) -> Result<Vec<TerminalSessionInfo>, String> {
+    state
+        .lock()
+        .map_err(|_| "终端状态锁异常".to_string())?
+        .list_sessions()
+}
+
+#[tauri::command]
 fn list_tmux_windows(
     state: State<'_, Mutex<TerminalManager>>,
     session_id: String,
@@ -446,6 +456,7 @@ pub fn run() {
             create_terminal_session,
             close_terminal_session,
             switch_terminal_session,
+            list_terminal_sessions,
             list_tmux_windows,
             list_tmux_panes,
             send_tmux_input,

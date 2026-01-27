@@ -1,3 +1,5 @@
+import { confirm } from "@tauri-apps/plugin-dialog";
+
 import type { WorkspaceSession } from "../models/terminal";
 import { IconArrowLeft, IconTerminal, IconX } from "./Icons";
 
@@ -17,6 +19,17 @@ export default function TabBar({
   onCloseSession,
   onExitWorkspace,
 }: TabBarProps) {
+  const handleCloseSession = async (session: WorkspaceSession) => {
+    const confirmed = await confirm(
+      `确定要关闭「${session.projectName}」吗？这将同时关闭对应的 tmux 会话。`,
+      { title: "确认关闭", kind: "warning" },
+    );
+    if (!confirmed) {
+      return;
+    }
+    onCloseSession(session.id);
+  };
+
   return (
     <div className="workspace-header">
       <button className="icon-button workspace-back" type="button" onClick={onExitWorkspace} aria-label="返回项目列表">
@@ -43,7 +56,7 @@ export default function TabBar({
                 className="workspace-tab-close"
                 type="button"
                 aria-label={`关闭 ${session.projectName}`}
-                onClick={() => onCloseSession(session.id)}
+                onClick={() => void handleCloseSession(session)}
               >
                 <IconX size={12} />
               </button>

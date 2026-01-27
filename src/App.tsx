@@ -12,7 +12,7 @@ import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
-import type { TmuxSupportStatus, WorkspaceSession } from "./models/terminal";
+import type { TerminalSessionInfo, TmuxSupportStatus, WorkspaceSession } from "./models/terminal";
 import type { ColorData, Project, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
@@ -22,7 +22,12 @@ import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, openInTerminal } from "./services/system";
-import { closeTerminalSession, createTerminalSession, getTmuxSupportStatus } from "./services/terminal";
+import {
+  closeTerminalSession,
+  createTerminalSession,
+  getTmuxSupportStatus,
+  listTerminalSessions,
+} from "./services/terminal";
 
 type AppMode = "gallery" | "workspace";
 
@@ -71,6 +76,7 @@ function AppLayout() {
   const [workspaceSessions, setWorkspaceSessions] = useState<WorkspaceSession[]>([]);
   const [activeWorkspaceSessionId, setActiveWorkspaceSessionId] = useState<string | null>(null);
   const [tmuxSupport, setTmuxSupport] = useState<TmuxSupportStatus>({ supported: true });
+  const [tmuxSessionsLoaded, setTmuxSessionsLoaded] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -90,6 +96,25 @@ function AppLayout() {
   const hiddenTags = useMemo(
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
     [appState.tags],
+  );
+
+  const buildWorkspaceSession = useCallback(
+    (sessionInfo: TerminalSessionInfo): WorkspaceSession => {
+      const byPath =
+        sessionInfo.projectPath.length > 0
+          ? projects.find((project) => project.path === sessionInfo.projectPath)
+          : null;
+      const byName = projects.find((project) => project.name === sessionInfo.id);
+      const byId = projectMap.get(sessionInfo.projectId) ?? null;
+      const matchedProject = byPath ?? byName ?? byId;
+      return {
+        ...sessionInfo,
+        projectId: matchedProject?.id ?? sessionInfo.projectId,
+        projectPath: matchedProject?.path ?? sessionInfo.projectPath,
+        projectName: sessionInfo.id,
+      };
+    },
+    [projectMap, projects],
   );
 
   const filteredProjects = useMemo(() => {
@@ -247,6 +272,30 @@ function AppLayout() {
   }, []);
 
   useEffect(() => {
+    if (!tmuxSupport.supported || isLoading || tmuxSessionsLoaded) {
+      return;
+    }
+    let canceled = false;
+    void (async () => {
+      try {
+        const sessions = await listTerminalSessions();
+        if (!canceled) {
+          setWorkspaceSessions(sessions.map((session) => buildWorkspaceSession(session)));
+        }
+      } catch (error) {
+        console.error("加载 tmux 会话失败。", error);
+      } finally {
+        if (!canceled) {
+          setTmuxSessionsLoaded(true);
+        }
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [buildWorkspaceSession, isLoading, tmuxSessionsLoaded, tmuxSupport.supported]);
+
+  useEffect(() => {
     if (isLoading) {
       return;
     }
@@ -388,7 +437,12 @@ function AppLayout() {
         showToast(tmuxSupport.reason ?? "tmux 工作空间不可用", "error");
         return;
       }
-      const existing = workspaceSessions.find((session) => session.projectId === project.id);
+      const existing = workspaceSessions.find(
+        (session) =>
+          session.projectId === project.id ||
+          (session.projectPath.length > 0 && session.projectPath === project.path) ||
+          session.projectName === project.name,
+      );
       if (existing) {
         setActiveWorkspaceSessionId(existing.id);
         setAppMode("workspace");
@@ -397,7 +451,7 @@ function AppLayout() {
 
       try {
         const sessionInfo = await createTerminalSession(project.id, project.path, project.name);
-        const nextSession: WorkspaceSession = { ...sessionInfo, projectName: project.name };
+        const nextSession = buildWorkspaceSession(sessionInfo);
         setWorkspaceSessions((prev) => {
           if (prev.some((session) => session.id === sessionInfo.id || session.projectId === project.id)) {
             return prev;
@@ -411,7 +465,7 @@ function AppLayout() {
         showToast("终端启动失败，请检查默认 shell 与权限", "error");
       }
     },
-    [showToast, tmuxSupport.reason, tmuxSupport.supported, workspaceSessions],
+    [buildWorkspaceSession, showToast, tmuxSupport.reason, tmuxSupport.supported, workspaceSessions],
   );
 
   const handleCloseWorkspaceSession = useCallback(

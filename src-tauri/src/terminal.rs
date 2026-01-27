@@ -145,6 +145,8 @@ const TMUX_HISTORY_LIMIT: &str = "200000";
 const CONTROL_COMMAND_TIMEOUT_MS: u64 = 2500;
 const CONTROL_COMMAND_QUEUE_POLL_MS: u64 = 100;
 const LEGACY_TMUX_SESSION_PREFIX: &str = "devhaven_";
+const TMUX_SESSION_PROJECT_ID_OPTION: &str = "@devhaven_project_id";
+const TMUX_SESSION_PROJECT_PATH_OPTION: &str = "@devhaven_project_path";
 const DEFAULT_PATH: &str =
     "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/local/bin";
 
@@ -373,6 +375,9 @@ impl TerminalManager {
 
         self.ensure_control_client(app, &session_name)?;
         apply_tmux_pane_style(&session_name)?;
+        if let Err(error) = set_tmux_session_metadata(&session_name, project_id, project_path) {
+            eprintln!("设置 tmux 会话元数据失败: {}", error);
+        }
 
         Ok(TerminalSessionInfo {
             id: session_name,
@@ -394,7 +399,61 @@ impl TerminalManager {
         if self.active_session_id.as_deref() == Some(session_id) {
             self.active_session_id = None;
         }
+        if let Err(error) = run_tmux_status(&[
+            "kill-session".to_string(),
+            "-t".to_string(),
+            session_id.to_string(),
+        ]) {
+            if is_tmux_server_missing_error(&error) || is_tmux_session_missing_error(&error) {
+                return Ok(());
+            }
+            return Err(error);
+        }
         Ok(())
+    }
+
+    pub fn list_sessions(&self) -> Result<Vec<TerminalSessionInfo>, String> {
+        ensure_supported()?;
+        let output = match run_tmux_command(&[
+            "list-sessions".to_string(),
+            "-F".to_string(),
+            "#{session_name}\t#{session_created}".to_string(),
+        ]) {
+            Ok(output) => output,
+            Err(error) => {
+                if is_tmux_server_missing_error(&error) {
+                    return Ok(Vec::new());
+                }
+                return Err(error);
+            }
+        };
+
+        let mut sessions = Vec::new();
+        for line in output.lines() {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.is_empty() {
+                continue;
+            }
+            let session_id = parts[0].trim();
+            if session_id.is_empty() {
+                continue;
+            }
+            let created_at = parts
+                .get(1)
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .unwrap_or(0);
+            let created_at = if created_at > 0 { created_at * 1000 } else { 0 };
+            let project_id = read_tmux_session_option(session_id, TMUX_SESSION_PROJECT_ID_OPTION)
+                .unwrap_or_else(|| session_id.to_string());
+            let project_path = resolve_tmux_session_path(session_id).unwrap_or_default();
+            sessions.push(TerminalSessionInfo {
+                id: session_id.to_string(),
+                project_id,
+                project_path,
+                created_at,
+            });
+        }
+        Ok(sessions)
     }
 
     pub fn list_windows(&self, session_id: &str) -> Result<Vec<TmuxWindowInfo>, String> {
@@ -819,6 +878,74 @@ fn run_tmux_status(args: &[String]) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn is_tmux_server_missing_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("no server running") || lower.contains("failed to connect to server") || lower.contains("no sessions")
+}
+
+fn is_tmux_session_missing_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("can't find session") || lower.contains("no such session")
+}
+
+fn read_tmux_session_option(session_id: &str, option: &str) -> Option<String> {
+    let output = run_tmux_command(&[
+        "show-options".to_string(),
+        "-q".to_string(),
+        "-v".to_string(),
+        "-t".to_string(),
+        session_id.to_string(),
+        option.to_string(),
+    ])
+    .ok()?;
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn set_tmux_session_option(session_id: &str, option: &str, value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    run_tmux_status(&[
+        "set-option".to_string(),
+        "-t".to_string(),
+        session_id.to_string(),
+        option.to_string(),
+        trimmed.to_string(),
+    ])
+}
+
+fn set_tmux_session_metadata(session_id: &str, project_id: &str, project_path: &str) -> Result<(), String> {
+    set_tmux_session_option(session_id, TMUX_SESSION_PROJECT_ID_OPTION, project_id)?;
+    set_tmux_session_option(session_id, TMUX_SESSION_PROJECT_PATH_OPTION, project_path)
+}
+
+fn resolve_tmux_session_path(session_id: &str) -> Option<String> {
+    if let Some(path) = read_tmux_session_option(session_id, TMUX_SESSION_PROJECT_PATH_OPTION) {
+        return Some(path);
+    }
+    let output = run_tmux_command(&[
+        "list-panes".to_string(),
+        "-t".to_string(),
+        session_id.to_string(),
+        "-F".to_string(),
+        "#{pane_current_path}".to_string(),
+    ])
+    .ok()?;
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
 }
 
 fn tmux_quote_arg(value: &str) -> String {

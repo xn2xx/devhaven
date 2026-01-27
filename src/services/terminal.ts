@@ -44,6 +44,12 @@ export async function createTerminalSession(
   return normalizeSession(payload);
 }
 
+/** 拉取当前 tmux 会话列表。 */
+export async function listTerminalSessions(): Promise<TerminalSessionInfo[]> {
+  const payload = await invoke<TerminalSessionPayload[]>("list_terminal_sessions");
+  return payload.map((item) => normalizeSession(item));
+}
+
 /** 切换当前 tmux 会话。 */
 export async function switchTerminalSession(sessionId: string): Promise<void> {
   await invoke("switch_terminal_session", { sessionId });
