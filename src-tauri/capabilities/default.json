@@ -6,6 +6,9 @@
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-visible-on-all-workspaces",
     "opener:default",
     "dialog:allow-open",
     "dialog:allow-confirm",

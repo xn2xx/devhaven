@@ -4062,6 +4062,8 @@ dependencies = [
  "chrono",
  "libc",
  "log",
+ "objc2",
+ "objc2-app-kit",
  "portable-pty",
  "serde",
  "serde_json",

@@ -20,6 +20,7 @@ export default function MonitorWindow({
   error,
   onOpenSession,
 }: MonitorWindowProps) {
+  const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
 
   useEffect(() => {
@@ -34,10 +35,18 @@ export default function MonitorWindow({
 
   const handleToggleAlwaysOnTop = async (nextValue: boolean) => {
     setAlwaysOnTop(nextValue);
+    const window = getCurrentWindow();
     try {
-      await getCurrentWindow().setAlwaysOnTop(nextValue);
+      await window.setAlwaysOnTop(nextValue);
     } catch (error) {
       console.error("设置置顶失败。", error);
+    }
+    if (isMac) {
+      try {
+        await window.setVisibleOnAllWorkspaces(nextValue);
+      } catch (error) {
+        console.error("设置跨工作区显示失败。", error);
+      }
     }
   };
 
