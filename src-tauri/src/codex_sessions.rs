@@ -2,24 +2,33 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc::{self, Receiver},
+    Mutex, OnceLock,
+};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::{Datelike, Local, Utc};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::models::{CodexMessageCounts, CodexSessionSummary};
 
 const CODEX_SESSIONS_DIR: &str = ".codex/sessions";
 const MAX_TAIL_LINES: usize = 200;
 const MAX_TAIL_BYTES: u64 = 256 * 1024;
-const ACTIVE_WINDOW_MS: i64 = 15_000;
+const ACTIVE_WINDOW_MS: i64 = 10_000;
 const RECENT_FILE_WINDOW_MS: i64 = 5 * 60_000;
+const WATCH_DEBOUNCE_MS: u64 = 350;
+const CODEX_SESSIONS_EVENT: &str = "codex-sessions-update";
 
 type SessionCache = HashMap<PathBuf, CachedSession>;
 
 static CODEX_SESSION_CACHE: OnceLock<Mutex<SessionCache>> = OnceLock::new();
+static CODEX_SESSION_WATCH_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 struct CachedSession {
@@ -102,6 +111,105 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
 
     sessions.sort_by(|left, right| right.last_activity_at.cmp(&left.last_activity_at));
     Ok(sessions)
+}
+
+pub fn ensure_session_watcher(app: &AppHandle) -> Result<(), String> {
+    let base_dir = app
+        .path()
+        .home_dir()
+        .map_err(|err| format!("无法获取用户目录: {err}"))?
+        .join(CODEX_SESSIONS_DIR);
+
+    if !base_dir.exists() {
+        return Ok(());
+    }
+
+    if CODEX_SESSION_WATCH_STARTED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Ok(());
+    }
+
+    let app_handle = app.clone();
+    thread::spawn(move || {
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = match RecommendedWatcher::new(tx, notify::Config::default()) {
+            Ok(watcher) => watcher,
+            Err(error) => {
+                log::warn!("启动 Codex 会话监听失败: {}", error);
+                return;
+            }
+        };
+
+        if let Err(error) = watcher.watch(&base_dir, RecursiveMode::Recursive) {
+            log::warn!("监听 Codex 会话目录失败: {}", error);
+            return;
+        }
+
+        event_loop(rx, app_handle);
+    });
+
+    Ok(())
+}
+
+fn event_loop(rx: Receiver<Result<notify::Event, notify::Error>>, app: AppHandle) {
+    let mut pending = false;
+    let mut last_emit = std::time::Instant::now()
+        .checked_sub(Duration::from_millis(WATCH_DEBOUNCE_MS))
+        .unwrap_or_else(std::time::Instant::now);
+
+    loop {
+        match rx.recv_timeout(Duration::from_millis(WATCH_DEBOUNCE_MS)) {
+            Ok(Ok(event)) => {
+                if should_refresh_for_event(&event) {
+                    pending = true;
+                    if last_emit.elapsed() >= Duration::from_millis(WATCH_DEBOUNCE_MS) {
+                        pending = false;
+                        last_emit = std::time::Instant::now();
+                        emit_sessions(&app);
+                    }
+                }
+            }
+            Ok(Err(error)) => {
+                log::warn!("Codex 会话监听错误: {}", error);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if pending {
+                    pending = false;
+                    last_emit = std::time::Instant::now();
+                    emit_sessions(&app);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+}
+
+fn should_refresh_for_event(event: &notify::Event) -> bool {
+    let matches_kind = matches!(
+        event.kind,
+        EventKind::Create(_)
+            | EventKind::Modify(_)
+            | EventKind::Remove(_)
+    );
+    if !matches_kind {
+        return false;
+    }
+    event.paths.iter().any(|path| is_rollout_file(path))
+}
+
+fn emit_sessions(app: &AppHandle) {
+    match list_sessions(app) {
+        Ok(sessions) => {
+            if let Err(error) = app.emit(CODEX_SESSIONS_EVENT, sessions) {
+                log::warn!("推送 Codex 会话更新失败: {}", error);
+            }
+        }
+        Err(error) => {
+            log::warn!("刷新 Codex 会话失败: {}", error);
+        }
+    }
 }
 
 fn collect_rollout_files(base_dir: &Path) -> Result<Vec<PathBuf>, String> {

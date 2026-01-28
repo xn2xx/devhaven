@@ -181,7 +181,12 @@ fn get_tmux_support_status() -> TmuxSupportStatus {
 
 #[tauri::command]
 fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
-    log_command_result("list_codex_sessions", || codex_sessions::list_sessions(&app))
+    log_command_result("list_codex_sessions", || {
+        if let Err(error) = codex_sessions::ensure_session_watcher(&app) {
+            log::warn!("启动 Codex 会话监听失败: {}", error);
+        }
+        codex_sessions::list_sessions(&app)
+    })
 }
 
 #[tauri::command]
@@ -462,6 +467,10 @@ pub fn run() {
             );
             if let Ok(path) = app.path().app_log_dir() {
                 log::info!("log dir={}", path.display());
+            }
+            let app_handle = app.handle();
+            if let Err(error) = codex_sessions::ensure_session_watcher(&app_handle) {
+                log::warn!("启动 Codex 会话监听失败: {}", error);
             }
             Ok(())
         })
