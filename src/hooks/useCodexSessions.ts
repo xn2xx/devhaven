@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { CodexSessionSummary } from "../models/codex";
 import { listCodexSessions } from "../services/codex";
 
-const REFRESH_INTERVAL_MS = 2000;
+const REFRESH_INTERVAL_MS = 500;
 
 export type CodexSessionStore = {
   sessions: CodexSessionSummary[];

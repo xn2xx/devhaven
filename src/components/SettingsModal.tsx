@@ -83,6 +83,7 @@ export default function SettingsModal({
   );
   const [gitIdentities, setGitIdentities] = useState<GitIdentity[]>(settings.gitIdentities);
   const [useWebglRenderer, setUseWebglRenderer] = useState(settings.terminalUseWebglRenderer);
+  const [showMonitorWindow, setShowMonitorWindow] = useState(settings.showMonitorWindow);
   const [versionLabel, setVersionLabel] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [isSaving, setIsSaving] = useState(false);
@@ -97,9 +98,10 @@ export default function SettingsModal({
         arguments: parsedTerminalArguments,
       },
       terminalUseWebglRenderer: useWebglRenderer,
+      showMonitorWindow,
       gitIdentities: normalizedGitIdentities,
     }),
-    [normalizedGitIdentities, parsedTerminalArguments, settings, terminalCommandPath, useWebglRenderer],
+    [normalizedGitIdentities, parsedTerminalArguments, settings, terminalCommandPath, useWebglRenderer, showMonitorWindow],
   );
   const isDirty = useMemo(() => {
     const currentTerminalArguments = normalizeArgs(settings.terminalOpenTool.arguments);
@@ -108,7 +110,8 @@ export default function SettingsModal({
       nextSettings.terminalOpenTool.commandPath === settings.terminalOpenTool.commandPath &&
       isSameArguments(nextSettings.terminalOpenTool.arguments, currentTerminalArguments) &&
       isSameIdentities(nextSettings.gitIdentities, normalizedStoredIdentities) &&
-      nextSettings.terminalUseWebglRenderer === settings.terminalUseWebglRenderer
+      nextSettings.terminalUseWebglRenderer === settings.terminalUseWebglRenderer &&
+      nextSettings.showMonitorWindow === settings.showMonitorWindow
     );
   }, [nextSettings, settings]);
 
@@ -129,11 +132,13 @@ export default function SettingsModal({
     setTerminalPresetId(resolveTerminalPresetId(settings.terminalOpenTool.commandPath, settings.terminalOpenTool.arguments));
     setGitIdentities(settings.gitIdentities);
     setUseWebglRenderer(settings.terminalUseWebglRenderer);
+    setShowMonitorWindow(settings.showMonitorWindow);
   }, [
     settings.terminalOpenTool.arguments,
     settings.terminalOpenTool.commandPath,
     settings.gitIdentities,
     settings.terminalUseWebglRenderer,
+    settings.showMonitorWindow,
   ]);
 
   const handleTerminalPresetChange = (nextPresetId: string) => {
@@ -168,6 +173,10 @@ export default function SettingsModal({
   const handleToggleWebglRenderer = (enabled: boolean) => {
     setUseWebglRenderer(enabled);
     onPreviewTerminalRenderer(enabled);
+  };
+
+  const handleToggleMonitorWindow = (enabled: boolean) => {
+    setShowMonitorWindow(enabled);
   };
 
   useEffect(() => {
@@ -301,6 +310,19 @@ export default function SettingsModal({
             <span>启用 WebGL 渲染（更流畅，可能受驱动影响）</span>
           </label>
           <div className="settings-note">切换后立即生效，关闭窗口后保存。</div>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section-title">悬浮窗</div>
+          <label className="settings-inline settings-toggle">
+            <input
+              type="checkbox"
+              checked={showMonitorWindow}
+              onChange={(event) => handleToggleMonitorWindow(event.target.checked)}
+            />
+            <span>显示 CLI 悬浮监控窗（只读）</span>
+          </label>
+          <div className="settings-note">关闭设置窗口后生效，手动关闭悬浮窗不会修改开关状态。</div>
         </section>
 
         <section className="settings-section">

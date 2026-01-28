@@ -54,6 +54,7 @@ type UseTmuxWorkspaceOptions = {
   isVisible: boolean;
   useWebglRenderer: boolean;
   sessionIds: string[];
+  readOnly?: boolean;
 };
 
 export type TmuxWorkspaceState = {
@@ -152,6 +153,7 @@ export function useTmuxWorkspace({
   isVisible,
   useWebglRenderer,
   sessionIds,
+  readOnly = false,
 }: UseTmuxWorkspaceOptions): TmuxWorkspaceState {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalsRef = useRef(new Map<string, Terminal>());
@@ -172,6 +174,7 @@ export function useTmuxWorkspace({
   const resizeTimerRef = useRef<number | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
   const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const readOnlyRef = useRef(readOnly);
 
   const [status, setStatus] = useState<TerminalStatus>("idle");
   const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
@@ -199,6 +202,10 @@ export function useTmuxWorkspace({
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
+
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+  }, [readOnly]);
 
   useEffect(() => {
     if (sessionIds.length === 0) {
@@ -770,6 +777,9 @@ export function useTmuxWorkspace({
       }, 0);
 
       terminal.onData((data) => {
+        if (readOnlyRef.current) {
+          return;
+        }
         const sanitizedInput = sanitizeTmuxInput(data);
         if (!sanitizedInput) {
           return;
@@ -863,12 +873,18 @@ export function useTmuxWorkspace({
 
   const focusPane = useCallback((paneId: string) => {
     setActivePaneId(paneId);
+    if (readOnlyRef.current) {
+      return;
+    }
     void selectTmuxPane(paneId).catch((error) => {
       console.error("Failed to select tmux pane.", error);
     });
   }, []);
 
   const focusPaneDirection = useCallback((direction: "left" | "right" | "up" | "down") => {
+    if (readOnlyRef.current) {
+      return;
+    }
     const paneId = activePaneRef.current;
     if (!paneId) {
       return;
@@ -880,6 +896,9 @@ export function useTmuxWorkspace({
 
   const resizePane = useCallback(
     (paneId: string, direction: "left" | "right" | "up" | "down", count: number) => {
+      if (readOnlyRef.current) {
+        return;
+      }
       if (!paneId || count <= 0) {
         return;
       }
@@ -895,6 +914,9 @@ export function useTmuxWorkspace({
   );
 
   const splitActivePane = useCallback((direction: "horizontal" | "vertical") => {
+    if (readOnlyRef.current) {
+      return;
+    }
     const paneId = activePaneRef.current;
     if (!paneId) {
       return;
@@ -905,6 +927,9 @@ export function useTmuxWorkspace({
   }, []);
 
   const killActivePane = useCallback(() => {
+    if (readOnlyRef.current) {
+      return;
+    }
     const paneId = activePaneRef.current;
     if (!paneId) {
       return;
@@ -915,6 +940,9 @@ export function useTmuxWorkspace({
   }, []);
 
   const selectWindow = useCallback((windowId: string) => {
+    if (readOnlyRef.current) {
+      return;
+    }
     void selectTmuxWindow(windowId).catch((error) => {
       console.error("Failed to select tmux window.", error);
     });
@@ -922,6 +950,9 @@ export function useTmuxWorkspace({
 
   const selectWindowIndex = useCallback(
     (index: number) => {
+      if (readOnlyRef.current) {
+        return;
+      }
       const session = activeSessionRef.current;
       if (!session) {
         return;
@@ -934,18 +965,27 @@ export function useTmuxWorkspace({
   );
 
   const nextWindow = useCallback(() => {
+    if (readOnlyRef.current) {
+      return;
+    }
     void nextTmuxWindow().catch((error) => {
       console.error("Failed to select next tmux window.", error);
     });
   }, []);
 
   const previousWindow = useCallback(() => {
+    if (readOnlyRef.current) {
+      return;
+    }
     void previousTmuxWindow().catch((error) => {
       console.error("Failed to select previous tmux window.", error);
     });
   }, []);
 
   const newWindow = useCallback(() => {
+    if (readOnlyRef.current) {
+      return;
+    }
     const session = activeSessionRef.current;
     if (!session) {
       return;

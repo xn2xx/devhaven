@@ -38,6 +38,8 @@ pub struct AppSettings {
     #[serde(default = "default_terminal_use_webgl_renderer")]
     pub terminal_use_webgl_renderer: bool,
     #[serde(default)]
+    pub show_monitor_window: bool,
+    #[serde(default)]
     pub git_identities: Vec<GitIdentity>,
 }
 
@@ -47,6 +49,7 @@ impl Default for AppSettings {
             editor_open_tool: OpenToolSettings::default(),
             terminal_open_tool: OpenToolSettings::default(),
             terminal_use_webgl_renderer: true,
+            show_monitor_window: false,
             git_identities: Vec::new(),
         }
     }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { WorkspaceSession } from "../models/terminal";
 import TabBar from "./TabBar";
 import TerminalPanel from "./TerminalPanel";
@@ -9,6 +10,8 @@ export type WorkspaceViewProps = {
   onCloseSession: (sessionId: string) => void;
   onExitWorkspace: () => void;
   terminalUseWebglRenderer: boolean;
+  readOnly?: boolean;
+  rightSlot?: ReactNode;
 };
 
 /** 开发模式主视图。 */
@@ -19,6 +22,8 @@ export default function WorkspaceView({
   onCloseSession,
   onExitWorkspace,
   terminalUseWebglRenderer,
+  readOnly,
+  rightSlot,
 }: WorkspaceViewProps) {
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
@@ -30,11 +35,14 @@ export default function WorkspaceView({
         onSelectSession={onSelectSession}
         onCloseSession={onCloseSession}
         onExitWorkspace={onExitWorkspace}
+        readOnly={readOnly}
+        rightSlot={rightSlot}
       />
       <TerminalPanel
         sessions={sessions}
         activeSession={activeSession}
         terminalUseWebglRenderer={terminalUseWebglRenderer}
+        readOnly={readOnly}
       />
     </div>
   );

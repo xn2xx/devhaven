@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { CodexSessionView } from "../models/codex";
 
 export type CodexSessionSectionProps = {
@@ -5,6 +6,10 @@ export type CodexSessionSectionProps = {
   isLoading: boolean;
   error: string | null;
   onOpenSession: (session: CodexSessionView) => void;
+  title?: string;
+  emptyText?: string;
+  showHeader?: boolean;
+  headerRightSlot?: ReactNode;
 };
 
 /** 侧栏 Codex CLI 会话区块。 */
@@ -13,19 +18,30 @@ export default function CodexSessionSection({
   isLoading,
   error,
   onOpenSession,
+  title = "CLI 会话",
+  emptyText = "未发现 Codex 会话",
+  showHeader = true,
+  headerRightSlot,
 }: CodexSessionSectionProps) {
   const headerStatus = isLoading ? "同步中..." : sessions.length > 0 ? `${sessions.length} 个` : "暂无";
+  const shouldShowHeader = showHeader;
+  const resolvedEmptyText = emptyText;
 
   return (
     <section className="sidebar-section cli-session-section">
-      <div className="section-header">
-        <span className="section-title">CLI 会话</span>
-        <span className="cli-session-header-status">{headerStatus}</span>
-      </div>
+      {shouldShowHeader ? (
+        <div className="section-header">
+          <span className="section-title">{title}</span>
+          <div className="cli-session-header-right">
+            <span className="cli-session-header-status">{headerStatus}</span>
+            {headerRightSlot}
+          </div>
+        </div>
+      ) : null}
       {error ? (
         <div className="cli-session-empty">{`会话读取失败：${error}`}</div>
       ) : sessions.length === 0 ? (
-        <div className="cli-session-empty">未发现 Codex 会话</div>
+        <div className="cli-session-empty">{resolvedEmptyText}</div>
       ) : (
         <div className="cli-session-list">
           {sessions.map((session) => {

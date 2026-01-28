@@ -1,6 +1,8 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{Datelike, Local, Utc};
@@ -15,6 +17,17 @@ const MAX_TAIL_BYTES: u64 = 256 * 1024;
 const ACTIVE_WINDOW_MS: i64 = 15_000;
 const RECENT_FILE_WINDOW_MS: i64 = 5 * 60_000;
 
+type SessionCache = HashMap<PathBuf, CachedSession>;
+
+static CODEX_SESSION_CACHE: OnceLock<Mutex<SessionCache>> = OnceLock::new();
+
+#[derive(Clone)]
+struct CachedSession {
+    summary: CodexSessionSummary,
+    modified: i64,
+    size: u64,
+}
+
 pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
     let base_dir = app
         .path()
@@ -26,39 +39,82 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
         return Ok(Vec::new());
     }
 
-    let mut files = Vec::new();
-    let candidate_dirs = collect_candidate_dirs(&base_dir);
-    if candidate_dirs.is_empty() {
-        collect_rollout_files_recursive(&base_dir, &mut files)?;
-    } else {
-        for dir in candidate_dirs {
-            collect_rollout_files_shallow(&dir, &mut files)?;
-        }
-    }
+    let files = collect_rollout_files(&base_dir)?;
+    let mut seen = HashSet::new();
+    let cache = CODEX_SESSION_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut cache = cache
+        .lock()
+        .map_err(|_| "Codex 会话缓存锁异常".to_string())?;
 
     let mut sessions = Vec::new();
     let now_ms = Utc::now().timestamp_millis();
     let recent_threshold = now_ms - RECENT_FILE_WINDOW_MS;
     for path in files {
-        if let Some(modified) = file_modified_millis(&path) {
-            if modified < recent_threshold {
+        seen.insert(path.clone());
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                log::warn!("读取 Codex 会话文件失败: path={} err={}", path.display(), err);
                 continue;
             }
+        };
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(system_time_to_millis)
+            .unwrap_or(0);
+        if modified > 0 && modified < recent_threshold {
+            continue;
         }
-        match parse_session_file(&path) {
-            Ok(summary) => {
-                if summary.is_running {
-                    sessions.push(summary);
+        let size = metadata.len();
+        let should_refresh = match cache.get(&path) {
+            Some(cached) => cached.modified != modified || cached.size != size,
+            None => true,
+        };
+        if should_refresh {
+            match parse_session_file(&path) {
+                Ok(summary) => {
+                    cache.insert(
+                        path.clone(),
+                        CachedSession {
+                            summary,
+                            modified,
+                            size,
+                        },
+                    );
+                }
+                Err(err) => {
+                    log::warn!("解析 Codex 会话失败: path={} err={}", path.display(), err);
                 }
             }
-            Err(err) => {
-                log::warn!("解析 Codex 会话失败: path={} err={}", path.display(), err);
-            }
+        }
+    }
+
+    cache.retain(|path, _| seen.contains(path));
+    for cached in cache.values() {
+        let mut summary = cached.summary.clone();
+        summary.is_running =
+            summary.last_activity_at > 0 && now_ms.saturating_sub(summary.last_activity_at) <= ACTIVE_WINDOW_MS;
+        if summary.is_running {
+            sessions.push(summary);
         }
     }
 
     sessions.sort_by(|left, right| right.last_activity_at.cmp(&left.last_activity_at));
     Ok(sessions)
+}
+
+fn collect_rollout_files(base_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    let candidate_dirs = collect_candidate_dirs(base_dir);
+    if candidate_dirs.is_empty() {
+        collect_rollout_files_recursive(base_dir, &mut files)?;
+    } else {
+        for dir in candidate_dirs {
+            collect_rollout_files_shallow(&dir, &mut files)?;
+        }
+    }
+    Ok(files)
 }
 
 fn collect_candidate_dirs(base_dir: &Path) -> Vec<PathBuf> {

@@ -9,6 +9,7 @@ export type TerminalPanelProps = {
   sessions: WorkspaceSession[];
   activeSession: WorkspaceSession | null;
   terminalUseWebglRenderer: boolean;
+  readOnly?: boolean;
 };
 
 const COPY_HINT_DURATION = 1600;
@@ -35,7 +36,7 @@ type DividerDragState = {
 };
 
 /** 工作空间终端展示区域。 */
-export default function TerminalPanel({ sessions, activeSession, terminalUseWebglRenderer }: TerminalPanelProps) {
+export default function TerminalPanel({ sessions, activeSession, terminalUseWebglRenderer, readOnly }: TerminalPanelProps) {
   const {
     status,
     containerRef,
@@ -57,6 +58,7 @@ export default function TerminalPanel({ sessions, activeSession, terminalUseWebg
     isVisible: Boolean(activeSession),
     useWebglRenderer: terminalUseWebglRenderer,
     sessionIds: sessions.map((session) => session.id),
+    readOnly,
   });
   const [copyHint, setCopyHint] = useState<string | null>(null);
   const [draggingDividerId, setDraggingDividerId] = useState<string | null>(null);
@@ -142,6 +144,9 @@ export default function TerminalPanel({ sessions, activeSession, terminalUseWebg
 
   const handleDividerPointerDown = useCallback(
     (divider: Divider, event: ReactPointerEvent<HTMLDivElement>) => {
+      if (readOnly) {
+        return;
+      }
       if (event.button !== 0) {
         return;
       }
@@ -206,7 +211,7 @@ export default function TerminalPanel({ sessions, activeSession, terminalUseWebg
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     },
-    [containerRef, resizePane, stopDividerDrag, windowHeight, windowWidth],
+    [containerRef, readOnly, resizePane, stopDividerDrag, windowHeight, windowWidth],
   );
 
   useEffect(() => stopDividerDrag, [stopDividerDrag]);
@@ -227,6 +232,9 @@ export default function TerminalPanel({ sessions, activeSession, terminalUseWebg
   }, [attachCommand]);
 
   useEffect(() => {
+    if (readOnly) {
+      return;
+    }
     const container = containerRef.current;
     if (!container || !activeSession) {
       return;
@@ -303,6 +311,7 @@ export default function TerminalPanel({ sessions, activeSession, terminalUseWebg
     killActivePane,
     nextWindow,
     previousWindow,
+    readOnly,
     selectWindowIndex,
     splitActivePane,
   ]);

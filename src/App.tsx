@@ -9,6 +9,7 @@ import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import WorkspaceView from "./components/WorkspaceView";
 import RecycleBinModal from "./components/RecycleBinModal";
+import MonitorWindow from "./components/MonitorWindow";
 import { useCodexSessions } from "./hooks/useCodexSessions";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
@@ -25,6 +26,7 @@ import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, openInTerminal } from "./services/system";
+import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
 import {
   closeTerminalSession,
   createTerminalSession,
@@ -47,6 +49,17 @@ function matchProjectByCwd(cwd: string, projects: Project[]): Project | null {
     }
   }
   return bestMatch;
+}
+
+function resolveAppView(): "main" | "monitor" {
+  if (typeof window === "undefined") {
+    return "main";
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("view") === "monitor") {
+    return "monitor";
+  }
+  return "main";
 }
 
 function buildCodexSessionViews(sessions: CodexSessionSummary[], projects: Project[]): CodexSessionView[] {
@@ -110,6 +123,8 @@ function AppLayout() {
   const [tmuxSupport, setTmuxSupport] = useState<TmuxSupportStatus>({ supported: true });
   const [tmuxSessionsLoaded, setTmuxSessionsLoaded] = useState(false);
   const [showRecycleBin, setShowRecycleBin] = useState(false);
+  const appView = useMemo(() => resolveAppView(), []);
+  const isMonitorView = appView === "monitor";
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -144,7 +159,10 @@ function AppLayout() {
     () => buildCodexSessionViews(codexSessionStore.sessions, projects),
     [codexSessionStore.sessions, projects],
   );
-
+  const runningCodexSessionViews = useMemo(
+    () => codexSessionViews.filter((session) => session.isRunning),
+    [codexSessionViews],
+  );
   const terminalSettings = appState.settings.terminalOpenTool;
   const terminalUseWebglRenderer =
     previewTerminalUseWebglRenderer ?? appState.settings.terminalUseWebglRenderer;
@@ -635,6 +653,30 @@ function AppLayout() {
     },
     [showToast, updateSettings],
   );
+
+  useEffect(() => {
+    if (isMonitorView) {
+      return;
+    }
+    if (appState.settings.showMonitorWindow) {
+      void openMonitorWindow();
+    } else {
+      void closeMonitorWindow();
+    }
+  }, [appState.settings.showMonitorWindow, isMonitorView]);
+
+  if (isMonitorView) {
+    return (
+      <div className="app-root is-workspace">
+        <MonitorWindow
+          sessions={runningCodexSessionViews}
+          isLoading={codexSessionStore.isLoading}
+          error={codexSessionStore.error}
+          onOpenSession={handleOpenCodexSession}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={`app-root${appMode === "workspace" ? " is-workspace" : ""}`}>
