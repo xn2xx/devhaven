@@ -108,6 +108,27 @@ fn open_in_editor(params: EditorOpenParams) -> Result<(), String> {
 }
 
 #[tauri::command]
+/// 设置指定窗口可在 macOS 全屏空间中作为辅助窗口展示。
+fn set_window_fullscreen_auxiliary(
+    app: AppHandle,
+    window_label: String,
+    enabled: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let window = app
+            .get_webview_window(&window_label)
+            .ok_or_else(|| "窗口不存在".to_string())?;
+        return apply_fullscreen_auxiliary(&window, enabled);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, window_label, enabled);
+        Ok(())
+    }
+}
+
+#[tauri::command]
 /// 复制文本到剪贴板。
 fn copy_to_clipboard(app: AppHandle, content: String) -> Result<(), String> {
     log_command_result("copy_to_clipboard", || {
@@ -455,6 +476,7 @@ pub fn run() {
             open_in_finder,
             open_in_terminal,
             open_in_editor,
+            set_window_fullscreen_auxiliary,
             copy_to_clipboard,
             read_project_notes,
             write_project_notes,
@@ -486,6 +508,94 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "macos")]
+fn apply_fullscreen_auxiliary(
+    window: &tauri::WebviewWindow,
+    enabled: bool,
+) -> Result<(), String> {
+    use objc2_app_kit::{
+        NSNormalWindowLevel, NSPanel, NSScreenSaverWindowLevel, NSWindow,
+        NSWindowCollectionBehavior, NSWindowStyleMask,
+    };
+    use objc2::runtime::AnyObject;
+
+    let ns_window = window.ns_window().map_err(|error| error.to_string())?;
+    if ns_window.is_null() {
+        return Err("获取 NSWindow 失败".to_string());
+    }
+
+    unsafe {
+        let ns_window = &*(ns_window as *mut NSWindow);
+        let ns_window_obj = &*(ns_window as *const NSWindow as *const AnyObject);
+        let mut behavior = ns_window.collectionBehavior();
+        if enabled {
+            if let Err(error) = try_set_window_class(ns_window_obj, "NSPanel") {
+                log::warn!("升级为 NSPanel 失败: {}", error);
+            }
+            if ns_window_obj.class().name().to_bytes() == b"NSPanel" {
+                let panel = &*(ns_window as *const NSWindow as *const NSPanel);
+                panel.setFloatingPanel(true);
+                panel.setBecomesKeyOnlyIfNeeded(true);
+                panel.setWorksWhenModal(true);
+            }
+            let mut style = ns_window.styleMask();
+            style |= NSWindowStyleMask::NonactivatingPanel;
+            style |= NSWindowStyleMask::UtilityWindow;
+            ns_window.setStyleMask(style);
+            behavior |= NSWindowCollectionBehavior::Auxiliary;
+            behavior |= NSWindowCollectionBehavior::CanJoinAllSpaces;
+            behavior |= NSWindowCollectionBehavior::CanJoinAllApplications;
+            behavior |= NSWindowCollectionBehavior::FullScreenAuxiliary;
+            ns_window.setHidesOnDeactivate(false);
+            ns_window.setLevel(NSScreenSaverWindowLevel);
+            ns_window.orderFrontRegardless();
+        } else {
+            let mut style = ns_window.styleMask();
+            style &= !NSWindowStyleMask::NonactivatingPanel;
+            style &= !NSWindowStyleMask::UtilityWindow;
+            ns_window.setStyleMask(style);
+            behavior &= !NSWindowCollectionBehavior::FullScreenAuxiliary;
+            behavior &= !NSWindowCollectionBehavior::CanJoinAllApplications;
+            behavior &= !NSWindowCollectionBehavior::Auxiliary;
+            ns_window.setLevel(NSNormalWindowLevel);
+            if let Err(error) = try_set_window_class(ns_window_obj, "NSWindow") {
+                log::warn!("还原 NSWindow 失败: {}", error);
+            }
+        }
+        ns_window.setCollectionBehavior(behavior);
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn try_set_window_class(target: &objc2::runtime::AnyObject, class_name: &str) -> Result<(), String> {
+    use std::ffi::CStr;
+
+    let class_cstr = match class_name {
+        "NSPanel" => CStr::from_bytes_with_nul(b"NSPanel\0").map_err(|_| "类名非法".to_string())?,
+        "NSWindow" => CStr::from_bytes_with_nul(b"NSWindow\0").map_err(|_| "类名非法".to_string())?,
+        _ => return Err("不支持的类名".to_string()),
+    };
+    let target_class = objc2::runtime::AnyClass::get(class_cstr)
+        .ok_or_else(|| "无法获取目标类".to_string())?;
+    let current_class = target.class();
+    if current_class.name() == target_class.name() {
+        return Ok(());
+    }
+    if current_class.instance_size() != target_class.instance_size() {
+        return Err(format!(
+            "类大小不匹配: {} -> {}",
+            current_class.instance_size(),
+            target_class.instance_size()
+        ));
+    }
+    unsafe {
+        objc2::runtime::AnyObject::set_class(target, target_class);
+    }
+    Ok(())
 }
 
 fn log_command<T, F: FnOnce() -> T>(name: &str, action: F) -> T {

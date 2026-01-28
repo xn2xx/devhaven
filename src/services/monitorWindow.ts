@@ -1,12 +1,27 @@
+import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 const MONITOR_WINDOW_LABEL = "cli-monitor";
 const MONITOR_WINDOW_URL = "index.html?view=monitor";
 
+async function enableMonitorWindowFullscreenAuxiliary(): Promise<void> {
+  try {
+    await invoke("set_window_fullscreen_auxiliary", {
+      windowLabel: MONITOR_WINDOW_LABEL,
+      enabled: true,
+    });
+  } catch (error) {
+    console.error("设置悬浮窗全屏辅助显示失败。", error);
+  }
+}
+
 export async function openMonitorWindow(): Promise<void> {
   const existing = await WebviewWindow.getByLabel(MONITOR_WINDOW_LABEL);
   if (existing) {
     try {
+      await existing.setAlwaysOnTop(true).catch(() => undefined);
+      await enableMonitorWindowFullscreenAuxiliary();
+      await existing.setVisibleOnAllWorkspaces(true).catch(() => undefined);
       await existing.show();
       await existing.setFocus();
     } catch (error) {
@@ -24,14 +39,18 @@ export async function openMonitorWindow(): Promise<void> {
     minHeight: 240,
     resizable: true,
     decorations: false,
-    visible: true,
+    visible: false,
     focus: true,
     center: true,
-    alwaysOnTop: false,
+    alwaysOnTop: true,
+    visibleOnAllWorkspaces: true,
   });
 
   window.once("tauri://created", async () => {
     try {
+      await window.setAlwaysOnTop(true).catch(() => undefined);
+      await enableMonitorWindowFullscreenAuxiliary();
+      await window.setVisibleOnAllWorkspaces(true).catch(() => undefined);
       await window.show();
       await window.setFocus();
     } catch (error) {
