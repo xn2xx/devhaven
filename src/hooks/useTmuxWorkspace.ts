@@ -106,12 +106,19 @@ function sanitizeTmuxOutput(value: string): string {
 }
 
 const CURSOR_REPORT_PATTERN = /\x1b\[\d+;\d+R/g;
+const DEVICE_ATTR_REPORT_PATTERN = /\x1b\[[?>][0-9;]*c/g;
+const OSC_COLOR_REPORT_PATTERN = /\x1b\](?:10|11|12);rgb:[0-9a-fA-F/]+(?:\x1b\\|\x07)/g;
+const OSC_PALETTE_REPORT_PATTERN = /\x1b\]4;\d+;rgb:[0-9a-fA-F/]+(?:\x1b\\|\x07)/g;
 
 function sanitizeTmuxInput(value: string): string {
   if (!value) {
     return value;
   }
-  return value.replace(CURSOR_REPORT_PATTERN, '');
+  return value
+    .replace(CURSOR_REPORT_PATTERN, "")
+    .replace(DEVICE_ATTR_REPORT_PATTERN, "")
+    .replace(OSC_COLOR_REPORT_PATTERN, "")
+    .replace(OSC_PALETTE_REPORT_PATTERN, "");
 }
 
 function normalizeSnapshot(snapshot: string): string {

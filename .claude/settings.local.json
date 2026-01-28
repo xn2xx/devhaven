@@ -35,7 +35,9 @@
       "Bash(cat:*)",
       "mcp__serena__get_symbols_overview",
       "Bash(npm run tauri:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "mcp__serena__get_current_config",
+      "Bash(openspec spec list:*)"
     ]
   }
 }
