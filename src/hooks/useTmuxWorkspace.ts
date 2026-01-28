@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import type { FitAddon } from "@xterm/addon-fit";
+import type { WebglAddon } from "@xterm/addon-webgl";
+import type { Terminal } from "@xterm/xterm";
 
 import { listen } from "@tauri-apps/api/event";
-import { Terminal } from "@xterm/xterm";
-import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 
 import type {
   TmuxOutputPayload,
@@ -46,6 +44,46 @@ const REFRESH_RETRY_DELAY = 200;
 
 const pendingOutputBuffers = new Map<string, Map<string, string>>();
 const pendingCursorPositions = new Map<string, Map<string, TmuxPaneCursor>>();
+
+type XtermCoreModules = {
+  Terminal: typeof import("@xterm/xterm").Terminal;
+  WebLinksAddon: typeof import("@xterm/addon-web-links").WebLinksAddon;
+  Unicode11Addon: typeof import("@xterm/addon-unicode11").Unicode11Addon;
+  FitAddon: typeof import("@xterm/addon-fit").FitAddon;
+};
+
+type WebglModule = {
+  WebglAddon: typeof import("@xterm/addon-webgl").WebglAddon;
+};
+
+let xtermCorePromise: Promise<XtermCoreModules> | null = null;
+let webglPromise: Promise<WebglModule> | null = null;
+
+function loadXtermCoreModules(): Promise<XtermCoreModules> {
+  if (!xtermCorePromise) {
+    xtermCorePromise = Promise.all([
+      import("@xterm/xterm"),
+      import("@xterm/addon-web-links"),
+      import("@xterm/addon-unicode11"),
+      import("@xterm/addon-fit"),
+    ]).then(([xterm, webLinks, unicode11, fit]) => ({
+      Terminal: xterm.Terminal,
+      WebLinksAddon: webLinks.WebLinksAddon,
+      Unicode11Addon: unicode11.Unicode11Addon,
+      FitAddon: fit.FitAddon,
+    }));
+  }
+  return xtermCorePromise;
+}
+
+function loadWebglModule(): Promise<WebglModule> {
+  if (!webglPromise) {
+    webglPromise = import("@xterm/addon-webgl").then((webgl) => ({
+      WebglAddon: webgl.WebglAddon,
+    }));
+  }
+  return webglPromise;
+}
 
 export type TerminalStatus = "idle" | "preparing" | "connecting" | "ready" | "error";
 
@@ -175,6 +213,9 @@ export function useTmuxWorkspace({
   const resizeFrameRef = useRef<number | null>(null);
   const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(null);
   const readOnlyRef = useRef(readOnly);
+  const useWebglRendererRef = useRef(useWebglRenderer);
+  const pendingTerminalCreatesRef = useRef(new Map<string, number>());
+  const terminalCreateSeqRef = useRef(0);
 
   const [status, setStatus] = useState<TerminalStatus>("idle");
   const [panes, setPanes] = useState<TmuxPaneInfo[]>([]);
@@ -206,6 +247,10 @@ export function useTmuxWorkspace({
   useEffect(() => {
     readOnlyRef.current = readOnly;
   }, [readOnly]);
+
+  useEffect(() => {
+    useWebglRendererRef.current = useWebglRenderer;
+  }, [useWebglRenderer]);
 
   useEffect(() => {
     if (sessionIds.length === 0) {
@@ -707,17 +752,27 @@ export function useTmuxWorkspace({
     if (webglAddonsRef.current.has(paneId)) {
       return;
     }
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-        webglAddonsRef.current.delete(paneId);
-      });
-      terminal.loadAddon(webglAddon);
-      webglAddonsRef.current.set(paneId, webglAddon);
-    } catch (error) {
-      console.warn("WebGL 渲染器加载失败，使用默认渲染器", error);
-    }
+    void (async () => {
+      try {
+        const { WebglAddon } = await loadWebglModule();
+        if (
+          !useWebglRendererRef.current ||
+          webglAddonsRef.current.has(paneId) ||
+          terminalsRef.current.get(paneId) !== terminal
+        ) {
+          return;
+        }
+        const webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon.dispose();
+          webglAddonsRef.current.delete(paneId);
+        });
+        terminal.loadAddon(webglAddon);
+        webglAddonsRef.current.set(paneId, webglAddon);
+      } catch (error) {
+        console.warn("WebGL 渲染器加载失败，使用默认渲染器", error);
+      }
+    })();
   }, []);
 
   const detachWebglRenderer = useCallback((paneId: string) => {
@@ -732,6 +787,7 @@ export function useTmuxWorkspace({
   const createTerminalForPane = useCallback(
     (pane: TmuxPaneInfo, element: HTMLDivElement) => {
       if (terminalsRef.current.has(pane.id)) {
+        pendingTerminalCreatesRef.current.delete(pane.id);
         const fitAddon = fitAddonsRef.current.get(pane.id);
         if (fitAddon) {
           // 使用 FitAddon 重新适应容器大小
@@ -741,79 +797,111 @@ export function useTmuxWorkspace({
         }
         return;
       }
-      const terminal = new Terminal({
-        cursorBlink: true,
-        cursorStyle: "block",
-        fontSize: 12,
-        fontFamily: "'Hack', 'Noto Sans SC', monospace",
-        fontWeight: "600",
-        convertEol: false,
-        allowProposedApi: true,
-        theme: solarizedDark,
-        scrollback: 100000,
-      });
-
-      // 加载 Unicode11 支持（必须在 open 之前）
-      const unicode11Addon = new Unicode11Addon();
-      terminal.loadAddon(unicode11Addon);
-      terminal.unicode.activeVersion = "11";
-
-      // 加载其他插件
-      terminal.loadAddon(new WebLinksAddon());
-
-      // 创建并加载 FitAddon
-      const fitAddon = new FitAddon();
-      terminal.loadAddon(fitAddon);
-
-      terminal.open(element);
-
-      if (useWebglRenderer) {
-        attachWebglRenderer(pane.id, terminal);
+      const existingRequest = pendingTerminalCreatesRef.current.get(pane.id);
+      if (existingRequest && paneElementsRef.current.get(pane.id) === element) {
+        return;
       }
+      terminalCreateSeqRef.current += 1;
+      const requestId = terminalCreateSeqRef.current;
+      pendingTerminalCreatesRef.current.set(pane.id, requestId);
 
-      // 使用 FitAddon 自动适应容器大小
-      setTimeout(() => {
-        fitAddon.fit();
-      }, 0);
+      void (async () => {
+        try {
+          const { Terminal, WebLinksAddon, Unicode11Addon, FitAddon } = await loadXtermCoreModules();
+          if (pendingTerminalCreatesRef.current.get(pane.id) !== requestId) {
+            return;
+          }
+          if (terminalsRef.current.has(pane.id)) {
+            pendingTerminalCreatesRef.current.delete(pane.id);
+            return;
+          }
+          if (paneElementsRef.current.get(pane.id) !== element) {
+            pendingTerminalCreatesRef.current.delete(pane.id);
+            return;
+          }
 
-      terminal.onData((data) => {
-        if (readOnlyRef.current) {
-          return;
+          const terminal = new Terminal({
+            cursorBlink: true,
+            cursorStyle: "block",
+            fontSize: 12,
+            fontFamily: "'Hack', 'Noto Sans SC', monospace",
+            fontWeight: "600",
+            convertEol: false,
+            allowProposedApi: true,
+            theme: solarizedDark,
+            scrollback: 100000,
+          });
+
+          // 加载 Unicode11 支持（必须在 open 之前）
+          const unicode11Addon = new Unicode11Addon();
+          terminal.loadAddon(unicode11Addon);
+          terminal.unicode.activeVersion = "11";
+
+          // 加载其他插件
+          terminal.loadAddon(new WebLinksAddon());
+
+          // 创建并加载 FitAddon
+          const fitAddon = new FitAddon();
+          terminal.loadAddon(fitAddon);
+
+          terminal.open(element);
+
+          if (useWebglRendererRef.current) {
+            attachWebglRenderer(pane.id, terminal);
+          }
+
+          // 使用 FitAddon 自动适应容器大小
+          setTimeout(() => {
+            fitAddon.fit();
+          }, 0);
+
+          terminal.onData((data) => {
+            if (readOnlyRef.current) {
+              return;
+            }
+            const sanitizedInput = sanitizeTmuxInput(data);
+            if (!sanitizedInput) {
+              return;
+            }
+            void sendTmuxInput(pane.id, sanitizedInput).catch((error) => {
+              console.error("Failed to send tmux input.", error);
+            });
+          });
+
+          terminalsRef.current.set(pane.id, terminal);
+          fitAddonsRef.current.set(pane.id, fitAddon);
+          pendingTerminalCreatesRef.current.delete(pane.id);
+
+          const sessionId = activeSessionRef.current?.id;
+          if (sessionId) {
+            const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
+            const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
+            const sessionSnapshots = getSessionSet(paneSnapshotAppliedRef.current, sessionId);
+            const buffered = sessionBuffers.get(pane.id);
+            if (buffered && buffered.length > 0) {
+              terminal.write(buffered);
+              sessionSnapshots.add(pane.id);
+            }
+            const cursor = sessionCursors.get(pane.id);
+            applyCursorToTerminal(terminal, cursor);
+          }
+          updateClientSize();
+        } catch (error) {
+          if (pendingTerminalCreatesRef.current.get(pane.id) === requestId) {
+            pendingTerminalCreatesRef.current.delete(pane.id);
+          }
+          console.error("Failed to load xterm modules.", error);
         }
-        const sanitizedInput = sanitizeTmuxInput(data);
-        if (!sanitizedInput) {
-          return;
-        }
-        void sendTmuxInput(pane.id, sanitizedInput).catch((error) => {
-          console.error("Failed to send tmux input.", error);
-        });
-      });
-
-      terminalsRef.current.set(pane.id, terminal);
-      fitAddonsRef.current.set(pane.id, fitAddon);
-
-      const sessionId = activeSessionRef.current?.id;
-      if (sessionId) {
-        const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
-        const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
-        const sessionSnapshots = getSessionSet(paneSnapshotAppliedRef.current, sessionId);
-        const buffered = sessionBuffers.get(pane.id);
-        if (buffered && buffered.length > 0) {
-          terminal.write(buffered);
-          sessionSnapshots.add(pane.id);
-        }
-        const cursor = sessionCursors.get(pane.id);
-        applyCursorToTerminal(terminal, cursor);
-      }
-      updateClientSize();
+      })();
     },
-    [attachWebglRenderer, updateClientSize, useWebglRenderer],
+    [attachWebglRenderer, updateClientSize],
   );
 
   const registerPane = useCallback(
     (paneId: string, element: HTMLDivElement | null) => {
       if (!element) {
         paneElementsRef.current.delete(paneId);
+        pendingTerminalCreatesRef.current.delete(paneId);
         return;
       }
       paneElementsRef.current.set(paneId, element);
@@ -834,6 +922,7 @@ export function useTmuxWorkspace({
         fitAddonsRef.current.delete(paneId);
         detachWebglRenderer(paneId);
         paneElementsRef.current.delete(paneId);
+        pendingTerminalCreatesRef.current.delete(paneId);
       }
     });
 
