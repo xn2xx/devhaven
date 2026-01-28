@@ -525,14 +525,12 @@ impl TerminalManager {
         if data.is_empty() {
             return Ok(());
         }
-        let mut args = Vec::with_capacity(4 + data.len());
+        let mut args = Vec::with_capacity(5);
         args.push("send-keys".to_string());
-        args.push("-H".to_string());
+        args.push("-l".to_string());
         args.push("-t".to_string());
         args.push(pane_id.to_string());
-        for byte in data.as_bytes() {
-            args.push(format!("{:02x}", byte));
-        }
+        args.push(data.to_string());
         run_tmux_status(&args)
     }
 
