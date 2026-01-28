@@ -242,6 +242,120 @@
   padding-bottom: 8px;
 }
 
+.cli-session-section {
+  padding-bottom: 12px;
+}
+
+.cli-session-header-status {
+  font-size: 11px;
+  color: var(--color-sidebar-secondary);
+}
+
+.cli-session-empty {
+  padding: 0 16px 8px;
+  font-size: 12px;
+  color: var(--color-sidebar-secondary);
+}
+
+.cli-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.cli-session-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-sidebar-title);
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.cli-session-row:hover {
+  background: var(--color-sidebar-hover);
+}
+
+.cli-session-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.cli-session-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cli-session-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.cli-session-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-sidebar-secondary);
+}
+
+.cli-session-dot.is-running {
+  background: var(--color-success);
+}
+
+.cli-session-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-session-status {
+  font-size: 11px;
+  color: var(--color-sidebar-secondary);
+}
+
+.cli-session-status.is-running {
+  color: var(--color-success);
+}
+
+.cli-session-path {
+  font-size: 11px;
+  color: var(--color-sidebar-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-session-message {
+  font-size: 11px;
+  color: var(--color-secondary-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cli-session-meta {
+  font-size: 11px;
+  color: var(--color-sidebar-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
 .list {
   display: flex;
   flex-direction: column;

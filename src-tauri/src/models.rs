@@ -159,3 +159,24 @@ pub struct BranchListItem {
     #[serde(rename = "isMain")]
     pub is_main: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexMessageCounts {
+    pub user: i32,
+    pub agent: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexSessionSummary {
+    pub id: String,
+    pub cwd: String,
+    pub cli_version: Option<String>,
+    pub started_at: i64,
+    pub last_activity_at: i64,
+    pub is_running: bool,
+    pub last_user_message: Option<String>,
+    pub last_agent_message: Option<String>,
+    pub message_counts: CodexMessageCounts,
+}

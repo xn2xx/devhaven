@@ -7,6 +7,7 @@ mod storage;
 mod system;
 mod terminal;
 mod time_utils;
+mod codex_sessions;
 
 use std::sync::Mutex;
 use std::time::Instant;
@@ -15,7 +16,10 @@ use tauri::Manager;
 use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::models::{AppStateFile, BranchListItem, GitDailyResult, GitIdentity, HeatmapCacheFile, Project};
+use crate::models::{
+    AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitIdentity, HeatmapCacheFile,
+    Project,
+};
 use crate::system::{EditorOpenParams, TerminalOpenParams};
 use crate::terminal::{
     TerminalManager, TerminalSessionInfo, TmuxPaneCursor, TmuxPaneInfo, TmuxSupportStatus, TmuxWindowInfo,
@@ -152,6 +156,11 @@ fn save_heatmap_cache(app: AppHandle, cache: HeatmapCacheFile) -> Result<(), Str
 #[tauri::command]
 fn get_tmux_support_status() -> TmuxSupportStatus {
     terminal::tmux_support_status()
+}
+
+#[tauri::command]
+fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
+    log_command_result("list_codex_sessions", || codex_sessions::list_sessions(&app))
 }
 
 #[tauri::command]
@@ -453,6 +462,7 @@ pub fn run() {
             load_heatmap_cache,
             save_heatmap_cache,
             get_tmux_support_status,
+            list_codex_sessions,
             create_terminal_session,
             close_terminal_session,
             switch_terminal_session,

@@ -9,11 +9,13 @@ import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import WorkspaceView from "./components/WorkspaceView";
 import RecycleBinModal from "./components/RecycleBinModal";
+import { useCodexSessions } from "./hooks/useCodexSessions";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
 import type { TerminalSessionInfo, TmuxSupportStatus, WorkspaceSession } from "./models/terminal";
+import type { CodexSessionSummary, CodexSessionView } from "./models/codex";
 import type { ColorData, Project, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
@@ -31,6 +33,33 @@ import {
 } from "./services/terminal";
 
 type AppMode = "gallery" | "workspace";
+
+function matchProjectByCwd(cwd: string, projects: Project[]): Project | null {
+  if (!cwd) {
+    return null;
+  }
+  let bestMatch: Project | null = null;
+  let bestLength = -1;
+  for (const project of projects) {
+    if (cwd.startsWith(project.path) && project.path.length > bestLength) {
+      bestMatch = project;
+      bestLength = project.path.length;
+    }
+  }
+  return bestMatch;
+}
+
+function buildCodexSessionViews(sessions: CodexSessionSummary[], projects: Project[]): CodexSessionView[] {
+  return sessions.map((session) => {
+    const project = matchProjectByCwd(session.cwd, projects);
+    return {
+      ...session,
+      projectId: project?.id ?? null,
+      projectName: project?.name ?? null,
+      projectPath: project?.path ?? null,
+    };
+  });
+}
 
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
@@ -109,6 +138,11 @@ function AppLayout() {
   const sidebarHeatmapData = useMemo(
     () => heatmapStore.getHeatmapData(HEATMAP_CONFIG.sidebar.days),
     [heatmapStore],
+  );
+  const codexSessionStore = useCodexSessions();
+  const codexSessionViews = useMemo(
+    () => buildCodexSessionViews(codexSessionStore.sessions, projects),
+    [codexSessionStore.sessions, projects],
   );
 
   const terminalSettings = appState.settings.terminalOpenTool;
@@ -544,6 +578,22 @@ function AppLayout() {
     [buildWorkspaceSession, showToast, tmuxSupport.reason, tmuxSupport.supported, workspaceSessions],
   );
 
+  const handleOpenCodexSession = useCallback(
+    (session: CodexSessionView) => {
+      if (!session.projectId) {
+        showToast("未能匹配到项目", "error");
+        return;
+      }
+      const project = projectMap.get(session.projectId);
+      if (!project) {
+        showToast("项目不存在或已移除", "error");
+        return;
+      }
+      void handleEnterWorkspace(project);
+    },
+    [handleEnterWorkspace, projectMap, showToast],
+  );
+
   const handleCloseWorkspaceSession = useCallback(
     async (sessionId: string) => {
       try {
@@ -624,6 +674,10 @@ function AppLayout() {
             onRefresh={refresh}
             onAddProjects={addProjects}
             isHeatmapLoading={heatmapStore.isLoading}
+            codexSessions={codexSessionViews}
+            codexSessionsLoading={codexSessionStore.isLoading}
+            codexSessionsError={codexSessionStore.error}
+            onOpenCodexSession={handleOpenCodexSession}
           />
           <MainContent
             projects={visibleProjects}

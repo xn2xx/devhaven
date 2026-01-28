@@ -2,9 +2,11 @@ import { useMemo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type { HeatmapData } from "../models/heatmap";
+import type { CodexSessionView } from "../models/codex";
 import { HEATMAP_CONFIG } from "../models/heatmap";
 import type { AppStateFile, Project, TagData } from "../models/types";
 import { colorDataToHex } from "../utils/colors";
+import CodexSessionSection from "./CodexSessionSection";
 import Heatmap from "./Heatmap";
 import DropdownMenu from "./DropdownMenu";
 import { IconEye, IconEyeOff, IconMoreHorizontal, IconPlusCircle, IconTrash } from "./Icons";
@@ -32,6 +34,10 @@ export type SidebarProps = {
   onRefresh: () => Promise<void>;
   onAddProjects: (paths: string[]) => Promise<void>;
   isHeatmapLoading: boolean;
+  codexSessions: CodexSessionView[];
+  codexSessionsLoading: boolean;
+  codexSessionsError: string | null;
+  onOpenCodexSession: (session: CodexSessionView) => void;
 };
 
 /** 左侧边栏，负责目录、标签与筛选入口。 */
@@ -57,6 +63,10 @@ export default function Sidebar({
   onRefresh,
   onAddProjects,
   isHeatmapLoading,
+  codexSessions,
+  codexSessionsLoading,
+  codexSessionsError,
+  onOpenCodexSession,
 }: SidebarProps) {
   const directoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -193,6 +203,15 @@ export default function Sidebar({
             <div className="heatmap-placeholder">暂无数据</div>
           )}
         </section>
+
+        <div className="section-divider" />
+
+        <CodexSessionSection
+          sessions={codexSessions}
+          isLoading={codexSessionsLoading}
+          error={codexSessionsError}
+          onOpenSession={onOpenCodexSession}
+        />
 
         <div className="section-divider" />
 
