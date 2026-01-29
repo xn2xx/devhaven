@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -9,7 +10,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter};
@@ -256,12 +257,25 @@ struct TmuxOutputPayload {
     data: String,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TmuxStatePayload {
     kind: String,
+    session_id: Option<String>,
     session_name: Option<String>,
     window_id: Option<String>,
+    window_name: Option<String>,
+    window_index: Option<String>,
+    pane_id: Option<String>,
+    client: Option<String>,
+    message: Option<String>,
+    buffer_name: Option<String>,
+    subscription_name: Option<String>,
+    subscription_value: Option<String>,
+    layout: Option<String>,
+    visible_layout: Option<String>,
+    window_flags: Option<String>,
+    reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -276,12 +290,13 @@ enum ControlModeState {
 struct ResponseBlock {
     id: String,
     number: String,
+    flags: String,
 }
 
 #[derive(Debug)]
 enum ControlCommandResult {
-    Ok,
-    Error(String),
+    Ok { output: String },
+    Error { message: String, output: String },
 }
 
 struct ControlCommand {
@@ -293,6 +308,7 @@ struct ControlParserState {
     mode: ControlModeState,
     recovery_pending: bool,
     current_response: Option<ResponseBlock>,
+    response_output: Vec<String>,
     pending_completion: Option<Sender<ControlCommandResult>>,
 }
 
@@ -302,6 +318,7 @@ impl ControlParserState {
             mode: ControlModeState::Recovery,
             recovery_pending: true,
             current_response: None,
+            response_output: Vec::new(),
             pending_completion: None,
         }
     }
@@ -319,6 +336,7 @@ struct TmuxControlClient {
     alive: Arc<AtomicBool>,
     parser_state: Arc<Mutex<ControlParserState>>,
     command_tx: Sender<ControlCommand>,
+    log: Option<Arc<Mutex<std::fs::File>>>,
 }
 
 impl TmuxControlClient {
@@ -783,8 +801,14 @@ impl TerminalManager {
         let result_rx = control.enqueue_command(command.to_string())?;
         let timeout = Duration::from_millis(CONTROL_COMMAND_TIMEOUT_MS + 200);
         match result_rx.recv_timeout(timeout) {
-            Ok(ControlCommandResult::Ok) => Ok(()),
-            Ok(ControlCommandResult::Error(message)) => Err(message),
+            Ok(ControlCommandResult::Ok { output }) => {
+                let _ = output;
+                Ok(())
+            }
+            Ok(ControlCommandResult::Error { message, output }) => {
+                let _ = output;
+                Err(message)
+            }
             Err(_) => Err("控制命令超时".to_string()),
         }
     }
@@ -1073,6 +1097,7 @@ fn spawn_tmux_control_client(app: AppHandle, session_id: &str) -> Result<TmuxCon
     let parser_state = Arc::new(Mutex::new(ControlParserState::new()));
     let (command_tx, command_rx) = mpsc::channel();
     let child = Arc::new(Mutex::new(child));
+    let log = init_tmux_control_log(session_id);
 
     spawn_tmux_reader(
         app,
@@ -1080,6 +1105,7 @@ fn spawn_tmux_control_client(app: AppHandle, session_id: &str) -> Result<TmuxCon
         Arc::clone(&alive),
         session_id.to_string(),
         Arc::clone(&parser_state),
+        log.clone(),
     );
     spawn_control_command_worker(
         writer,
@@ -1087,6 +1113,7 @@ fn spawn_tmux_control_client(app: AppHandle, session_id: &str) -> Result<TmuxCon
         Arc::clone(&parser_state),
         command_rx,
         Arc::clone(&child),
+        log.clone(),
     );
 
     Ok(TmuxControlClient {
@@ -1095,6 +1122,7 @@ fn spawn_tmux_control_client(app: AppHandle, session_id: &str) -> Result<TmuxCon
         alive,
         parser_state,
         command_tx,
+        log,
     })
 }
 
@@ -1104,6 +1132,7 @@ fn spawn_tmux_reader(
     alive: Arc<AtomicBool>,
     session_id: String,
     parser_state: Arc<Mutex<ControlParserState>>,
+    log: Option<Arc<Mutex<std::fs::File>>>,
 ) {
     thread::spawn(move || {
         let mut buffer = [0u8; 8192];
@@ -1121,6 +1150,7 @@ fn spawn_tmux_reader(
                     while let Some(pos) = pending.find('\n') {
                         let line = pending[..pos].trim_end_matches('\r').to_string();
                         pending = pending[pos + 1..].to_string();
+                        log_control_line(log.as_ref(), "RX", &line);
                         handle_tmux_line(&app, &line, &alive, &session_id, &parser_state);
                     }
                 }
@@ -1137,6 +1167,7 @@ fn spawn_control_command_worker(
     parser_state: Arc<Mutex<ControlParserState>>,
     command_rx: Receiver<ControlCommand>,
     child: Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>,
+    log: Option<Arc<Mutex<std::fs::File>>>,
 ) {
     thread::spawn(move || {
         while alive.load(Ordering::SeqCst) {
@@ -1145,29 +1176,32 @@ fn spawn_control_command_worker(
                     let completion_rx = match prepare_command_completion(&parser_state) {
                         Ok(receiver) => receiver,
                         Err(message) => {
-                            let _ = command
-                                .result_tx
-                                .send(ControlCommandResult::Error(message));
+                            let _ = command.result_tx.send(ControlCommandResult::Error {
+                                message,
+                                output: String::new(),
+                            });
                             mark_control_unhealthy(&alive, &child);
                             continue;
                         }
                     };
-                    if let Err(message) = write_control_command(&mut writer, &command.command) {
+                    if let Err(message) = write_control_command(&mut writer, &command.command, log.as_ref()) {
                         if let Ok(mut state) = parser_state.lock() {
                             state.pending_completion = None;
                             state.current_response = None;
+                            state.response_output.clear();
                             state.mode = ControlModeState::Recovery;
                             state.recovery_pending = true;
                         }
-                        let _ = command
-                            .result_tx
-                            .send(ControlCommandResult::Error(message));
+                        let _ = command.result_tx.send(ControlCommandResult::Error {
+                            message,
+                            output: String::new(),
+                        });
                         mark_control_unhealthy(&alive, &child);
                         continue;
                     }
                     let timeout = Duration::from_millis(CONTROL_COMMAND_TIMEOUT_MS);
                     let result = wait_for_command_completion(&parser_state, completion_rx, timeout);
-                    if matches!(result, ControlCommandResult::Error(ref message) if message == "控制命令超时") {
+                    if matches!(result, ControlCommandResult::Error { ref message, .. } if message == "控制命令超时") {
                         mark_control_unhealthy(&alive, &child);
                     }
                     let _ = command.result_tx.send(result);
@@ -1188,10 +1222,14 @@ fn prepare_command_completion(
             .lock()
             .map_err(|_| "控制通道状态不可用".to_string())?;
         if let Some(previous) = state.pending_completion.take() {
-            let _ = previous.send(ControlCommandResult::Error("控制命令被覆盖".to_string()));
+            let _ = previous.send(ControlCommandResult::Error {
+                message: "控制命令被覆盖".to_string(),
+                output: String::new(),
+            });
         }
         state.pending_completion = Some(completion_tx);
         state.current_response = None;
+        state.response_output.clear();
         state.mode = ControlModeState::InResponse;
     }
     Ok(completion_rx)
@@ -1205,13 +1243,18 @@ fn wait_for_command_completion(
     match completion_rx.recv_timeout(timeout) {
         Ok(result) => result,
         Err(_) => {
+            let mut output = String::new();
             if let Ok(mut state) = parser_state.lock() {
+                output = take_response_output(&mut state);
                 state.pending_completion = None;
                 state.current_response = None;
                 state.mode = ControlModeState::Recovery;
                 state.recovery_pending = true;
             }
-            ControlCommandResult::Error("控制命令超时".to_string())
+            ControlCommandResult::Error {
+                message: "控制命令超时".to_string(),
+                output,
+            }
         }
     }
 }
@@ -1219,7 +1262,9 @@ fn wait_for_command_completion(
 fn write_control_command(
     writer: &mut Box<dyn Write + Send>,
     command: &str,
+    log: Option<&Arc<Mutex<std::fs::File>>>,
 ) -> Result<(), String> {
+    log_control_line(log, "TX", command);
     writer
         .write_all(command.as_bytes())
         .map_err(|err| format!("控制命令写入失败: {err}"))?;
@@ -1274,30 +1319,114 @@ fn drain_utf8_bytes(buffer: &mut Vec<u8>) -> String {
 #[derive(Debug, PartialEq, Eq)]
 enum ControlLine {
     Output { pane_id: String, data: String },
-    LayoutChange { window_id: Option<String> },
-    WindowPaneChanged { window_id: Option<String> },
-    WindowsChanged,
-    SessionChanged { session_name: Option<String> },
+    State { payload: TmuxStatePayload },
     Begin { block: ResponseBlock },
     End { block: ResponseBlock, is_error: bool },
-    Exit,
+    Exit { reason: Option<String> },
     Unknown,
 }
 
 fn parse_response_block(line: &str) -> Option<ResponseBlock> {
     let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 3 {
+    if parts.len() < 4 {
         return None;
     }
     Some(ResponseBlock {
         id: parts[1].to_string(),
         number: parts[2].to_string(),
+        flags: parts[3].to_string(),
     })
 }
 
+fn new_state_payload(kind: &str) -> TmuxStatePayload {
+    TmuxStatePayload {
+        kind: kind.to_string(),
+        session_id: None,
+        session_name: None,
+        window_id: None,
+        window_name: None,
+        window_index: None,
+        pane_id: None,
+        client: None,
+        message: None,
+        buffer_name: None,
+        subscription_name: None,
+        subscription_value: None,
+        layout: None,
+        visible_layout: None,
+        window_flags: None,
+        reason: None,
+    }
+}
+
+fn split_control_meta_and_value(input: &str) -> (&str, &str) {
+    if let Some(index) = input.find(" : ") {
+        let left = &input[..index];
+        let right = &input[index + 3..];
+        return (left, right);
+    }
+    if let Some(index) = input.find(" :") {
+        let left = &input[..index];
+        let right = input[index + 2..].trim_start();
+        return (left, right);
+    }
+    (input, "")
+}
+
+fn take_response_output(state: &mut ControlParserState) -> String {
+    if state.response_output.is_empty() {
+        return String::new();
+    }
+    let output = state.response_output.join("\n");
+    state.response_output.clear();
+    output
+}
+
+fn tmux_control_log_path(session_id: &str) -> Option<PathBuf> {
+    let value = std::env::var("DEVHAVEN_TMUX_CONTROL_LOG").ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed == "1" || trimmed.eq_ignore_ascii_case("true") {
+        let mut path = std::env::temp_dir();
+        path.push(format!("devhaven-tmux-control-{session_id}.log"));
+        return Some(path);
+    }
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_dir() {
+        let mut path = candidate;
+        path.push(format!("devhaven-tmux-control-{session_id}.log"));
+        return Some(path);
+    }
+    Some(candidate)
+}
+
+fn init_tmux_control_log(session_id: &str) -> Option<Arc<Mutex<std::fs::File>>> {
+    let path = tmux_control_log_path(session_id)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .ok()?;
+    Some(Arc::new(Mutex::new(file)))
+}
+
+fn log_control_line(log: Option<&Arc<Mutex<std::fs::File>>>, direction: &str, line: &str) {
+    let Some(log) = log else {
+        return;
+    };
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    if let Ok(mut file) = log.lock() {
+        let _ = writeln!(file, "[{timestamp}] {direction} {line}");
+    }
+}
+
 fn parse_control_line(line: &str) -> ControlLine {
-    if line.starts_with("%output ") {
-        let rest = &line[8..];
+    if let Some(rest) = line.strip_prefix("%output ") {
         let mut parts = rest.splitn(2, ' ');
         let pane_id = parts.next().unwrap_or("").trim();
         let raw = parts.next().unwrap_or("");
@@ -1311,34 +1440,193 @@ fn parse_control_line(line: &str) -> ControlLine {
         };
     }
 
-    if line.starts_with("%layout-change") {
-        let window_id = line.split_whitespace().nth(1).map(|value| value.to_string());
-        return ControlLine::LayoutChange { window_id };
-    }
-
-    if line.starts_with("%window-pane-changed") {
-        let window_id = line.split_whitespace().nth(1).map(|value| value.to_string());
-        return ControlLine::WindowPaneChanged { window_id };
-    }
-
-    if line.starts_with("%window-add ")
-        || line.starts_with("%window-close ")
-        || line.starts_with("%window-renamed ")
-        || line.starts_with("%unlinked-window-add ")
-        || line.starts_with("%unlinked-window-close ")
-        || line.starts_with("%unlinked-window-renamed ")
-        || line.starts_with("%sessions-changed")
-    {
-        return ControlLine::WindowsChanged;
-    }
-
-    if line.starts_with("%session-changed ") || line.starts_with("%client-session-changed ") {
-        let session_name = if line.starts_with("%client-session-changed ") {
-            line.split_whitespace().nth(3).map(|value| value.to_string())
-        } else {
-            line.split_whitespace().nth(2).map(|value| value.to_string())
+    if let Some(rest) = line.strip_prefix("%extended-output ") {
+        let (meta, raw) = split_control_meta_and_value(rest);
+        let pane_id = meta.split_whitespace().next().unwrap_or("").trim();
+        if pane_id.is_empty() {
+            return ControlLine::Unknown;
+        }
+        let data = decode_tmux_output(raw);
+        return ControlLine::Output {
+            pane_id: pane_id.to_string(),
+            data,
         };
-        return ControlLine::SessionChanged { session_name };
+    }
+
+    if let Some(rest) = line.strip_prefix("%layout-change ") {
+        let mut parts = rest.split_whitespace();
+        let mut payload = new_state_payload("layout-change");
+        payload.window_id = parts.next().map(|value| value.to_string());
+        payload.layout = parts.next().map(|value| value.to_string());
+        payload.visible_layout = parts.next().map(|value| value.to_string());
+        payload.window_flags = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%window-pane-changed ") {
+        let mut parts = rest.split_whitespace();
+        let mut payload = new_state_payload("window-pane-changed");
+        payload.window_id = parts.next().map(|value| value.to_string());
+        payload.pane_id = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%window-add ") {
+        let mut payload = new_state_payload("window-add");
+        payload.window_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%window-close ") {
+        let mut payload = new_state_payload("window-close");
+        payload.window_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%window-renamed ") {
+        let mut parts = rest.splitn(2, ' ');
+        let mut payload = new_state_payload("window-renamed");
+        payload.window_id = parts.next().map(|value| value.to_string());
+        payload.window_name = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%unlinked-window-add ") {
+        let mut payload = new_state_payload("unlinked-window-add");
+        payload.window_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%unlinked-window-close ") {
+        let mut payload = new_state_payload("unlinked-window-close");
+        payload.window_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%unlinked-window-renamed ") {
+        let mut parts = rest.splitn(2, ' ');
+        let mut payload = new_state_payload("unlinked-window-renamed");
+        payload.window_id = parts.next().map(|value| value.to_string());
+        payload.window_name = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%session-changed ") {
+        let mut parts = rest.splitn(2, ' ');
+        let mut payload = new_state_payload("session-changed");
+        payload.session_id = parts.next().map(|value| value.to_string());
+        payload.session_name = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%client-session-changed ") {
+        let mut parts = rest.splitn(3, ' ');
+        let mut payload = new_state_payload("client-session-changed");
+        payload.client = parts.next().map(|value| value.to_string());
+        payload.session_id = parts.next().map(|value| value.to_string());
+        payload.session_name = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%session-renamed ") {
+        let name = rest.trim();
+        let mut payload = new_state_payload("session-renamed");
+        if !name.is_empty() {
+            payload.session_name = Some(name.to_string());
+        }
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%session-window-changed ") {
+        let mut parts = rest.split_whitespace();
+        let mut payload = new_state_payload("session-window-changed");
+        payload.session_id = parts.next().map(|value| value.to_string());
+        payload.window_id = parts.next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if line.starts_with("%sessions-changed") {
+        let payload = new_state_payload("sessions-changed");
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%client-detached ") {
+        let mut payload = new_state_payload("client-detached");
+        payload.client = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%pane-mode-changed ") {
+        let mut payload = new_state_payload("pane-mode-changed");
+        payload.pane_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%pause ") {
+        let mut payload = new_state_payload("pause");
+        payload.pane_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%continue ") {
+        let mut payload = new_state_payload("continue");
+        payload.pane_id = rest.split_whitespace().next().map(|value| value.to_string());
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%paste-buffer-changed ") {
+        let name = rest.trim();
+        let mut payload = new_state_payload("paste-buffer-changed");
+        if !name.is_empty() {
+            payload.buffer_name = Some(name.to_string());
+        }
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%paste-buffer-deleted ") {
+        let name = rest.trim();
+        let mut payload = new_state_payload("paste-buffer-deleted");
+        if !name.is_empty() {
+            payload.buffer_name = Some(name.to_string());
+        }
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%message ") {
+        let message = rest.trim();
+        let mut payload = new_state_payload("message");
+        if !message.is_empty() {
+            payload.message = Some(message.to_string());
+        }
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%config-error ") {
+        let message = rest.trim();
+        let mut payload = new_state_payload("config-error");
+        if !message.is_empty() {
+            payload.message = Some(message.to_string());
+        }
+        return ControlLine::State { payload };
+    }
+
+    if let Some(rest) = line.strip_prefix("%subscription-changed ") {
+        let (meta, value) = split_control_meta_and_value(rest);
+        let mut parts = meta.split_whitespace();
+        let name = parts.next().map(|value| value.to_string());
+        if name.is_none() {
+            return ControlLine::Unknown;
+        }
+        let mut payload = new_state_payload("subscription-changed");
+        payload.subscription_name = name;
+        payload.session_id = parts.next().map(|value| value.to_string());
+        payload.window_id = parts.next().map(|value| value.to_string());
+        payload.window_index = parts.next().map(|value| value.to_string());
+        payload.pane_id = parts.next().map(|value| value.to_string());
+        if !value.is_empty() {
+            payload.subscription_value = Some(value.to_string());
+        }
+        return ControlLine::State { payload };
     }
 
     if line.starts_with("%begin ") {
@@ -1366,7 +1654,12 @@ fn parse_control_line(line: &str) -> ControlLine {
     }
 
     if line.starts_with("%exit") {
-        return ControlLine::Exit;
+        let reason = line
+            .strip_prefix("%exit")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        return ControlLine::Exit { reason };
     }
 
     ControlLine::Unknown
@@ -1379,10 +1672,6 @@ fn handle_tmux_line(
     session_id: &str,
     parser_state: &Arc<Mutex<ControlParserState>>,
 ) {
-    if line.is_empty() {
-        return;
-    }
-
     let mut output_payload: Option<TmuxOutputPayload> = None;
     let mut state_payload: Option<TmuxStatePayload> = None;
     let mut completion_tx: Option<Sender<ControlCommandResult>> = None;
@@ -1407,74 +1696,108 @@ fn handle_tmux_line(
             state.mode = ControlModeState::Idle;
         }
 
-        match parse_control_line(line) {
-            ControlLine::Output { pane_id, data } => {
-                output_payload = Some(TmuxOutputPayload {
-                    session_id: session_id.to_string(),
-                    pane_id,
-                    data,
-                });
-            }
-            ControlLine::LayoutChange { window_id } => {
-                state_payload = Some(TmuxStatePayload {
-                    kind: "layout-change".to_string(),
-                    session_name: None,
-                    window_id,
-                });
-            }
-            ControlLine::WindowPaneChanged { window_id } => {
-                state_payload = Some(TmuxStatePayload {
-                    kind: "window-pane-changed".to_string(),
-                    session_name: None,
-                    window_id,
-                });
-            }
-            ControlLine::WindowsChanged => {
-                state_payload = Some(TmuxStatePayload {
-                    kind: "windows-changed".to_string(),
-                    session_name: None,
-                    window_id: None,
-                });
-            }
-            ControlLine::SessionChanged { session_name } => {
-                state_payload = Some(TmuxStatePayload {
-                    kind: "session-changed".to_string(),
-                    session_name,
-                    window_id: None,
-                });
-            }
-            ControlLine::Begin { block } => {
-                state.current_response = Some(block);
-                state.mode = ControlModeState::InResponse;
-            }
-            ControlLine::End { block, is_error } => {
-                let should_complete = match &state.current_response {
-                    Some(current) => current == &block,
-                    None => true,
-                };
-                if should_complete {
-                    state.current_response = None;
-                    state.mode = ControlModeState::Idle;
-                    completion_tx = state.pending_completion.take();
-                    completion_result = Some(if is_error {
-                        ControlCommandResult::Error(format!("控制命令失败: {line}"))
-                    } else {
-                        ControlCommandResult::Ok
-                    });
-                }
-            }
-            ControlLine::Exit => {
+        if state.current_response.is_some() {
+            if line.starts_with("%exit") {
+                let output = take_response_output(&mut state);
+                let reason = line
+                    .strip_prefix("%exit")
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string());
                 state.mode = ControlModeState::Exiting;
                 completion_tx = state.pending_completion.take();
-                completion_result = Some(ControlCommandResult::Error("控制通道已退出".to_string()));
-                state_payload = Some(TmuxStatePayload {
-                    kind: "client-exit".to_string(),
-                    session_name: None,
-                    window_id: None,
+                completion_result = Some(ControlCommandResult::Error {
+                    message: "控制通道已退出".to_string(),
+                    output,
                 });
+                let mut payload = new_state_payload("client-exit");
+                payload.reason = reason;
+                state_payload = Some(payload);
                 should_exit = true;
+            } else if line.starts_with("%end ") || line.starts_with("%error ") {
+                let is_error = line.starts_with("%error ");
+                if let Some(block) = parse_response_block(line) {
+                    let should_complete = match &state.current_response {
+                        Some(current) => current == &block,
+                        None => true,
+                    };
+                    if should_complete {
+                        let output = take_response_output(&mut state);
+                        state.current_response = None;
+                        state.mode = ControlModeState::Idle;
+                        completion_tx = state.pending_completion.take();
+                        completion_result = Some(if is_error {
+                            ControlCommandResult::Error {
+                                message: format!("控制命令失败: {line}"),
+                                output,
+                            }
+                        } else {
+                            ControlCommandResult::Ok { output }
+                        });
+                    } else {
+                        state.response_output.push(line.to_string());
+                    }
+                } else {
+                    state.response_output.push(line.to_string());
+                }
+            } else {
+                state.response_output.push(line.to_string());
             }
-            ControlLine::Unknown => {}
+        } else {
+            if line.is_empty() {
+                return;
+            }
+            match parse_control_line(line) {
+                ControlLine::Output { pane_id, data } => {
+                    output_payload = Some(TmuxOutputPayload {
+                        session_id: session_id.to_string(),
+                        pane_id,
+                        data,
+                    });
+                }
+                ControlLine::State { payload } => {
+                    state_payload = Some(payload);
+                }
+                ControlLine::Begin { block } => {
+                    state.current_response = Some(block);
+                    state.response_output.clear();
+                    state.mode = ControlModeState::InResponse;
+                }
+                ControlLine::End { block, is_error } => {
+                    let should_complete = match &state.current_response {
+                        Some(current) => current == &block,
+                        None => true,
+                    };
+                    if should_complete {
+                        let output = take_response_output(&mut state);
+                        state.current_response = None;
+                        state.mode = ControlModeState::Idle;
+                        completion_tx = state.pending_completion.take();
+                        completion_result = Some(if is_error {
+                            ControlCommandResult::Error {
+                                message: format!("控制命令失败: {line}"),
+                                output,
+                            }
+                        } else {
+                            ControlCommandResult::Ok { output }
+                        });
+                    }
+                }
+                ControlLine::Exit { reason } => {
+                    let output = take_response_output(&mut state);
+                    state.mode = ControlModeState::Exiting;
+                    completion_tx = state.pending_completion.take();
+                    completion_result = Some(ControlCommandResult::Error {
+                        message: "控制通道已退出".to_string(),
+                        output,
+                    });
+                    let mut payload = new_state_payload("client-exit");
+                    payload.reason = reason;
+                    state_payload = Some(payload);
+                    should_exit = true;
+                }
+                ControlLine::Unknown => {}
+            }
         }
     }
 
@@ -1544,15 +1867,16 @@ mod tests {
 
     #[test]
     fn parse_control_line_handles_begin_end_error() {
-        let begin = parse_control_line("%begin 123 0");
-        let end = parse_control_line("%end 123 0");
-        let error = parse_control_line("%error 123 0");
+        let begin = parse_control_line("%begin 123 0 1");
+        let end = parse_control_line("%end 123 0 1");
+        let error = parse_control_line("%error 123 0 1");
         assert_eq!(
             begin,
             ControlLine::Begin {
                 block: ResponseBlock {
                     id: "123".to_string(),
                     number: "0".to_string(),
+                    flags: "1".to_string(),
                 }
             }
         );
@@ -1562,6 +1886,7 @@ mod tests {
                 block: ResponseBlock {
                     id: "123".to_string(),
                     number: "0".to_string(),
+                    flags: "1".to_string(),
                 },
                 is_error: false,
             }
@@ -1572,6 +1897,7 @@ mod tests {
                 block: ResponseBlock {
                     id: "123".to_string(),
                     number: "0".to_string(),
+                    flags: "1".to_string(),
                 },
                 is_error: true,
             }
@@ -1581,9 +1907,47 @@ mod tests {
     #[test]
     fn parse_control_line_handles_session_changed() {
         let line = "%client-session-changed 0 1 devhaven";
-        let expected = ControlLine::SessionChanged {
-            session_name: Some("devhaven".to_string()),
+        let mut payload = new_state_payload("client-session-changed");
+        payload.client = Some("0".to_string());
+        payload.session_id = Some("1".to_string());
+        payload.session_name = Some("devhaven".to_string());
+        let expected = ControlLine::State { payload };
+        assert_eq!(parse_control_line(line), expected);
+    }
+
+    #[test]
+    fn parse_control_line_handles_extended_output() {
+        let line = "%extended-output %1 10 : hello\\040world";
+        let expected = ControlLine::Output {
+            pane_id: "%1".to_string(),
+            data: "hello world".to_string(),
         };
+        assert_eq!(parse_control_line(line), expected);
+    }
+
+    #[test]
+    fn parse_control_line_handles_layout_change() {
+        let line = "%layout-change @2 123x45,0,0{1x1,0,0,0} 123x45,0,0{1x1,0,0,0} *-";
+        let mut payload = new_state_payload("layout-change");
+        payload.window_id = Some("@2".to_string());
+        payload.layout = Some("123x45,0,0{1x1,0,0,0}".to_string());
+        payload.visible_layout = Some("123x45,0,0{1x1,0,0,0}".to_string());
+        payload.window_flags = Some("*-".to_string());
+        let expected = ControlLine::State { payload };
+        assert_eq!(parse_control_line(line), expected);
+    }
+
+    #[test]
+    fn parse_control_line_handles_subscription_changed() {
+        let line = "%subscription-changed foo $1 @2 3 %4 : bar baz";
+        let mut payload = new_state_payload("subscription-changed");
+        payload.subscription_name = Some("foo".to_string());
+        payload.session_id = Some("$1".to_string());
+        payload.window_id = Some("@2".to_string());
+        payload.window_index = Some("3".to_string());
+        payload.pane_id = Some("%4".to_string());
+        payload.subscription_value = Some("bar baz".to_string());
+        let expected = ControlLine::State { payload };
         assert_eq!(parse_control_line(line), expected);
     }
 }
