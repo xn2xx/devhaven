@@ -126,6 +126,18 @@ function AppLayout() {
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.body.classList.toggle("is-monitor-view", isMonitorView);
+    document.documentElement.classList.toggle("is-monitor-view", isMonitorView);
+    return () => {
+      document.body.classList.remove("is-monitor-view");
+      document.documentElement.classList.remove("is-monitor-view");
+    };
+  }, [isMonitorView]);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
   const gitDailyRefreshRef = useRef<string | null>(null);
@@ -667,7 +679,7 @@ function AppLayout() {
 
   if (isMonitorView) {
     return (
-      <div className="app-root is-workspace">
+      <div className="app-root is-monitor">
         <MonitorWindow
           sessions={runningCodexSessionViews}
           isLoading={codexSessionStore.isLoading}
