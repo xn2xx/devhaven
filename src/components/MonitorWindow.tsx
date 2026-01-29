@@ -32,10 +32,19 @@ export default function MonitorWindow({
   const pollingRef = useRef(false);
   const COLLAPSE_DELAY = 120;
   const HOVER_POLL_INTERVAL = 120;
+  const canExpand = isLoading || sessions.length > 0;
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
   }, [isExpanded]);
+
+  useEffect(() => {
+    if (canExpand || !isExpandedRef.current) {
+      return;
+    }
+    cancelCollapse();
+    collapseWindow();
+  }, [canExpand]);
 
   const cancelCollapse = () => {
     if (collapseTimerRef.current !== null) {
@@ -139,6 +148,9 @@ export default function MonitorWindow({
   };
 
   const handleMouseEnter = () => {
+    if (!canExpand) {
+      return;
+    }
     expandWindow();
   };
 
@@ -195,7 +207,9 @@ export default function MonitorWindow({
       const overBubble =
         isExpandedRef.current && bubbleRect ? isPointInRect(bubbleRect, localX, localY) : false;
       if (overMascot) {
-        expandWindow();
+        if (canExpand) {
+          expandWindow();
+        }
         return;
       }
       if (isExpandedRef.current && overBubble) {

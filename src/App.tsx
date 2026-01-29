@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { emitTo, listen } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import "./App.css";
 import Sidebar from "./components/Sidebar";
@@ -35,6 +37,17 @@ import {
 } from "./services/terminal";
 
 type AppMode = "gallery" | "workspace";
+
+const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
+const MAIN_WINDOW_LABEL = "main";
+
+type MonitorOpenSessionPayload = {
+  sessionId: string;
+  projectId: string | null;
+  projectPath: string | null;
+  projectName: string | null;
+  cwd: string;
+};
 
 function matchProjectByCwd(cwd: string, projects: Project[]): Project | null {
   if (!cwd) {
@@ -143,6 +156,7 @@ function AppLayout() {
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
   const gitIdentitySignatureRef = useRef<string | null>(null);
+  const pendingMonitorSessionRef = useRef<MonitorOpenSessionPayload | null>(null);
   const recycleBinPaths = appState.recycleBin ?? [];
   const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
   const recycleBinCount = recycleBinPaths.length;
@@ -624,6 +638,85 @@ function AppLayout() {
     [handleEnterWorkspace, projectMap, showToast],
   );
 
+  const resolveProjectFromPayload = useCallback(
+    (payload: MonitorOpenSessionPayload) =>
+      (payload.projectId ? projectMap.get(payload.projectId) ?? null : null) ??
+      (payload.projectPath ? projects.find((item) => item.path === payload.projectPath) ?? null : null) ??
+      (payload.projectName ? projects.find((item) => item.name === payload.projectName) ?? null : null) ??
+      (payload.cwd ? matchProjectByCwd(payload.cwd, projects) : null),
+    [projectMap, projects],
+  );
+
+  const handleMonitorOpenCodexSession = useCallback(async (session: CodexSessionView) => {
+    try {
+      const mainWindow = await WebviewWindow.getByLabel(MAIN_WINDOW_LABEL);
+      if (mainWindow) {
+        await mainWindow.show().catch(() => undefined);
+        await mainWindow.setFocus().catch(() => undefined);
+      }
+      await emitTo<MonitorOpenSessionPayload>(MAIN_WINDOW_LABEL, MONITOR_OPEN_SESSION_EVENT, {
+        sessionId: session.id,
+        projectId: session.projectId,
+        projectPath: session.projectPath,
+        projectName: session.projectName,
+        cwd: session.cwd,
+      });
+    } catch (error) {
+      console.error("从悬浮窗跳转项目失败。", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isMonitorView) {
+      return;
+    }
+    let unlisten: (() => void) | null = null;
+    const registerListener = async () => {
+      try {
+        unlisten = await listen<MonitorOpenSessionPayload>(MONITOR_OPEN_SESSION_EVENT, (event) => {
+          const payload = event.payload;
+          const project = resolveProjectFromPayload(payload);
+          if (!project) {
+            if (isLoading) {
+              const pending = pendingMonitorSessionRef.current;
+              if (!pending || pending.sessionId !== payload.sessionId) {
+                showToast("项目加载中，稍后自动进入");
+              }
+              pendingMonitorSessionRef.current = payload;
+              return;
+            }
+            showToast("项目不存在或已移除", "error");
+            return;
+          }
+          void handleEnterWorkspace(project);
+        });
+      } catch (error) {
+        console.error("监听悬浮窗跳转事件失败。", error);
+      }
+    };
+    void registerListener();
+    return () => {
+      unlisten?.();
+    };
+  }, [handleEnterWorkspace, isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
+
+  useEffect(() => {
+    if (isMonitorView || isLoading) {
+      return;
+    }
+    const pending = pendingMonitorSessionRef.current;
+    if (!pending) {
+      return;
+    }
+    const project = resolveProjectFromPayload(pending);
+    pendingMonitorSessionRef.current = null;
+    if (!project) {
+      showToast("项目不存在或已移除", "error");
+      return;
+    }
+    void handleEnterWorkspace(project);
+  }, [handleEnterWorkspace, isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
+
   const handleCloseWorkspaceSession = useCallback(
     async (sessionId: string) => {
       try {
@@ -684,7 +777,7 @@ function AppLayout() {
           sessions={runningCodexSessionViews}
           isLoading={codexSessionStore.isLoading}
           error={codexSessionStore.error}
-          onOpenSession={handleOpenCodexSession}
+          onOpenSession={handleMonitorOpenCodexSession}
         />
       </div>
     );
