@@ -41,7 +41,7 @@ export default function CodexSessionSection({
       {error ? (
         <div className="cli-session-empty">{`会话读取失败：${error}`}</div>
       ) : sessions.length === 0 ? (
-        <div className="cli-session-empty">{resolvedEmptyText}</div>
+        resolvedEmptyText ? <div className="cli-session-empty">{resolvedEmptyText}</div> : null
       ) : (
         <div className="cli-session-list">
           {sessions.map((session) => {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { MONITOR_COLLAPSED_SIZE } from "../constants/monitorWindow";
 
 const MONITOR_WINDOW_LABEL = "cli-monitor";
 const MONITOR_WINDOW_URL = "index.html?view=monitor";
@@ -32,18 +33,19 @@ export async function openMonitorWindow(): Promise<void> {
 
   const window = new WebviewWindow(MONITOR_WINDOW_LABEL, {
     url: MONITOR_WINDOW_URL,
-    title: "CLI 监控",
-    width: 560,
-    height: 360,
-    minWidth: 360,
-    minHeight: 240,
-    resizable: true,
+    title: "悬浮监控",
+    width: MONITOR_COLLAPSED_SIZE.width,
+    height: MONITOR_COLLAPSED_SIZE.height,
+    resizable: false,
     decorations: false,
     visible: false,
     focus: true,
     center: true,
     alwaysOnTop: true,
     visibleOnAllWorkspaces: true,
+    transparent: true,
+    shadow: false,
+    skipTaskbar: true,
   });
 
   window.once("tauri://created", async () => {
