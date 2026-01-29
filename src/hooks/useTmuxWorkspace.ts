@@ -240,6 +240,21 @@ export function useTmuxWorkspace({
     paneSnapshotPendingRef.current.clear();
   }, []);
 
+  const destroyAllTerminals = useCallback(() => {
+    terminalsRef.current.forEach((terminal, paneId) => {
+      terminal.dispose();
+      const webglAddon = webglAddonsRef.current.get(paneId);
+      if (webglAddon) {
+        webglAddon.dispose();
+      }
+    });
+    webglAddonsRef.current.clear();
+    terminalsRef.current.clear();
+    fitAddonsRef.current.clear();
+    pendingTerminalCreatesRef.current.clear();
+  }, []);
+
+
   useEffect(() => {
     activeSessionRef.current = activeSession;
   }, [activeSession]);
@@ -612,11 +627,19 @@ export function useTmuxWorkspace({
 
     const sessionId = activeSession?.id ?? null;
     if (lastSessionIdRef.current !== sessionId) {
+      const previousSessionId = lastSessionIdRef.current;
       lastSessionIdRef.current = sessionId;
       lastClientSizeRef.current = null;
       pendingClientSizeRef.current = null;
       lastContainerSizeRef.current = null;
       forceSnapshotSessionRef.current = sessionId;
+      destroyAllTerminals();
+      if (previousSessionId && previousSessionId !== sessionId) {
+        clearSessionCaches(previousSessionId);
+      }
+      if (sessionId) {
+        clearSessionCaches(sessionId);
+      }
     }
 
     if (!activeSession) {
@@ -635,7 +658,7 @@ export function useTmuxWorkspace({
         setStatus("error");
       }
     })();
-  }, [activeSession, clearRefreshRetry, isVisible, refreshState]);
+  }, [activeSession, clearRefreshRetry, clearSessionCaches, destroyAllTerminals, isVisible, refreshState]);
 
   const updateClientSize = useCallback(() => {
     if (resizeFrameRef.current !== null) {

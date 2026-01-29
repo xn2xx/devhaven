@@ -35,8 +35,21 @@ export type TmuxSupportStatus = {
 
 export type TmuxStatePayload = {
   kind: string;
+  sessionId?: string | null;
   sessionName?: string | null;
   windowId?: string | null;
+  windowName?: string | null;
+  windowIndex?: string | null;
+  paneId?: string | null;
+  client?: string | null;
+  message?: string | null;
+  bufferName?: string | null;
+  subscriptionName?: string | null;
+  subscriptionValue?: string | null;
+  layout?: string | null;
+  visibleLayout?: string | null;
+  windowFlags?: string | null;
+  reason?: string | null;
 };
 
 export type TmuxOutputPayload = {
