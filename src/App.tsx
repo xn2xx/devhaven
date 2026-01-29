@@ -27,7 +27,7 @@ import { buildGitIdentitySignature } from "./utils/gitIdentity";
 import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
-import { copyToClipboard, openInTerminal } from "./services/system";
+import { copyToClipboard, openInTerminal, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
 import {
   closeTerminalSession,
@@ -157,6 +157,8 @@ function AppLayout() {
   const gitDailyUpdatingRef = useRef(false);
   const gitIdentitySignatureRef = useRef<string | null>(null);
   const pendingMonitorSessionRef = useRef<MonitorOpenSessionPayload | null>(null);
+  const codexSessionSnapshotRef = useRef<Map<string, CodexSessionView>>(new Map());
+  const codexSessionSnapshotReadyRef = useRef(false);
   const recycleBinPaths = appState.recycleBin ?? [];
   const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
   const recycleBinCount = recycleBinPaths.length;
@@ -716,6 +718,54 @@ function AppLayout() {
     }
     void handleEnterWorkspace(project);
   }, [handleEnterWorkspace, isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
+
+  useEffect(() => {
+    if (isMonitorView || codexSessionStore.isLoading) {
+      return;
+    }
+    const previousSessions = codexSessionSnapshotRef.current;
+    const nextSessions = new Map(codexSessionViews.map((session) => [session.id, session]));
+    if (codexSessionSnapshotReadyRef.current) {
+      for (const [sessionId, previousSession] of previousSessions) {
+        if (nextSessions.has(sessionId)) {
+          continue;
+        }
+        const lastEventType = previousSession.lastEventType;
+        const isAgentCompleted =
+          lastEventType === "agent" ||
+          (!lastEventType &&
+            previousSession.messageCounts.agent > 0 &&
+            previousSession.messageCounts.agent >= previousSession.messageCounts.user &&
+            Boolean(previousSession.lastAgentMessage));
+        if (!isAgentCompleted) {
+          continue;
+        }
+        const project = resolveProjectFromPayload({
+          sessionId: previousSession.id,
+          projectId: previousSession.projectId,
+          projectPath: previousSession.projectPath,
+          projectName: previousSession.projectName,
+          cwd: previousSession.cwd,
+        });
+        if (!project) {
+          showToast("Codex 已完成，但未匹配到项目", "error");
+          continue;
+        }
+        showToast(`Codex 已完成：${project.name}`);
+        void sendSystemNotification("Codex 已完成", `已跳转到 ${project.name}`);
+        void handleEnterWorkspace(project);
+      }
+    }
+    codexSessionSnapshotRef.current = nextSessions;
+    codexSessionSnapshotReadyRef.current = true;
+  }, [
+    codexSessionStore.isLoading,
+    codexSessionViews,
+    handleEnterWorkspace,
+    isMonitorView,
+    resolveProjectFromPayload,
+    showToast,
+  ]);
 
   const handleCloseWorkspaceSession = useCallback(
     async (sessionId: string) => {

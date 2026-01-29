@@ -171,6 +171,13 @@ pub struct CodexMessageCounts {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexLastEventType {
+    User,
+    Agent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexSessionSummary {
     pub id: String,
@@ -182,4 +189,5 @@ pub struct CodexSessionSummary {
     pub last_user_message: Option<String>,
     pub last_agent_message: Option<String>,
     pub message_counts: CodexMessageCounts,
+    pub last_event_type: Option<CodexLastEventType>,
 }

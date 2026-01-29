@@ -13,6 +13,7 @@ export type CodexSessionSummary = {
   lastUserMessage: string | null;
   lastAgentMessage: string | null;
   messageCounts: CodexMessageCounts;
+  lastEventType?: "user" | "agent" | null;
 };
 
 export type CodexSessionView = CodexSessionSummary & {

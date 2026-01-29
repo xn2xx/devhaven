@@ -28,3 +28,23 @@ export async function copyToClipboard(content: string) {
   }
   await invoke("copy_to_clipboard", { content });
 }
+
+/** 发送系统通知。 */
+export async function sendSystemNotification(title: string, body?: string) {
+  if (typeof window === "undefined" || typeof Notification === "undefined") {
+    return;
+  }
+  try {
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== "granted") {
+      return;
+    }
+    const options = body ? { body } : undefined;
+    new Notification(title, options);
+  } catch (error) {
+    console.warn("系统通知发送失败。", error);
+  }
+}

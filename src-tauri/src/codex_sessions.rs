@@ -15,7 +15,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::models::{CodexMessageCounts, CodexSessionSummary};
+use crate::models::{CodexLastEventType, CodexMessageCounts, CodexSessionSummary};
 
 const CODEX_SESSIONS_DIR: &str = ".codex/sessions";
 const MAX_TAIL_LINES: usize = 200;
@@ -295,6 +295,8 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
     let mut last_agent_message: Option<String> = None;
     let mut last_user_ts: i64 = 0;
     let mut last_agent_ts: i64 = 0;
+    let mut last_event_at: i64 = 0;
+    let mut last_event_type: Option<CodexLastEventType> = None;
     let mut counts = CodexMessageCounts { user: 0, agent: 0 };
 
     for line in tail_lines {
@@ -330,6 +332,10 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
                         last_user_message = Some(text);
                     }
                 }
+                if timestamp >= last_event_at {
+                    last_event_at = timestamp;
+                    last_event_type = Some(CodexLastEventType::User);
+                }
             }
             Some("agent_message") => {
                 counts.agent += 1;
@@ -338,6 +344,10 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
                         last_agent_ts = timestamp;
                         last_agent_message = Some(text);
                     }
+                }
+                if timestamp >= last_event_at {
+                    last_event_at = timestamp;
+                    last_event_type = Some(CodexLastEventType::Agent);
                 }
             }
             _ => {}
@@ -363,6 +373,7 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
         last_user_message,
         last_agent_message,
         message_counts: counts,
+        last_event_type,
     })
 }
 
