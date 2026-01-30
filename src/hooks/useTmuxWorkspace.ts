@@ -35,6 +35,7 @@ import {
   resizeTmuxPane,
   resizeTmuxClient,
 } from "../services/terminal";
+import { copyToClipboard } from "../services/system";
 import { solarizedDark } from "../styles/terminal-themes";
 import "@xterm/xterm/css/xterm.css";
 
@@ -982,6 +983,19 @@ export function useTmuxWorkspace({
           terminal.loadAddon(fitAddon);
 
           terminal.open(element);
+
+          terminal.attachCustomKeyEventHandler((event) => {
+            if (event.key === "Meta" || event.code === "MetaLeft" || event.code === "MetaRight") {
+              return false;
+            }
+            if (event.metaKey && !event.ctrlKey && !event.altKey && event.code === "KeyC" && terminal.hasSelection()) {
+              void copyToClipboard(terminal.getSelection()).catch((error) => {
+                console.warn("复制终端选区失败。", error);
+              });
+              return false;
+            }
+            return true;
+          });
 
           if (useWebglRendererRef.current) {
             attachWebglRenderer(pane.id, terminal);
