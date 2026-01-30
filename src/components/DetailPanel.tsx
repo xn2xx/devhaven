@@ -6,6 +6,7 @@ import { swiftDateToJsDate } from "../models/types";
 import { readProjectNotes, writeProjectNotes } from "../services/notes";
 import { listBranches } from "../services/git";
 import { IconX } from "./Icons";
+import ProjectMarkdownSection from "./ProjectMarkdownSection";
 
 export type DetailPanelProps = {
   project: Project | null;
@@ -229,6 +230,11 @@ export default function DetailPanel({
               onChange={(event) => setNotes(event.target.value)}
               placeholder="记录项目备注"
             />
+          </section>
+
+          <section className="detail-section">
+            <div className="detail-section-title">Markdown</div>
+            <ProjectMarkdownSection project={project} />
           </section>
 
         </div>

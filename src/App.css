@@ -372,6 +372,58 @@
   gap: var(--tag-row-gap);
 }
 
+.markdown-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+.markdown-tree-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.markdown-tree-children {
+  display: flex;
+  flex-direction: column;
+}
+
+.markdown-row {
+  justify-content: flex-start;
+  gap: 6px;
+  color: var(--color-sidebar-secondary);
+}
+
+.markdown-row.is-folder {
+  color: var(--color-sidebar-title);
+  font-weight: 600;
+}
+
+.markdown-row.is-file {
+  color: var(--color-sidebar-secondary);
+}
+
+.markdown-row.is-selected {
+  background: var(--color-sidebar-selected);
+  color: var(--color-text);
+}
+
+.markdown-caret {
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--color-sidebar-secondary);
+}
+
+.markdown-label {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tag-label {
   display: inline-flex;
   align-items: center;
@@ -800,6 +852,75 @@
 .detail-notes {
   min-height: 120px;
   resize: vertical;
+}
+
+.detail-markdown-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-markdown-list {
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-secondary-background);
+  padding: 4px 0;
+}
+
+.detail-markdown-preview {
+  min-height: 140px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-secondary-background);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.markdown-content > * {
+  margin: 0 0 8px;
+}
+
+.markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content h1 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.markdown-content h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.markdown-content h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.markdown-content pre {
+  margin: 0 0 8px;
+  padding: 8px;
+  background: var(--color-sidebar-directory-bg);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.markdown-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 11px;
+}
+
+.markdown-content a {
+  color: var(--color-accent);
 }
 
 .detail-muted {

@@ -114,6 +114,13 @@ pub struct Project {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownFileEntry {
+    pub path: String,
+    pub absolute_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitDailyResult {
     pub path: String,
     #[serde(rename = "gitDaily")]

@@ -177,8 +177,6 @@ export default function Sidebar({
           </div>
         </section>
 
-        <div className="section-divider" />
-
         <section className="sidebar-section">
           <div className="section-header">
             <span className="section-title">开发热力图</span>

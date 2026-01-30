@@ -1,6 +1,7 @@
 mod models;
 mod git_daily;
 mod git_ops;
+mod markdown;
 mod notes;
 mod project_loader;
 mod storage;
@@ -18,7 +19,7 @@ use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
     AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitIdentity, HeatmapCacheFile,
-    Project,
+    MarkdownFileEntry, Project,
 };
 use crate::system::{EditorOpenParams, TerminalOpenParams};
 use crate::terminal::{
@@ -153,6 +154,28 @@ fn write_project_notes(path: String, notes: Option<String>) -> Result<(), String
         let note_len = notes.as_ref().map(|value| value.len()).unwrap_or(0);
         log::info!("write_project_notes path={} size={}", path, note_len);
         notes::write_notes(&path, notes)
+    })
+}
+
+#[tauri::command]
+/// 列出项目内的 Markdown 文件。
+fn list_project_markdown_files(path: String) -> Result<Vec<MarkdownFileEntry>, String> {
+    log_command_result("list_project_markdown_files", || {
+        log::info!("list_project_markdown_files path={}", path);
+        markdown::list_markdown_files(&path)
+    })
+}
+
+#[tauri::command]
+/// 读取项目内指定 Markdown 内容。
+fn read_project_markdown_file(path: String, relative_path: String) -> Result<String, String> {
+    log_command_result("read_project_markdown_file", || {
+        log::info!(
+            "read_project_markdown_file path={} file={}",
+            path,
+            relative_path
+        );
+        markdown::read_markdown_file(&path, &relative_path)
     })
 }
 
@@ -490,6 +513,8 @@ pub fn run() {
             copy_to_clipboard,
             read_project_notes,
             write_project_notes,
+            list_project_markdown_files,
+            read_project_markdown_file,
             collect_git_daily,
             load_heatmap_cache,
             save_heatmap_cache,
