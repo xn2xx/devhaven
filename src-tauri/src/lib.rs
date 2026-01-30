@@ -424,11 +424,12 @@ fn resize_tmux_client(
 fn capture_tmux_pane(
     state: State<'_, Mutex<TerminalManager>>,
     pane_id: String,
+    lines: Option<u16>,
 ) -> Result<String, String> {
     state
         .lock()
         .map_err(|_| "终端状态锁异常".to_string())?
-        .capture_pane(&pane_id)
+        .capture_pane(&pane_id, lines)
 }
 
 #[tauri::command]

@@ -41,9 +41,15 @@ import "@xterm/xterm/css/xterm.css";
 const MAX_BUFFER_CHARS = 20_000_000;
 const MAX_REFRESH_RETRIES = 8;
 const REFRESH_RETRY_DELAY = 200;
+const SNAPSHOT_MIN_LINES = 120;
+const SNAPSHOT_MAX_LINES = 2000;
+const SNAPSHOT_LINES_MULTIPLIER = 2;
+const SNAPSHOT_OUTPUT_GRACE_MS = 120;
+const SNAPSHOT_TIMEOUT_MS = 350;
 
 const pendingOutputBuffers = new Map<string, Map<string, string>>();
 const pendingCursorPositions = new Map<string, Map<string, TmuxPaneCursor>>();
+const pendingOutputLineBreaks = new Map<string, Map<string, boolean>>();
 
 type XtermCoreModules = {
   Terminal: typeof import("@xterm/xterm").Terminal;
@@ -136,12 +142,46 @@ function normalizeLineBreaks(value: string): string {
   return value.replace(/\r?\n/g, "\r\n");
 }
 
+type LineBreakNormalizationResult = {
+  value: string;
+  pendingCR: boolean;
+};
+
+function normalizeLineBreaksStreaming(value: string, pendingCR: boolean): LineBreakNormalizationResult {
+  if (!value) {
+    return { value, pendingCR };
+  }
+  const parts: string[] = [];
+  let index = 0;
+  if (pendingCR) {
+    if (value[0] === "\n") {
+      parts.push("\n");
+      index = 1;
+    }
+    pendingCR = false;
+  }
+  for (; index < value.length; index += 1) {
+    const ch = value[index];
+    if (ch === "\n") {
+      if (index > 0 && value[index - 1] === "\r") {
+        parts.push("\n");
+      } else {
+        parts.push("\r\n");
+      }
+      continue;
+    }
+    parts.push(ch);
+  }
+  const normalized = parts.length > 0 ? parts.join("") : "";
+  return { value: normalized, pendingCR: normalized.endsWith("\r") };
+}
+
 function stripLegacyTitleSequences(value: string): string {
   return value.replace(/\x1bk[\s\S]*?\x1b\\/g, "");
 }
 
-function sanitizeTmuxOutput(value: string): string {
-  return normalizeLineBreaks(stripLegacyTitleSequences(value));
+function sanitizeTmuxOutput(value: string, pendingCR: boolean): LineBreakNormalizationResult {
+  return normalizeLineBreaksStreaming(stripLegacyTitleSequences(value), pendingCR);
 }
 
 const CURSOR_REPORT_PATTERN = /\x1b\[\d+;\d+R/g;
@@ -186,6 +226,27 @@ function getSessionSet(store: Map<string, Set<string>>, sessionId: string): Set<
   return sessionSet;
 }
 
+function getSnapshotLines(pane: TmuxPaneInfo): number {
+  const base = Math.max(SNAPSHOT_MIN_LINES, Math.round(pane.height * SNAPSHOT_LINES_MULTIPLIER));
+  return Math.min(SNAPSHOT_MAX_LINES, base);
+}
+
+async function capturePaneSnapshot(paneId: string, lines: number): Promise<string | null> {
+  let timeoutId: number | null = null;
+  const snapshotPromise = captureTmuxPane(paneId, lines).catch((error) => {
+    console.warn("capture-pane failed", error);
+    return "";
+  });
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutId = window.setTimeout(() => resolve(null), SNAPSHOT_TIMEOUT_MS);
+  });
+  const result = await Promise.race([snapshotPromise, timeoutPromise]);
+  if (timeoutId !== null) {
+    window.clearTimeout(timeoutId);
+  }
+  return result;
+}
+
 export function useTmuxWorkspace({
   activeSession,
   isVisible,
@@ -200,6 +261,8 @@ export function useTmuxWorkspace({
   const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
   const paneSnapshotAppliedRef = useRef(new Map<string, Set<string>>());
   const paneSnapshotPendingRef = useRef(new Map<string, Set<string>>());
+  const paneSnapshotStartedRef = useRef(new Map<string, Map<string, number>>());
+  const paneSnapshotLiveOutputRef = useRef(new Map<string, Set<string>>());
   const activeSessionRef = useRef<WorkspaceSession | null>(null);
   const activePaneRef = useRef<string | null>(null);
   const lastSessionIdRef = useRef<string | null>(null);
@@ -229,15 +292,21 @@ export function useTmuxWorkspace({
   const clearSessionCaches = useCallback((sessionId: string) => {
     pendingOutputBuffers.delete(sessionId);
     pendingCursorPositions.delete(sessionId);
+    pendingOutputLineBreaks.delete(sessionId);
     paneSnapshotAppliedRef.current.delete(sessionId);
     paneSnapshotPendingRef.current.delete(sessionId);
+    paneSnapshotStartedRef.current.delete(sessionId);
+    paneSnapshotLiveOutputRef.current.delete(sessionId);
   }, []);
 
   const clearAllSessionCaches = useCallback(() => {
     pendingOutputBuffers.clear();
     pendingCursorPositions.clear();
+    pendingOutputLineBreaks.clear();
     paneSnapshotAppliedRef.current.clear();
     paneSnapshotPendingRef.current.clear();
+    paneSnapshotStartedRef.current.clear();
+    paneSnapshotLiveOutputRef.current.clear();
   }, []);
 
   const destroyAllTerminals = useCallback(() => {
@@ -371,6 +440,7 @@ export function useTmuxWorkspace({
         nextPanes.map(async (pane) => {
           const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
           const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
+          const sessionLineBreaks = getSessionMap(pendingOutputLineBreaks, sessionId);
           const sessionSnapshots = getSessionSet(paneSnapshotAppliedRef.current, sessionId);
           const buffered = sessionBuffers.get(pane.id);
           const hasBufferedOutput = buffered !== undefined && buffered.length > 0;
@@ -387,24 +457,54 @@ export function useTmuxWorkspace({
             }
           }
           const sessionSnapshotPending = getSessionSet(paneSnapshotPendingRef.current, sessionId);
-          const previousBuffer = buffered ?? '';
+          const previousBuffer = buffered ?? "";
           let clearedBuffer = false;
           if (shouldReplaceSnapshot) {
-            sessionBuffers.set(pane.id, '');
+            sessionBuffers.set(pane.id, "");
             clearedBuffer = true;
+            sessionLineBreaks.set(pane.id, false);
           }
           let pendingRestoreBuffer = clearedBuffer;
+          const sessionSnapshotStarted = getSessionMap(paneSnapshotStartedRef.current, sessionId);
+          const sessionSnapshotLiveOutput = getSessionSet(paneSnapshotLiveOutputRef.current, sessionId);
+          sessionSnapshotStarted.set(pane.id, Date.now());
+          sessionSnapshotLiveOutput.delete(pane.id);
           sessionSnapshotPending.add(pane.id);
           try {
             if (!isActiveSession()) {
               return;
             }
-            const snapshot = await captureTmuxPane(pane.id);
+            const snapshot = await capturePaneSnapshot(pane.id, getSnapshotLines(pane));
             if (!isActiveSession()) {
               return;
             }
+            const pendingDuringSnapshot = clearedBuffer ? (sessionBuffers.get(pane.id) ?? "") : "";
+            const liveOutputDuringSnapshot = sessionSnapshotLiveOutput.has(pane.id);
+            if (snapshot === null) {
+              if (shouldReplaceSnapshot) {
+                const terminal = terminalsRef.current.get(pane.id);
+                if (terminal && !liveOutputDuringSnapshot) {
+                  terminal.reset();
+                  if (pendingDuringSnapshot) {
+                    terminal.write(pendingDuringSnapshot);
+                  }
+                }
+                sessionBuffers.set(pane.id, pendingDuringSnapshot);
+                sessionCursors.delete(pane.id);
+                sessionSnapshots.add(pane.id);
+                pendingRestoreBuffer = false;
+              }
+              return;
+            }
             const normalizedSnapshot = normalizeSnapshot(snapshot);
-            const pendingDuringSnapshot = clearedBuffer ? (sessionBuffers.get(pane.id) ?? '') : '';
+            if (liveOutputDuringSnapshot) {
+              if (clearedBuffer) {
+                sessionBuffers.set(pane.id, pendingDuringSnapshot);
+              }
+              sessionSnapshots.add(pane.id);
+              pendingRestoreBuffer = false;
+              return;
+            }
             if (normalizedSnapshot.length === 0) {
               if (shouldReplaceSnapshot) {
                 const terminal = terminalsRef.current.get(pane.id);
@@ -501,12 +601,14 @@ export function useTmuxWorkspace({
               sessionSnapshots.add(pane.id);
             }
           } catch (error) {
-            console.warn("capture-pane failed", error);
+            console.warn("Failed to refresh pane snapshot.", error);
           } finally {
             if (pendingRestoreBuffer) {
               sessionBuffers.set(pane.id, previousBuffer);
             }
             sessionSnapshotPending.delete(pane.id);
+            sessionSnapshotStarted.delete(pane.id);
+            sessionSnapshotLiveOutput.delete(pane.id);
           }
         }),
       );
@@ -562,21 +664,33 @@ export function useTmuxWorkspace({
       if (!sessionId || !paneId || !data) {
         return;
       }
-      const normalizedData = sanitizeTmuxOutput(data);
       const sessionBuffers = getSessionMap(pendingOutputBuffers, sessionId);
       const sessionCursors = getSessionMap(pendingCursorPositions, sessionId);
+      const sessionLineBreaks = getSessionMap(pendingOutputLineBreaks, sessionId);
       const sessionSnapshotsPending = getSessionSet(paneSnapshotPendingRef.current, sessionId);
-      const next = appendBuffer(sessionBuffers.get(paneId), normalizedData);
+      const sessionSnapshotStarted = getSessionMap(paneSnapshotStartedRef.current, sessionId);
+      const sessionSnapshotLiveOutput = getSessionSet(paneSnapshotLiveOutputRef.current, sessionId);
+      const pendingCR = sessionLineBreaks.get(paneId) ?? false;
+      const normalized = sanitizeTmuxOutput(data, pendingCR);
+      sessionLineBreaks.set(paneId, normalized.pendingCR);
+      const next = appendBuffer(sessionBuffers.get(paneId), normalized.value);
       sessionBuffers.set(paneId, next);
       sessionCursors.delete(paneId);
       if (sessionSnapshotsPending.has(paneId)) {
-        return;
+        const startedAt = sessionSnapshotStarted.get(paneId);
+        if (!startedAt || Date.now() - startedAt < SNAPSHOT_OUTPUT_GRACE_MS) {
+          return;
+        }
+        sessionSnapshotLiveOutput.add(paneId);
       }
       if (activeSessionRef.current?.id !== sessionId) {
         return;
       }
+      if (statusRef.current !== "ready") {
+        setStatus("ready");
+      }
       const terminal = terminalsRef.current.get(paneId);
-      terminal?.write(normalizedData);
+      terminal?.write(normalized.value);
     })
       .then((unlisten) => {
         if (canceled) {

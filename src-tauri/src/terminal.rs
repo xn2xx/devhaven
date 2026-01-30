@@ -722,17 +722,22 @@ impl TerminalManager {
         })
     }
 
-    pub fn capture_pane(&self, pane_id: &str) -> Result<String, String> {
+    pub fn capture_pane(&self, pane_id: &str, lines: Option<u16>) -> Result<String, String> {
         ensure_supported()?;
-        run_tmux_command(&[
-            "capture-pane".to_string(),
-            "-p".to_string(),
-            "-S".to_string(),
-            "-".to_string(),
-            "-e".to_string(),
-            "-t".to_string(),
-            pane_id.to_string(),
-        ])
+        let mut args = vec!["capture-pane".to_string(), "-p".to_string()];
+        if let Some(lines) = lines {
+            if lines > 0 {
+                args.push("-S".to_string());
+                args.push(format!("-{lines}"));
+            }
+        } else {
+            args.push("-S".to_string());
+            args.push("-".to_string());
+        }
+        args.push("-e".to_string());
+        args.push("-t".to_string());
+        args.push(pane_id.to_string());
+        run_tmux_command(&args)
     }
 
     pub fn get_pane_cursor(&self, pane_id: &str) -> Result<TmuxPaneCursor, String> {

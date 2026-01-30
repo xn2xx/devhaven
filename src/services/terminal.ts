@@ -138,8 +138,8 @@ export async function resizeTmuxClient(sessionId: string, cols: number, rows: nu
 }
 
 /** 拉取 pane 历史缓冲。 */
-export async function captureTmuxPane(paneId: string): Promise<string> {
-  return invoke<string>("capture_tmux_pane", { paneId });
+export async function captureTmuxPane(paneId: string, lines?: number): Promise<string> {
+  return invoke<string>("capture_tmux_pane", { paneId, lines });
 }
 
 /** 获取 pane 光标位置。 */
