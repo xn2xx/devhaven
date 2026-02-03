@@ -4,6 +4,7 @@ import type {
   TerminalSessionInfo,
   TmuxPaneCursor,
   TmuxPaneInfo,
+  TmuxSubscriptionSpec,
   TmuxSupportStatus,
   TmuxWindowInfo,
 } from "../models/terminal";
@@ -145,4 +146,25 @@ export async function captureTmuxPane(paneId: string, lines?: number): Promise<s
 /** 获取 pane 光标位置。 */
 export async function getTmuxPaneCursor(paneId: string): Promise<TmuxPaneCursor> {
   return invoke<TmuxPaneCursor>("get_tmux_pane_cursor", { paneId });
+}
+
+/** 设置 tmux 控制模式客户端 flags。 */
+export async function setTmuxControlFlags(flags: string[]): Promise<void> {
+  await invoke("set_tmux_control_flags", { flags });
+}
+
+/** 发送 tmux 控制模式 pane 流控动作。 */
+export async function setTmuxControlPaneAction(
+  paneId: string,
+  action: "on" | "off" | "pause" | "continue",
+): Promise<void> {
+  await invoke("set_tmux_control_pane_action", { paneId, action });
+}
+
+/** 设置 tmux 控制模式订阅。 */
+export async function setTmuxControlSubscription(
+  sessionId: string,
+  subscription: TmuxSubscriptionSpec,
+): Promise<void> {
+  await invoke("set_tmux_control_subscription", { sessionId, subscription });
 }

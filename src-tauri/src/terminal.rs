@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
@@ -143,6 +143,7 @@ const TMUX_BIN_CANDIDATES: [&str; 4] = [
 const TMUX_PANE_BORDER_STYLE: &str = "fg=#586e75,bg=default";
 const TMUX_PANE_ACTIVE_BORDER_STYLE: &str = "fg=#268bd2,bg=default";
 const TMUX_HISTORY_LIMIT: &str = "200000";
+const TMUX_CONTROL_DEFAULT_FLAGS: [&str; 1] = ["pause-after=1"];
 const CONTROL_COMMAND_TIMEOUT_MS: u64 = 2500;
 const CONTROL_COMMAND_QUEUE_POLL_MS: u64 = 100;
 const LEGACY_TMUX_SESSION_PREFIX: &str = "devhaven_";
@@ -272,6 +273,10 @@ struct TmuxStatePayload {
     buffer_name: Option<String>,
     subscription_name: Option<String>,
     subscription_value: Option<String>,
+    subscription_session_id: Option<String>,
+    subscription_window_id: Option<String>,
+    subscription_window_index: Option<String>,
+    subscription_pane_id: Option<String>,
     layout: Option<String>,
     visible_layout: Option<String>,
     window_flags: Option<String>,
@@ -310,6 +315,22 @@ struct ControlParserState {
     current_response: Option<ResponseBlock>,
     response_output: Vec<String>,
     pending_completion: Option<Sender<ControlCommandResult>>,
+    pane_pause_pending: HashSet<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TmuxSubscriptionSpec {
+    pub name: String,
+    pub what: Option<String>,
+    pub format: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TmuxSubscription {
+    name: String,
+    what: Option<String>,
+    format: Option<String>,
 }
 
 impl ControlParserState {
@@ -320,6 +341,7 @@ impl ControlParserState {
             current_response: None,
             response_output: Vec::new(),
             pending_completion: None,
+            pane_pause_pending: HashSet::new(),
         }
     }
 }
@@ -327,6 +349,8 @@ impl ControlParserState {
 pub struct TerminalManager {
     controls: HashMap<String, TmuxControlClient>,
     active_session_id: Option<String>,
+    control_flags: Vec<String>,
+    control_subscriptions: HashMap<String, HashMap<String, TmuxSubscription>>,
 }
 
 #[allow(dead_code)]
@@ -359,6 +383,11 @@ impl TerminalManager {
         Self {
             controls: HashMap::new(),
             active_session_id: None,
+            control_flags: TMUX_CONTROL_DEFAULT_FLAGS
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            control_subscriptions: HashMap::new(),
         }
     }
 
@@ -761,6 +790,65 @@ impl TerminalManager {
         Ok(TmuxPaneCursor { col, row })
     }
 
+    pub fn set_control_flags(&mut self, flags: Vec<String>) -> Result<(), String> {
+        self.control_flags = normalize_control_flags(&flags);
+        self.apply_control_flags_to_all()
+    }
+
+    pub fn set_control_pane_action(&self, pane_id: &str, action: &str) -> Result<(), String> {
+        ensure_supported()?;
+        let action = action.trim();
+        let command = build_refresh_client_pane_action_command(pane_id, action)?;
+        let arg = format!("{pane_id}:{action}");
+        self.send_control_or_fallback(None, &command, || {
+            run_tmux_status(&[
+                "refresh-client".to_string(),
+                "-A".to_string(),
+                arg,
+            ])
+        })
+    }
+
+    pub fn set_control_subscription(
+        &mut self,
+        session_id: &str,
+        spec: TmuxSubscriptionSpec,
+    ) -> Result<(), String> {
+        ensure_supported()?;
+        let name = spec.name.trim().to_string();
+        if name.is_empty() {
+            return Err("订阅名称不能为空".to_string());
+        }
+        let subscription = TmuxSubscription {
+            name: name.clone(),
+            what: spec.what.clone().filter(|value| !value.trim().is_empty()),
+            format: spec.format.clone().filter(|value| !value.trim().is_empty()),
+        };
+        let command = build_refresh_client_subscription_command(&subscription)?;
+        let arg = match (&subscription.what, &subscription.format) {
+            (None, None) => subscription.name.clone(),
+            (Some(what), Some(format)) => format!("{}:{}:{}", subscription.name, what, format),
+            _ => return Err("订阅参数必须同时包含 what 与 format".to_string()),
+        };
+        self.send_control_or_fallback(Some(session_id), &command, || {
+            run_tmux_status(&[
+                "refresh-client".to_string(),
+                "-B".to_string(),
+                arg,
+            ])
+        })?;
+        let entry = self
+            .control_subscriptions
+            .entry(session_id.to_string())
+            .or_insert_with(HashMap::new);
+        if subscription.what.is_none() && subscription.format.is_none() {
+            entry.remove(&subscription.name);
+        } else {
+            entry.insert(subscription.name.clone(), subscription);
+        }
+        Ok(())
+    }
+
     fn ensure_control_client(&mut self, app: AppHandle, session_id: &str) -> Result<(), String> {
         if let Some(control) = self.controls.get(session_id) {
             if control.is_alive() {
@@ -770,6 +858,7 @@ impl TerminalManager {
         self.drop_control_client(session_id);
         let control = spawn_tmux_control_client(app, session_id)?;
         self.controls.insert(session_id.to_string(), control);
+        self.apply_control_defaults(session_id)?;
         Ok(())
     }
 
@@ -831,6 +920,57 @@ impl TerminalManager {
             return Ok(());
         }
         fallback()
+    }
+
+    fn apply_control_defaults(&self, session_id: &str) -> Result<(), String> {
+        self.apply_control_flags_for_session(Some(session_id))?;
+        self.apply_control_subscriptions_for_session(session_id)
+    }
+
+    fn apply_control_flags_to_all(&self) -> Result<(), String> {
+        if self.controls.is_empty() {
+            return Ok(());
+        }
+        for session_id in self.controls.keys() {
+            self.apply_control_flags_for_session(Some(session_id))?;
+        }
+        Ok(())
+    }
+
+    fn apply_control_flags_for_session(&self, session_id: Option<&str>) -> Result<(), String> {
+        let Some(command) = build_refresh_client_flags_command(&self.control_flags) else {
+            return Ok(());
+        };
+        let flags = normalize_control_flags(&self.control_flags).join(",");
+        self.send_control_or_fallback(session_id, &command, || {
+            run_tmux_status(&[
+                "refresh-client".to_string(),
+                "-f".to_string(),
+                flags,
+            ])
+        })
+    }
+
+    fn apply_control_subscriptions_for_session(&self, session_id: &str) -> Result<(), String> {
+        let Some(subscriptions) = self.control_subscriptions.get(session_id) else {
+            return Ok(());
+        };
+        for subscription in subscriptions.values() {
+            let command = build_refresh_client_subscription_command(subscription)?;
+            let arg = match (&subscription.what, &subscription.format) {
+                (None, None) => subscription.name.clone(),
+                (Some(what), Some(format)) => format!("{}:{}:{}", subscription.name, what, format),
+                _ => return Err("订阅参数必须同时包含 what 与 format".to_string()),
+            };
+            self.send_control_or_fallback(Some(session_id), &command, || {
+                run_tmux_status(&[
+                    "refresh-client".to_string(),
+                    "-B".to_string(),
+                    arg,
+                ])
+            })?;
+        }
+        Ok(())
     }
 }
 
@@ -996,6 +1136,50 @@ fn tmux_command_string(args: &[&str]) -> String {
         .map(|arg| tmux_quote_arg(arg))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn normalize_control_flags(flags: &[String]) -> Vec<String> {
+    flags
+        .iter()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .collect()
+}
+
+fn build_refresh_client_flags_command(flags: &[String]) -> Option<String> {
+    let cleaned = normalize_control_flags(flags);
+    if cleaned.is_empty() {
+        return None;
+    }
+    let joined = cleaned.join(",");
+    Some(tmux_command_string(&["refresh-client", "-f", &joined]))
+}
+
+fn build_refresh_client_pane_action_command(pane_id: &str, action: &str) -> Result<String, String> {
+    let pane_id = pane_id.trim();
+    if pane_id.is_empty() {
+        return Err("pane id 不能为空".to_string());
+    }
+    let action = match action {
+        "on" | "off" | "pause" | "continue" => action,
+        _ => return Err("不支持的 pane 流控动作".to_string()),
+    };
+    let arg = format!("{pane_id}:{action}");
+    Ok(tmux_command_string(&["refresh-client", "-A", &arg]))
+}
+
+fn build_refresh_client_subscription_command(spec: &TmuxSubscription) -> Result<String, String> {
+    let name = spec.name.trim();
+    if name.is_empty() {
+        return Err("订阅名称不能为空".to_string());
+    }
+    let arg = match (&spec.what, &spec.format) {
+        (None, None) => name.to_string(),
+        (Some(what), Some(format)) => format!("{name}:{what}:{format}"),
+        _ => return Err("订阅参数必须同时包含 what 与 format".to_string()),
+    };
+    Ok(tmux_command_string(&["refresh-client", "-B", &arg]))
 }
 
 fn apply_tmux_pane_style(session_id: &str) -> Result<(), String> {
@@ -1211,11 +1395,40 @@ fn spawn_control_command_worker(
                     }
                     let _ = command.result_tx.send(result);
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+            if !alive.load(Ordering::SeqCst) {
+                break;
+            }
+            if let Some(pane_id) = take_pending_pause(&parser_state) {
+                match build_refresh_client_pane_action_command(&pane_id, "continue") {
+                    Ok(command) => {
+                        if let Err(message) = write_control_command(&mut writer, &command, log.as_ref()) {
+                            eprintln!("发送 tmux 自动 continue 失败: {}", message);
+                            mark_control_unhealthy(&alive, &child);
+                        }
+                    }
+                    Err(message) => {
+                        eprintln!("生成 tmux 自动 continue 命令失败: {}", message);
+                    }
+                }
             }
         }
     });
+}
+
+fn take_pending_pause(parser_state: &Arc<Mutex<ControlParserState>>) -> Option<String> {
+    let mut state = parser_state.lock().ok()?;
+    if state.mode != ControlModeState::Idle {
+        return None;
+    }
+    if state.pending_completion.is_some() || state.current_response.is_some() {
+        return None;
+    }
+    let pane_id = state.pane_pause_pending.iter().next().cloned()?;
+    state.pane_pause_pending.remove(&pane_id);
+    Some(pane_id)
 }
 
 fn prepare_command_completion(
@@ -1357,6 +1570,10 @@ fn new_state_payload(kind: &str) -> TmuxStatePayload {
         buffer_name: None,
         subscription_name: None,
         subscription_value: None,
+        subscription_session_id: None,
+        subscription_window_id: None,
+        subscription_window_index: None,
+        subscription_pane_id: None,
         layout: None,
         visible_layout: None,
         window_flags: None,
@@ -1624,10 +1841,18 @@ fn parse_control_line(line: &str) -> ControlLine {
         }
         let mut payload = new_state_payload("subscription-changed");
         payload.subscription_name = name;
-        payload.session_id = parts.next().map(|value| value.to_string());
-        payload.window_id = parts.next().map(|value| value.to_string());
-        payload.window_index = parts.next().map(|value| value.to_string());
-        payload.pane_id = parts.next().map(|value| value.to_string());
+        let session_id = parts.next().map(|value| value.to_string());
+        let window_id = parts.next().map(|value| value.to_string());
+        let window_index = parts.next().map(|value| value.to_string());
+        let pane_id = parts.next().map(|value| value.to_string());
+        payload.subscription_session_id = session_id.clone();
+        payload.subscription_window_id = window_id.clone();
+        payload.subscription_window_index = window_index.clone();
+        payload.subscription_pane_id = pane_id.clone();
+        payload.session_id = session_id;
+        payload.window_id = window_id;
+        payload.window_index = window_index;
+        payload.pane_id = pane_id;
         if !value.is_empty() {
             payload.subscription_value = Some(value.to_string());
         }
@@ -1761,6 +1986,15 @@ fn handle_tmux_line(
                     });
                 }
                 ControlLine::State { payload } => {
+                    if payload.kind == "pause" {
+                        if let Some(pane_id) = payload.pane_id.as_ref() {
+                            state.pane_pause_pending.insert(pane_id.clone());
+                        }
+                    } else if payload.kind == "continue" {
+                        if let Some(pane_id) = payload.pane_id.as_ref() {
+                            state.pane_pause_pending.remove(pane_id);
+                        }
+                    }
                     state_payload = Some(payload);
                 }
                 ControlLine::Begin { block } => {
@@ -1951,6 +2185,10 @@ mod tests {
         payload.window_id = Some("@2".to_string());
         payload.window_index = Some("3".to_string());
         payload.pane_id = Some("%4".to_string());
+        payload.subscription_session_id = Some("$1".to_string());
+        payload.subscription_window_id = Some("@2".to_string());
+        payload.subscription_window_index = Some("3".to_string());
+        payload.subscription_pane_id = Some("%4".to_string());
         payload.subscription_value = Some("bar baz".to_string());
         let expected = ControlLine::State { payload };
         assert_eq!(parse_control_line(line), expected);

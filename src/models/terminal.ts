@@ -46,10 +46,20 @@ export type TmuxStatePayload = {
   bufferName?: string | null;
   subscriptionName?: string | null;
   subscriptionValue?: string | null;
+  subscriptionSessionId?: string | null;
+  subscriptionWindowId?: string | null;
+  subscriptionWindowIndex?: string | null;
+  subscriptionPaneId?: string | null;
   layout?: string | null;
   visibleLayout?: string | null;
   windowFlags?: string | null;
   reason?: string | null;
+};
+
+export type TmuxSubscriptionSpec = {
+  name: string;
+  what?: string | null;
+  format?: string | null;
 };
 
 export type TmuxOutputPayload = {

@@ -23,7 +23,8 @@ use crate::models::{
 };
 use crate::system::{EditorOpenParams, TerminalOpenParams};
 use crate::terminal::{
-    TerminalManager, TerminalSessionInfo, TmuxPaneCursor, TmuxPaneInfo, TmuxSupportStatus, TmuxWindowInfo,
+    TerminalManager, TerminalSessionInfo, TmuxPaneCursor, TmuxPaneInfo, TmuxSubscriptionSpec, TmuxSupportStatus,
+    TmuxWindowInfo,
 };
 
 #[tauri::command]
@@ -466,6 +467,47 @@ fn get_tmux_pane_cursor(
         .get_pane_cursor(&pane_id)
 }
 
+#[tauri::command]
+fn set_tmux_control_flags(
+    state: State<'_, Mutex<TerminalManager>>,
+    flags: Vec<String>,
+) -> Result<(), String> {
+    log_command_result("set_tmux_control_flags", || {
+        state
+            .lock()
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .set_control_flags(flags)
+    })
+}
+
+#[tauri::command]
+fn set_tmux_control_pane_action(
+    state: State<'_, Mutex<TerminalManager>>,
+    pane_id: String,
+    action: String,
+) -> Result<(), String> {
+    log_command_result("set_tmux_control_pane_action", || {
+        state
+            .lock()
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .set_control_pane_action(&pane_id, &action)
+    })
+}
+
+#[tauri::command]
+fn set_tmux_control_subscription(
+    state: State<'_, Mutex<TerminalManager>>,
+    session_id: String,
+    subscription: TmuxSubscriptionSpec,
+) -> Result<(), String> {
+    log_command_result("set_tmux_control_subscription", || {
+        state
+            .lock()
+            .map_err(|_| "终端状态锁异常".to_string())?
+            .set_control_subscription(&session_id, subscription)
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// 启动 Tauri 应用。
 pub fn run() {
@@ -540,6 +582,9 @@ pub fn run() {
             resize_tmux_client,
             capture_tmux_pane,
             get_tmux_pane_cursor,
+            set_tmux_control_flags,
+            set_tmux_control_pane_action,
+            set_tmux_control_subscription,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
