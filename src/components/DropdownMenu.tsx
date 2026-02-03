@@ -44,9 +44,9 @@ export default function DropdownMenu({ label, items, align = "right", ariaLabel 
   }, [open]);
 
   return (
-    <div className="dropdown" ref={wrapperRef}>
+    <div className="relative" ref={wrapperRef}>
       <button
-        className="dropdown-trigger icon-button"
+        className="icon-btn rounded-md px-1.5"
         onClick={(event) => {
           event.stopPropagation();
           setOpen((prev) => !prev);
@@ -57,11 +57,17 @@ export default function DropdownMenu({ label, items, align = "right", ariaLabel 
         {label}
       </button>
       {open ? (
-        <div className={`dropdown-menu ${align === "left" ? "is-left" : "is-right"}`}>
+        <div
+          className={`absolute top-full mt-1 min-w-[160px] rounded-lg border border-border bg-[#1f1f1f] p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.3)] z-30 flex flex-col ${
+            align === "left" ? "left-0" : "right-0"
+          }`}
+        >
           {items.map((item) => (
             <button
               key={item.label}
-              className={`dropdown-item${item.destructive ? " is-destructive" : ""}`}
+              className={`rounded-md px-2.5 py-2 text-left text-text hover:bg-[rgba(255,255,255,0.06)] disabled:opacity-50 disabled:cursor-not-allowed ${
+                item.destructive ? "text-error" : ""
+              }`}
               onClick={(event) => {
                 event.stopPropagation();
                 if (item.disabled) {

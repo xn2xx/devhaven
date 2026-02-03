@@ -63,19 +63,19 @@ function ProjectCard({
 
   return (
     <div
-      className={`project-card${isSelected ? " is-selected" : ""}`}
+      className={`card ${isSelected ? "card-selected" : "hover:bg-card-hover"}`}
       onClick={onSelect}
       onDoubleClick={onEnterWorkspace}
       draggable
       onDragStart={handleDragStart}
     >
-      <div className="project-card-header">
-        <div className="project-card-title" title={project.name}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-fs-title font-semibold text-text" title={project.name}>
           {project.name}
         </div>
-        <div className="project-card-actions">
+        <div className="ml-auto inline-flex items-center gap-1.5">
           <button
-            className="icon-button"
+            className="icon-btn text-titlebar-icon"
             aria-label="在 Finder 中显示"
             title="在 Finder 中显示"
             onClick={(event) => handleActionClick(event, () => void openInFinder(project.path))}
@@ -83,7 +83,7 @@ function ProjectCard({
             <IconFolder size={16} />
           </button>
           <button
-            className="icon-button"
+            className="icon-btn text-titlebar-icon"
             aria-label="在终端打开"
             title="在终端打开"
             onClick={(event) => handleActionClick(event, () => onOpenInTerminal(project.path))}
@@ -91,7 +91,7 @@ function ProjectCard({
             <IconTerminal size={16} />
           </button>
           <button
-            className="icon-button"
+            className="icon-btn text-titlebar-icon"
             aria-label="复制路径"
             title="复制路径"
             onClick={(event) => handleActionClick(event, () => void onCopyPath(project.path))}
@@ -99,7 +99,7 @@ function ProjectCard({
             <IconCopy size={16} />
           </button>
           <button
-            className="icon-button"
+            className="icon-btn text-titlebar-icon"
             aria-label="刷新项目"
             title="刷新项目"
             onClick={(event) => handleActionClick(event, () => void onRefreshProject(project.path))}
@@ -107,7 +107,7 @@ function ProjectCard({
             <IconRefresh size={16} />
           </button>
           <button
-            className="icon-button"
+            className="icon-btn text-titlebar-icon"
             aria-label="移入回收站"
             title="移入回收站"
             onClick={(event) => handleActionClick(event, () => void onMoveToRecycleBin(project))}
@@ -116,21 +116,23 @@ function ProjectCard({
           </button>
         </div>
       </div>
-      <div className="project-card-path" title={project.path}>
+      <div className="truncate text-fs-caption text-secondary-text" title={project.path}>
         {project.path}
       </div>
-      <div className="project-card-meta">
-        <span className="project-card-date">
+      <div className="flex items-center justify-between text-fs-caption text-secondary-text">
+        <span className="inline-flex items-center gap-1">
           <IconCalendar size={14} />
           {formatDate(project.mtime)}
         </span>
         {project.git_commits > 0 ? (
-          <span className="git-badge">{project.git_commits} 次提交</span>
+          <span className="rounded-md bg-[rgba(69,59,231,0.15)] px-2 py-1 text-[12px] text-accent">
+            {project.git_commits} 次提交
+          </span>
         ) : (
           <span>非 Git 项目</span>
         )}
       </div>
-      <div className="project-card-tags">
+      <div className="project-card-tags flex flex-nowrap gap-1.5 overflow-x-auto pb-0.5">
         {project.tags.map((tag) => (
           <span
             key={tag}
@@ -144,7 +146,7 @@ function ProjectCard({
               {tag}
             </span>
             <button
-              className="tag-remove"
+              className="ml-1.5 inline-flex items-center justify-center text-[12px] opacity-60 hover:opacity-100"
               onClick={(event) => {
                 event.stopPropagation();
                 onRemoveTag(project.id, tag);
@@ -157,11 +159,11 @@ function ProjectCard({
         ))}
       </div>
       {quickScripts.length > 0 ? (
-        <div className="project-card-scripts">
+        <div className="flex flex-wrap gap-1.5">
           {quickScripts.map((script) => (
             <button
               key={script.id}
-              className="script-quick-button"
+              className="inline-flex items-center gap-1 rounded-md bg-button-bg px-2 py-1 text-[12px] text-text transition-colors duration-150 hover:bg-button-hover"
               onClick={(event) =>
                 handleActionClick(event, () => onRunScript(project, script))
               }
@@ -169,7 +171,7 @@ function ProjectCard({
               title={script.name}
             >
               <IconTerminal size={12} />
-              <span>{script.name}</span>
+              <span className="max-w-[140px] truncate">{script.name}</span>
             </button>
           ))}
         </div>

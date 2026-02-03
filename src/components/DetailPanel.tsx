@@ -231,44 +231,48 @@ export default function DetailPanel({
 
   if (!project) {
     return (
-      <aside className="detail-panel">
-        <div className="detail-empty">请选择一个项目查看详情</div>
+      <aside className="flex min-w-detail max-w-detail flex-col border-l border-divider bg-background pb-4 overflow-hidden">
+        <div className="p-4 text-secondary-text">请选择一个项目查看详情</div>
       </aside>
     );
   }
 
   return (
-    <aside className="detail-panel">
-      <div className="detail-header">
+    <aside className="flex min-w-detail max-w-detail flex-col border-l border-divider bg-background pb-4 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-divider bg-secondary-background p-4">
         <div>
-          <div className="detail-title">{project.name}</div>
-          <div className="detail-path" title={project.path}>
+          <div className="text-[16px] font-semibold">{project.name}</div>
+          <div className="max-w-[320px] truncate text-fs-caption text-secondary-text" title={project.path}>
             {project.path}
           </div>
         </div>
-        <button className="icon-button" onClick={onClose} aria-label="关闭">
+        <button className="icon-btn" onClick={onClose} aria-label="关闭">
           <IconX size={14} />
         </button>
       </div>
-      <div className="detail-tabs">
+      <div className="flex gap-2 border-b border-divider px-4 py-2">
         <button
-          className={`tab-button${activeTab === "overview" ? " is-active" : ""}`}
+          className={`rounded-lg px-3 py-1.5 ${
+            activeTab === "overview" ? "bg-[rgba(69,59,231,0.2)] text-text" : "text-secondary-text"
+          }`}
           onClick={() => setActiveTab("overview")}
         >
           概览
         </button>
         <button
-          className={`tab-button${activeTab === "branches" ? " is-active" : ""}`}
+          className={`rounded-lg px-3 py-1.5 ${
+            activeTab === "branches" ? "bg-[rgba(69,59,231,0.2)] text-text" : "text-secondary-text"
+          }`}
           onClick={() => setActiveTab("branches")}
         >
           分支
         </button>
       </div>
       {activeTab === "overview" ? (
-        <div className="detail-content">
-          <section className="detail-section">
-            <div className="detail-section-title">基础信息</div>
-            <div className="detail-grid">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+          <section className="flex flex-col gap-2.5">
+            <div className="text-[14px] font-semibold">基础信息</div>
+            <div className="grid grid-cols-[90px_1fr] gap-x-3 gap-y-1.5 text-fs-caption text-secondary-text">
               <div>最近修改</div>
               <div>{formatDate(project.mtime)}</div>
               <div>Git 提交</div>
@@ -278,9 +282,9 @@ export default function DetailPanel({
             </div>
           </section>
 
-          <section className="detail-section">
-            <div className="detail-section-title">标签</div>
-            <div className="detail-tags">
+          <section className="flex flex-col gap-2.5">
+            <div className="text-[14px] font-semibold">标签</div>
+            <div className="flex flex-wrap gap-1.5">
               {projectTags.map((tag) => (
                 <span
                   key={tag}
@@ -289,7 +293,7 @@ export default function DetailPanel({
                 >
                   {tag}
                   <button
-                    className="tag-remove"
+                    className="ml-1.5 inline-flex items-center justify-center text-[12px] opacity-60 hover:opacity-100"
                     onClick={() => void handleRemoveTag(tag)}
                     aria-label={`移除标签 ${tag}`}
                   >
@@ -300,7 +304,7 @@ export default function DetailPanel({
             </div>
             {availableTags.length > 0 ? (
               <select
-                className="detail-select"
+                className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
                 onChange={(event) => {
                   const value = event.target.value;
                   if (value) {
@@ -317,17 +321,17 @@ export default function DetailPanel({
                 ))}
               </select>
             ) : (
-              <div className="detail-muted">暂无可添加标签</div>
+              <div className="text-fs-caption text-secondary-text">暂无可添加标签</div>
             )}
           </section>
 
-          <section className="detail-section">
-            <div className="detail-section-title">脚本</div>
-            <div className="script-toolbar">
-              <div className="script-toolbar-left">
+          <section className="flex flex-col gap-2.5">
+            <div className="text-[14px] font-semibold">脚本</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2 text-secondary-text">
                 <IconTerminal size={14} />
                 <select
-                  className="detail-select script-select"
+                  className="flex-1 min-w-0 rounded-md border border-border bg-card-bg px-2 py-2 text-text"
                   value={activeScript?.id ?? ""}
                   onChange={(event) => setActiveScriptId(event.target.value)}
                   disabled={projectScripts.length === 0}
@@ -340,53 +344,56 @@ export default function DetailPanel({
                   ))}
                 </select>
               </div>
-              <div className="script-toolbar-actions">
+              <div className="flex flex-wrap gap-2">
                 {activeScript ? (
                   runningScript && runningScript.id === activeScript.id ? (
                     <button
-                      className="button button-danger"
+                      className="btn btn-danger"
                       onClick={() => onStopProjectScript(project, activeScript)}
                     >
                       停止
                     </button>
                   ) : (
                     <button
-                      className="button button-primary"
+                      className="btn btn-primary"
                       onClick={() => onRunProjectScript(project, activeScript)}
                     >
                       运行
                     </button>
                   )
                 ) : (
-                  <button className="button button-primary" disabled>
+                  <button className="btn btn-primary" disabled>
                     运行
                   </button>
                 )}
-                <button className="button" onClick={() => setScriptDialogState({ mode: "new" })}>
+                <button className="btn" onClick={() => setScriptDialogState({ mode: "new" })}>
                   新增
                 </button>
               </div>
             </div>
-            <div className={"script-status" + (runningScript ? " is-running" : "")}>
+            <div className={`text-fs-caption ${runningScript ? "text-success" : "text-secondary-text"}`}>
               {runningScript ? "运行中：" + runningScript.name : "未运行"}
             </div>
             {projectScripts.length === 0 ? (
-              <div className="detail-muted">暂无脚本配置</div>
+              <div className="text-fs-caption text-secondary-text">暂无脚本配置</div>
             ) : (
-              <div className="script-list">
+              <div className="flex flex-col gap-2">
                 {projectScripts.map((script, index) => {
                   const isRunning = runningScript?.id === script.id;
                   return (
-                    <div key={script.id} className="script-item">
-                      <div className="script-item-info">
-                        <div className="script-item-title">{script.name}</div>
-                        <div className="script-item-command" title={script.start}>
+                    <div
+                      key={script.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary-background px-3 py-2.5"
+                    >
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="text-[13px] font-semibold text-text">{script.name}</div>
+                        <div className="truncate text-fs-caption text-secondary-text" title={script.start}>
                           {script.start}
                         </div>
                       </div>
-                      <div className="script-item-actions">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
-                          className={"button" + (isRunning ? " button-danger" : " button-primary")}
+                          className={`btn ${isRunning ? "btn-danger" : "btn-primary"}`}
                           onClick={() =>
                             isRunning
                               ? onStopProjectScript(project, script)
@@ -396,20 +403,20 @@ export default function DetailPanel({
                           {isRunning ? "停止" : "运行"}
                         </button>
                         <button
-                          className="button button-outline"
+                          className="btn btn-outline"
                           onClick={() => setScriptDialogState({ mode: "edit", script })}
                         >
                           编辑
                         </button>
                         <button
-                          className="button button-danger"
+                          className="btn btn-danger"
                           onClick={() => void handleDeleteScript(script.id)}
                         >
                           删除
                         </button>
-                        <div className="script-item-sort">
+                        <div className="flex gap-1">
                           <button
-                            className="icon-button"
+                            className="icon-btn disabled:opacity-40"
                             aria-label={"上移 " + script.name}
                             onClick={() => void handleMoveScript(index, -1)}
                             disabled={index === 0}
@@ -417,7 +424,7 @@ export default function DetailPanel({
                             <IconArrowUpCircle size={14} />
                           </button>
                           <button
-                            className="icon-button"
+                            className="icon-btn disabled:opacity-40"
                             aria-label={"下移 " + script.name}
                             onClick={() => void handleMoveScript(index, 1)}
                             disabled={index === projectScripts.length - 1}
@@ -433,42 +440,42 @@ export default function DetailPanel({
             )}
           </section>
 
-          <section className="detail-section">
-            <div className="detail-section-title">备注</div>
+          <section className="flex flex-col gap-2.5">
+            <div className="text-[14px] font-semibold">备注</div>
             <textarea
-              className="detail-notes"
+              className="min-h-[120px] resize-y rounded-md border border-border bg-card-bg px-2 py-2 text-text focus:outline-2 focus:outline-accent focus:outline-offset-[-1px]"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="记录项目备注"
             />
           </section>
 
-          <section className="detail-section">
-            <div className="detail-section-title">Markdown</div>
+          <section className="flex flex-col gap-2.5">
+            <div className="text-[14px] font-semibold">Markdown</div>
             <ProjectMarkdownSection project={project} />
           </section>
 
         </div>
       ) : (
-        <div className="detail-content">
-          <section className="detail-section">
-            <div className="detail-section-title">分支管理</div>
-            <div className="detail-actions">
-              <button className="button" onClick={() => void refreshWorktrees(project.path)}>
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+          <section className="flex flex-col gap-2.5">
+            <div className="text-[14px] font-semibold">分支管理</div>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn" onClick={() => void refreshWorktrees(project.path)}>
                 刷新
               </button>
             </div>
-            {worktreeError ? <div className="detail-error">{worktreeError}</div> : null}
+            {worktreeError ? <div className="text-fs-caption text-error">{worktreeError}</div> : null}
             {branches.length === 0 ? (
-              <div className="detail-muted">暂无分支信息或非 Git 项目</div>
+              <div className="text-fs-caption text-secondary-text">暂无分支信息或非 Git 项目</div>
             ) : (
-              <div className="branch-list">
+              <div className="flex flex-col gap-2.5">
                 {branches.map((branch) => (
-                  <div key={branch.name} className="branch-card">
+                  <div key={branch.name} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card-bg p-3">
                     <div>
-                      <div className="branch-name">
+                      <div className="text-[14px] font-semibold">
                         {branch.name}
-                        {branch.isMain ? <span className="branch-main">主分支</span> : null}
+                        {branch.isMain ? <span className="ml-1.5 text-[11px] text-accent">主分支</span> : null}
                       </div>
                     </div>
                   </div>

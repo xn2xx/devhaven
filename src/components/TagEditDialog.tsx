@@ -61,38 +61,49 @@ export default function TagEditDialog({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal>
-      <div className="modal">
-        <div className="modal-title">{title}</div>
-        <label className="form-field">
+      <div className="modal-panel">
+        <div className="text-[16px] font-semibold">{title}</div>
+        <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
           <span>标签名称</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} />
+          <input
+            className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
         </label>
-        <label className="form-field">
+        <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
           <span>标签颜色</span>
-          <input type="color" value={color} onChange={(event) => setColor(event.target.value)} />
+          <input
+            className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
+            type="color"
+            value={color}
+            onChange={(event) => setColor(event.target.value)}
+          />
         </label>
-        <div className="color-palette">
+        <div className="flex flex-wrap gap-1.5">
           {TAG_PRESET_COLORS.map((option) => (
             <button
               key={option.name}
-              className={`color-swatch${color === option.color ? " is-selected" : ""}`}
+              className={`h-5 w-5 rounded-full border-2 border-transparent ${
+                color === option.color ? "border-white" : ""
+              }`}
               style={{ background: option.color }}
               onClick={() => setColor(option.color)}
               title={option.name}
             />
           ))}
         </div>
-        {error ? <div className="form-error">{error}</div> : null}
+        {error ? <div className="text-fs-caption text-error">{error}</div> : null}
         {name ? (
-          <div className="tag-preview" style={{ background: `${color}33`, color }}>
+          <div className="inline-flex rounded-md px-2.5 py-1.5 text-fs-caption" style={{ background: `${color}33`, color }}>
             {name}
           </div>
         ) : null}
-        <div className="modal-actions">
-          <button type="button" className="button" onClick={onClose}>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn" onClick={onClose}>
             取消
           </button>
-          <button type="button" className="button button-primary" onClick={handleSubmit}>
+          <button type="button" className="btn btn-primary" onClick={handleSubmit}>
             确定
           </button>
         </div>

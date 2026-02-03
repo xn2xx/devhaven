@@ -72,25 +72,29 @@ export default function MainContent({
   searchInputRef,
 }: MainContentProps) {
   return (
-    <section className="main-panel">
-      <div className="search-toolbar">
-        <button className="icon-button" aria-label="仪表盘" onClick={onOpenDashboard}>
+    <section className="flex min-h-0 min-w-0 flex-col bg-background">
+      <div className="flex h-search-area-h items-center gap-3 border-b border-search-area-border bg-search-area-bg p-2">
+        <button className="icon-btn" aria-label="仪表盘" onClick={onOpenDashboard}>
           <IconChartLine size={18} />
         </button>
         <button
-          className={`icon-button${showDetailPanel ? " is-active" : ""}`}
+          className={`icon-btn ${showDetailPanel ? "text-accent" : ""}`}
           aria-label="详情面板"
           onClick={onToggleDetailPanel}
         >
           <IconSidebarRight size={18} />
         </button>
-        <button className="icon-button" aria-label="设置" onClick={onOpenSettings}>
+        <button className="icon-btn" aria-label="设置" onClick={onOpenSettings}>
           <IconSettings size={18} />
         </button>
         <SearchBar value={searchText} onChange={onSearchTextChange} ref={searchInputRef} />
-        <label className="filter-select">
-          <IconCalendar className="filter-icon" size={14} />
-          <select value={dateFilter} onChange={(event) => onDateFilterChange(event.target.value as DateFilter)}>
+        <label className="inline-flex items-center gap-1.5 rounded-md border border-search-border bg-search-bg px-2 py-1 text-[12px] font-semibold text-titlebar-icon">
+          <IconCalendar size={14} />
+          <select
+            className="border-none bg-transparent text-[12px] font-semibold text-inherit outline-none"
+            value={dateFilter}
+            onChange={(event) => onDateFilterChange(event.target.value as DateFilter)}
+          >
             {DATE_FILTER_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.title}
@@ -98,11 +102,15 @@ export default function MainContent({
             ))}
           </select>
         </label>
-        <div className="git-filter-group">
+        <div className="inline-flex items-center gap-1 rounded-lg border border-search-border bg-search-bg p-0.5">
           {GIT_FILTER_OPTIONS.map((option) => (
             <button
               key={option.value}
-              className={`git-filter-button${gitFilter === option.value ? " is-active" : ""}`}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-semibold transition-colors duration-150 ${
+                gitFilter === option.value
+                  ? "bg-accent text-white"
+                  : "text-secondary-text hover:bg-button-hover hover:text-text"
+              }`}
               onClick={() => onGitFilterChange(option.value)}
             >
               {option.title}
@@ -111,13 +119,15 @@ export default function MainContent({
         </div>
       </div>
 
-      <div className="main-scroll">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {isLoading ? (
-          <div className="empty-state">正在加载项目数据...</div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-secondary-text">
+            正在加载项目数据...
+          </div>
         ) : error ? (
-          <div className="empty-state">{error}</div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-secondary-text">{error}</div>
         ) : projects.length === 0 ? (
-          <div className="empty-state">
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-secondary-text">
             {recycleBinCount > 0 ? (
               <>
                 <div>当前没有可见项目</div>
@@ -131,13 +141,13 @@ export default function MainContent({
             )}
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="empty-state">
-            <IconSearch className="empty-state-icon" size={36} />
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-secondary-text">
+            <IconSearch className="text-secondary-text" size={36} />
             <div>没有匹配的项目</div>
             <div>尝试修改搜索条件或清除标签筛选</div>
           </div>
         ) : (
-          <div className="project-grid">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-4 p-4">
             {filteredProjects.map((project) => (
               <ProjectCard
                 key={project.id}

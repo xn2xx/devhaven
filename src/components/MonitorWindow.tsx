@@ -304,18 +304,24 @@ export default function MonitorWindow({
 
   return (
     <div
-      className={`monitor-root${isExpanded ? " is-expanded" : ""}`}
+      className={`group relative flex h-full items-end justify-center bg-transparent px-4 pb-7 ${
+        isExpanded ? "pt-6" : "pt-4"
+      }`}
       onMouseLeave={handleHoverLeave}
       onMouseMove={handleHoverMove}
     >
       <div
         ref={bubbleRef}
-        className={`monitor-bubble${isExpanded ? " is-open" : ""}`}
+        className={`absolute bottom-[142px] flex w-[320px] max-h-[360px] flex-col rounded-[20px] border border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(23,23,23,0.94),rgba(17,17,17,0.94))] shadow-[0_22px_50px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-[16px] transition-[opacity,transform] duration-200 ${
+          isExpanded
+            ? "opacity-100 translate-y-0 scale-100 pointer-events-auto"
+            : "opacity-0 translate-y-2.5 scale-[0.98] pointer-events-none"
+        } after:(content-[\"\"] absolute bottom-[-10px] left-1/2 h-[18px] w-[18px] -translate-x-1/2 rotate-45 bg-[rgba(20,20,20,0.95)] border-r border-b border-[rgba(255,255,255,0.08)] shadow-[4px_4px_8px_rgba(0,0,0,0.2)])`}
         data-no-drag
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleHoverLeave}
       >
-        <div className="monitor-bubble-body">
+        <div className="flex min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1.5">
           <CodexSessionSection
             sessions={sessions}
             isLoading={isLoading}
@@ -323,12 +329,13 @@ export default function MonitorWindow({
             onOpenSession={onOpenSession}
             emptyText=""
             showHeader={false}
+            variant="monitor"
           />
         </div>
       </div>
       <button
         ref={mascotButtonRef}
-        className="monitor-mascot-button"
+        className="group relative inline-flex h-[144px] w-[144px] cursor-pointer items-center justify-center rounded-full border-none bg-transparent touch-none"
         type="button"
         aria-expanded={isExpanded}
         aria-label="展开悬浮监控详情"
@@ -339,15 +346,26 @@ export default function MonitorWindow({
         onPointerUp={handleMascotPointerUp}
         onPointerCancel={handleMascotPointerCancel}
       >
-        <img src="/mascot/slime.svg" alt="史莱姆" draggable={false} />
+        <img
+          className="h-[120px] w-[120px] drop-shadow-[0_16px_22px_rgba(59,130,246,0.28)] transition-transform duration-200 group-hover:translate-y-[-4px] group-hover:scale-[1.02] group-active:translate-y-0 group-active:scale-[0.98]"
+          src="/mascot/slime.svg"
+          alt="史莱姆"
+          draggable={false}
+        />
         <span
-          className={`monitor-status-badge${isLoading ? " is-loading" : sessions.length > 0 ? " is-active" : ""}`}
+          className={`absolute right-3 top-2.5 inline-flex h-5 min-w-[26px] items-center justify-center rounded-full border px-1.5 text-[11px] font-semibold text-white shadow-[0_6px_16px_rgba(0,0,0,0.35)] ${
+            isLoading
+              ? "bg-[linear-gradient(135deg,#f59e0b,#f97316)] border-[rgba(249,115,22,0.6)]"
+              : sessions.length > 0
+                ? "bg-[linear-gradient(135deg,#3b82f6,#6366f1)] border-[rgba(59,130,246,0.6)]"
+                : "bg-[rgba(255,255,255,0.12)] border-[rgba(255,255,255,0.18)]"
+          }`}
         >
           {badgeStatus}
         </span>
       </button>
       <div
-        className="monitor-drag-handle"
+        className="absolute bottom-1.5 h-2 w-20 rounded-full bg-[rgba(255,255,255,0.2)] opacity-10 transition-opacity duration-200 group-hover:opacity-45"
         data-tauri-drag-region
         onMouseDown={handleHeaderMouseDown}
         aria-hidden="true"

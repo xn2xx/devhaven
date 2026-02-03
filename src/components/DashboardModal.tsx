@@ -68,27 +68,29 @@ export default function DashboardModal({ projects, tags, heatmapStore, onClose, 
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal>
-      <div className="modal modal-large dashboard-modal">
-        <div className="dashboard-header">
+      <div className="modal-panel min-w-[600px] w-[min(980px,92vw)] max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="dashboard-title">项目仪表盘</div>
-            <div className="dashboard-subtitle">最后更新：{lastUpdatedLabel}</div>
+            <div className="text-[18px] font-semibold">项目仪表盘</div>
+            <div className="text-fs-caption text-secondary-text">最后更新：{lastUpdatedLabel}</div>
           </div>
-          <div className="dashboard-actions">
-            <button className="button button-outline" onClick={() => void handleRefresh()} disabled={isUpdating}>
+          <div className="inline-flex gap-2">
+            <button className="btn btn-outline" onClick={() => void handleRefresh()} disabled={isUpdating}>
               {isUpdating ? "更新中..." : "更新统计"}
             </button>
-            <button className="button" onClick={onClose}>
+            <button className="btn" onClick={onClose}>
               关闭
             </button>
           </div>
         </div>
 
-        <div className="dashboard-range">
+        <div className="flex flex-wrap gap-2">
           {TIME_RANGES.map((item) => (
             <button
               key={item.key}
-              className={`range-button${range.key === item.key ? " is-active" : ""}`}
+              className={`rounded-full px-3 py-1.5 text-[12px] ${
+                range.key === item.key ? "bg-accent text-white" : "bg-button-bg text-secondary-text"
+              }`}
               onClick={() => setRange(item)}
             >
               {item.label}
@@ -96,7 +98,7 @@ export default function DashboardModal({ projects, tags, heatmapStore, onClose, 
           ))}
         </div>
 
-        <div className="dashboard-grid">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
           <StatCard label="总项目数" value={projects.length} />
           <StatCard label="Git 项目" value={gitProjects} />
           <StatCard label="标签数" value={tags.length} />
@@ -105,9 +107,9 @@ export default function DashboardModal({ projects, tags, heatmapStore, onClose, 
           <StatCard label="活跃率" value={`${Math.round(stats.activityRate * 100)}%`} />
         </div>
 
-        <div className="dashboard-section">
+        <div className="flex flex-col gap-3">
           {heatmapStore.isLoading ? (
-            <div className="heatmap-placeholder">正在生成热力图...</div>
+            <div className="px-3 py-2 text-fs-caption text-secondary-text">正在生成热力图...</div>
           ) : heatmapData.length > 0 ? (
             <Heatmap
               data={heatmapData}
@@ -117,29 +119,29 @@ export default function DashboardModal({ projects, tags, heatmapStore, onClose, 
               className="heatmap-dashboard"
             />
           ) : (
-            <div className="heatmap-placeholder">暂无提交数据</div>
+            <div className="px-3 py-2 text-fs-caption text-secondary-text">暂无提交数据</div>
           )}
         </div>
 
-        <div className="dashboard-two-column">
-          <div className="dashboard-section">
-            <div className="dashboard-section-title">最近活跃日期</div>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
+          <div className="flex flex-col gap-3">
+            <div className="text-[13px] font-semibold">最近活跃日期</div>
             {dailyActivities.length === 0 ? (
-              <div className="dashboard-empty">暂无活跃记录</div>
+              <div className="text-fs-caption text-secondary-text">暂无活跃记录</div>
             ) : (
-              <div className="dashboard-list">
+              <div className="flex flex-col gap-2">
                 {dailyActivities.slice(0, 8).map((activity) => (
                   <DailyActivityRow key={activity.id} activity={activity} />
                 ))}
               </div>
             )}
           </div>
-          <div className="dashboard-section">
-            <div className="dashboard-section-title">最活跃项目</div>
+          <div className="flex flex-col gap-3">
+            <div className="text-[13px] font-semibold">最活跃项目</div>
             {activeProjects.length === 0 ? (
-              <div className="dashboard-empty">暂无 Git 项目</div>
+              <div className="text-fs-caption text-secondary-text">暂无 Git 项目</div>
             ) : (
-              <div className="dashboard-list">
+              <div className="flex flex-col gap-2">
                 {activeProjects.slice(0, 8).map((project) => (
                   <ProjectActivityRow key={project.id} data={project} />
                 ))}
@@ -159,9 +161,9 @@ type StatCardProps = {
 
 function StatCard({ label, value }: StatCardProps) {
   return (
-    <div className="dashboard-card">
-      <div className="dashboard-label">{label}</div>
-      <div className="dashboard-value">{value}</div>
+    <div className="rounded-[10px] border border-border bg-card-bg p-3.5">
+      <div className="text-fs-caption text-secondary-text">{label}</div>
+      <div className="text-[20px] font-semibold">{value}</div>
     </div>
   );
 }
@@ -214,9 +216,9 @@ function DailyActivityRow({ activity }: ActivityRowProps) {
     day: "2-digit",
   });
   return (
-    <div className="dashboard-row">
-      <div className="dashboard-row-title">{dateLabel}</div>
-      <div className="dashboard-row-meta">
+    <div className="flex items-center justify-between gap-3 rounded-[10px] border border-border bg-card-bg px-2.5 py-2">
+      <div className="text-[13px] font-semibold text-text">{dateLabel}</div>
+      <div className="text-fs-caption text-secondary-text">
         {activity.commitCount} 次提交 · {activity.projectIds.length} 个项目
       </div>
     </div>
@@ -229,9 +231,9 @@ type ProjectRowProps = {
 
 function ProjectActivityRow({ data }: ProjectRowProps) {
   return (
-    <div className="dashboard-row">
-      <div className="dashboard-row-title">{data.name}</div>
-      <div className="dashboard-row-meta">
+    <div className="flex items-center justify-between gap-3 rounded-[10px] border border-border bg-card-bg px-2.5 py-2">
+      <div className="text-[13px] font-semibold text-text">{data.name}</div>
+      <div className="text-fs-caption text-secondary-text">
         {data.commitCount} 次提交 · {data.activeDays} 天活跃
       </div>
     </div>

@@ -100,12 +100,12 @@ const terminal = new Terminal({
 
 ## 背景色配置
 
-终端容器的背景色在 `src/App.css` 中配置：
+终端容器的背景色在 `src/components/TerminalPanel.tsx` 中配置：
 
-```css
-.workspace-terminal {
-  background: #002b36; /* 与主题背景色匹配 */
-}
+```tsx
+<div className="flex min-h-0 flex-1 flex-col border-t border-divider bg-[#002b36]">
+  {/* ... */}
+</div>
 ```
 
 如果切换主题，记得同步更新这个背景色。

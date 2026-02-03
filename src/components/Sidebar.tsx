@@ -136,9 +136,9 @@ export default function Sidebar({
   };
 
   return (
-    <aside className="sidebar-panel">
-      <div className="sidebar-scroll" onDragOver={(event) => event.preventDefault()} onDrop={handleDirectoryDrop}>
-        <section className="sidebar-section">
+    <aside className="flex min-w-sidebar max-w-sidebar flex-col border-r border-sidebar-border bg-sidebar-bg">
+      <div className="flex-1 overflow-y-auto" onDragOver={(event) => event.preventDefault()} onDrop={handleDirectoryDrop}>
+        <section className="pb-2">
           <div className="section-header">
             <span className="section-title">目录</span>
             <DropdownMenu
@@ -156,7 +156,7 @@ export default function Sidebar({
               ]}
             />
           </div>
-          <div className="list">
+          <div className="flex flex-col">
             <DirectoryRow
               label="全部"
               count={projects.length}
@@ -177,18 +177,20 @@ export default function Sidebar({
           </div>
         </section>
 
-        <section className="sidebar-section">
+        <section className="pb-2">
           <div className="section-header">
             <span className="section-title">开发热力图</span>
           </div>
           {heatmapFilteredProjectIds.size > 0 ? (
-            <div className="heatmap-filter">
+            <div className="flex items-center justify-between gap-2 bg-[rgba(69,59,231,0.1)] px-3 py-2 text-fs-caption text-accent">
               <span>日期筛选已启用</span>
-              <button onClick={onClearHeatmapFilter}>清除</button>
+              <button className="text-accent" onClick={onClearHeatmapFilter}>
+                清除
+              </button>
             </div>
           ) : null}
           {isHeatmapLoading ? (
-            <div className="heatmap-placeholder">正在统计中...</div>
+            <div className="px-3 py-2 text-fs-caption text-secondary-text">正在统计中...</div>
           ) : heatmapData.length > 0 ? (
             <Heatmap
               data={heatmapData}
@@ -198,11 +200,11 @@ export default function Sidebar({
               className="heatmap-sidebar"
             />
           ) : (
-            <div className="heatmap-placeholder">暂无数据</div>
+            <div className="px-3 py-2 text-fs-caption text-secondary-text">暂无数据</div>
           )}
         </section>
 
-        <div className="section-divider" />
+        <div className="my-2 h-px bg-divider" />
 
         <CodexSessionSection
           sessions={codexSessions}
@@ -211,18 +213,18 @@ export default function Sidebar({
           onOpenSession={onOpenCodexSession}
         />
 
-        <div className="section-divider" />
+        <div className="my-2 h-px bg-divider" />
 
-        <section className="sidebar-section sidebar-tags">
+        <section className="pb-2">
           <div className="section-header">
             <span className="section-title">标签</span>
-            <div className="tag-actions">
-              <button className="icon-button" onClick={() => onOpenTagEditor()} aria-label="新建标签">
+            <div className="ml-auto inline-flex items-center gap-1.5">
+              <button className="icon-btn" onClick={() => onOpenTagEditor()} aria-label="新建标签">
                 <IconPlusCircle size={16} />
               </button>
             </div>
           </div>
-          <div className="list">
+          <div className="flex flex-col">
             <TagRow
               label="全部"
               count={tagCounts.get("全部") ?? 0}
@@ -247,9 +249,9 @@ export default function Sidebar({
           </div>
         </section>
       </div>
-      <div className="sidebar-footer">
+      <div className="flex items-center justify-start border-t border-divider px-2.5 py-2">
         <button
-          className="icon-button recycle-bin-icon"
+          className="icon-btn h-8 w-8 text-titlebar-icon"
           onClick={onOpenRecycleBin}
           aria-label="回收站"
           title="回收站"
@@ -281,14 +283,17 @@ function DirectoryRow({ label, count, selected, onClick, onOpen, onRemove }: Dir
   }
 
   return (
-    <div className={`tag-row${selected ? " is-selected" : ""}`} onClick={onClick}>
+    <div
+      className={`tag-row-base tag-row-hover ${selected ? "tag-row-selected" : ""}`}
+      onClick={onClick}
+    >
       <span>{label}</span>
-      <div className="tag-actions">
-        <span className="tag-count">{count}</span>
+      <div className="ml-auto inline-flex items-center gap-1.5">
+        <span className={`tag-count ${selected ? "bg-sidebar-selected text-text" : ""}`}>{count}</span>
         {menuItems.length > 0 ? (
           <DropdownMenu label={<IconMoreHorizontal size={16} />} items={menuItems} />
         ) : (
-          <span className="icon-button is-placeholder" aria-hidden="true" />
+          <span className="icon-btn invisible" aria-hidden="true" />
         )}
       </div>
     </div>
@@ -338,7 +343,9 @@ function TagRow({
 
   return (
     <div
-      className={`tag-row${selected ? " is-selected" : ""}${hidden ? " is-hidden" : ""}`}
+      className={`group tag-row-base tag-row-hover ${selected ? "tag-row-selected" : ""} ${
+        hidden ? "opacity-60" : ""
+      }`}
       onClick={onClick}
       onDragOver={(event) => {
         if (onAssignProjects) {
@@ -362,13 +369,13 @@ function TagRow({
         }
       }}
     >
-      <span className="tag-label" style={tagStyle}>
+      <span className="inline-flex items-center rounded-md bg-tag-bg px-2 py-1 text-fs-sidebar-tag text-tag-text" style={tagStyle}>
         {label}
       </span>
-      <div className="tag-actions">
+      <div className="ml-auto inline-flex items-center gap-1.5">
         {onToggleHidden ? (
           <button
-            className={`icon-button tag-visibility${hidden ? " is-visible" : ""}`}
+            className={`icon-btn ${hidden ? "opacity-100" : "opacity-0 group-hover:opacity-80"}`}
             onClick={(event) => {
               event.stopPropagation();
               onToggleHidden();
@@ -378,13 +385,13 @@ function TagRow({
             {hidden ? <IconEyeOff size={14} /> : <IconEye size={14} />}
           </button>
         ) : (
-          <span className="icon-button is-placeholder" aria-hidden="true" />
+          <span className="icon-btn invisible" aria-hidden="true" />
         )}
-        <span className="tag-count">{count}</span>
+        <span className={`tag-count ${selected ? "bg-sidebar-selected text-text" : ""}`}>{count}</span>
         {menuItems.length > 0 ? (
           <DropdownMenu label={<IconMoreHorizontal size={16} />} items={menuItems} />
         ) : (
-          <span className="icon-button is-placeholder" aria-hidden="true" />
+          <span className="icon-btn invisible" aria-hidden="true" />
         )}
       </div>
     </div>

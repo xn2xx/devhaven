@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-import "./App.css";
 import Sidebar from "./components/Sidebar";
 import MainContent from "./components/MainContent";
 import DetailPanel from "./components/DetailPanel";
@@ -966,7 +965,7 @@ function AppLayout() {
 
   if (isMonitorView) {
     return (
-      <div className="app-root is-monitor">
+      <div className="h-full bg-transparent">
         <MonitorWindow
           sessions={runningCodexSessionViews}
           isLoading={codexSessionStore.isLoading}
@@ -978,7 +977,7 @@ function AppLayout() {
   }
 
   return (
-    <div className={`app-root${appMode === "workspace" ? " is-workspace" : ""}`}>
+    <div className="h-full bg-background">
       {appMode === "workspace" ? (
         <WorkspaceView
           sessions={workspaceSessions}
@@ -990,7 +989,13 @@ function AppLayout() {
           onActivePaneChange={handleWorkspacePaneChange}
         />
       ) : (
-        <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
+        <div
+          className={`grid h-full ${
+            showDetailPanel
+              ? "grid-cols-[220px_minmax(0,1fr)_380px]"
+              : "grid-cols-[220px_minmax(0,1fr)]"
+          }`}
+        >
           <Sidebar
             appState={appState}
             projects={visibleProjects}
@@ -1104,7 +1109,15 @@ function AppLayout() {
         />
       ) : null}
       {toast ? (
-        <div className={`toast${toast.variant === "error" ? " is-error" : ""}`}>{toast.message}</div>
+        <div
+          className={`fixed left-1/2 bottom-7 -translate-x-1/2 rounded-full px-4 py-2 text-fs-caption border text-text z-60 backdrop-blur-[6px] ${
+            toast.variant === "error"
+              ? "bg-[rgba(239,68,68,0.15)] border-[rgba(239,68,68,0.4)]"
+              : "bg-[rgba(16,185,129,0.15)] border-[rgba(16,185,129,0.4)]"
+          }`}
+        >
+          {toast.message}
+        </div>
       ) : null}
     </div>
   );

@@ -35,6 +35,14 @@ export default function Heatmap({
   const monthLabels = useMemo(() => buildMonthLabels(weeks), [weeks]);
 
   const gap = config.compactMode ? 2 : 4;
+  const intensityClasses = [
+    "bg-[rgba(255,255,255,0.06)]",
+    "bg-[rgba(34,197,94,0.22)]",
+    "bg-[rgba(34,197,94,0.4)]",
+    "bg-[rgba(34,197,94,0.6)]",
+    "bg-[rgba(34,197,94,0.82)]",
+  ];
+  const isSidebar = className?.includes("heatmap-sidebar") ?? false;
 
   useEffect(() => {
     if (!config.useAdaptiveSpacing) {
@@ -69,41 +77,61 @@ export default function Heatmap({
   );
 
   return (
-    <div className={`heatmap ${config.compactMode ? "is-compact" : ""}${className ? ` ${className}` : ""}`}>
+    <div
+      className={`flex w-full flex-col gap-2.5 ${className ? className : ""}`}
+    >
       {config.showHeader ? (
-        <div className="heatmap-header">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="heatmap-title">{title ?? "开发热力图"}</div>
-            {subtitle ? <div className="heatmap-subtitle">{subtitle}</div> : null}
+            <div className={`${config.compactMode ? "text-[12px]" : "text-[14px]"} font-semibold`}>
+              {title ?? "开发热力图"}
+            </div>
+            {subtitle ? <div className="text-fs-caption text-secondary-text">{subtitle}</div> : null}
           </div>
         </div>
       ) : null}
-      <div className="heatmap-body" ref={containerRef} style={gridStyle}>
+      <div
+        className={`relative flex w-full min-w-0 items-start ${isSidebar ? "justify-center" : ""}`}
+        ref={containerRef}
+        style={gridStyle}
+      >
         {config.showWeekdayLabels ? (
-          <div className="heatmap-weekdays">
+          <div className={`grid grid-rows-[repeat(7,var(--heatmap-cell))] gap-[var(--heatmap-gap)] text-[11px] text-secondary-text ${
+            config.compactMode ? "pt-0" : "pt-[18px]"
+          }`}
+          >
             {WEEKDAY_LABELS.map((label) => (
-              <span key={label.key} className="heatmap-weekday" style={{ gridRow: label.row + 1 }}>
+              <span key={label.key} className="flex items-center" style={{ gridRow: label.row + 1 }}>
                 {label.label}
               </span>
             ))}
           </div>
         ) : null}
-        <div className="heatmap-grid" style={gridStyle}>
+        <div className="flex min-w-0 flex-col gap-1.5" style={gridStyle}>
           {config.showHeader ? (
-            <div className="heatmap-months">
+            <div className="grid h-4 grid-flow-col gap-[var(--heatmap-gap)] text-[11px] text-secondary-text">
               {monthLabels.map((label, index) => (
-                <span key={`month-${index}`} className="heatmap-month" style={{ width: cellSize }}>
+                <span key={`month-${index}`} className="whitespace-nowrap text-left" style={{ width: cellSize }}>
                   {label}
                 </span>
               ))}
             </div>
           ) : null}
-          <div className="heatmap-weeks">
+          <div className="grid grid-flow-col gap-[var(--heatmap-gap)]">
             {weeks.map((week, weekIndex) => (
-              <div key={`week-${weekIndex}`} className="heatmap-week" style={gridStyle}>
+              <div
+                key={`week-${weekIndex}`}
+                className="grid grid-rows-[repeat(7,var(--heatmap-cell))] gap-[var(--heatmap-gap)]"
+                style={gridStyle}
+              >
                 {week.map((day, dayIndex) => {
                   if (!day) {
-                    return <div key={`empty-${weekIndex}-${dayIndex}`} className="heatmap-cell is-empty" />;
+                    return (
+                      <div
+                        key={`empty-${weekIndex}-${dayIndex}`}
+                        className="box-border h-[var(--heatmap-cell)] w-[var(--heatmap-cell)] rounded-[3px] border-0 bg-transparent"
+                      />
+                    );
                   }
                   const dateKey = formatDateKey(day.date);
                   const isSelected = selectedDateKey === dateKey;
@@ -112,9 +140,13 @@ export default function Heatmap({
                     <button
                       key={`cell-${dateKey}`}
                       type="button"
-                      className={`heatmap-cell intensity-${day.intensity}${day.commitCount > 0 ? " is-active" : ""}${
-                        isSelected ? " is-selected" : ""
-                      }`}
+                      className={`box-border h-[var(--heatmap-cell)] w-[var(--heatmap-cell)] rounded-[3px] border border-transparent transition-[transform,border-color] duration-100 ${
+                        intensityClasses[day.intensity] ?? ""
+                      } ${
+                        day.commitCount > 0
+                          ? "hover:scale-[1.12] hover:border-[rgba(255,255,255,0.4)] focus-visible:scale-[1.12] focus-visible:border-[rgba(255,255,255,0.4)]"
+                          : ""
+                      } ${isSelected ? "border-accent shadow-[0_0_0_1px_#453be7]" : ""}`}
                       aria-label={label}
                       onMouseEnter={(event) => {
                         if (!config.showTooltip) {
@@ -162,16 +194,24 @@ export default function Heatmap({
           </div>
         </div>
         {tooltip ? (
-          <div className="heatmap-tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
+          <div
+            className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-3 whitespace-nowrap rounded-md border border-border bg-[rgba(15,15,15,0.95)] px-2 py-1.5 text-[11px] text-text"
+            style={{ left: tooltip.x, top: tooltip.y }}
+          >
             {tooltip.text}
           </div>
         ) : null}
       </div>
       {config.showLegend ? (
-        <div className="heatmap-legend">
+        <div className="flex items-center gap-1.5 text-[11px] text-secondary-text">
           <span>少</span>
           {[0, 1, 2, 3, 4].map((level) => (
-            <span key={`legend-${level}`} className={`heatmap-legend-cell intensity-${level}`} />
+            <span
+              key={`legend-${level}`}
+              className={`h-[var(--heatmap-cell)] w-[var(--heatmap-cell)] rounded-[3px] ${
+                intensityClasses[level] ?? "bg-[rgba(255,255,255,0.08)]"
+              }`}
+            />
           ))}
           <span>多</span>
         </div>

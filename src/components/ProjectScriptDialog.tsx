@@ -60,36 +60,43 @@ export default function ProjectScriptDialog({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal>
-      <div className="modal modal-large">
-        <div className="modal-title">{title}</div>
-        <label className="form-field">
+      <div className="modal-panel min-w-[600px]">
+        <div className="text-[16px] font-semibold">{title}</div>
+        <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
           <span>脚本名称</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：开发服务器" />
+          <input
+            className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="例如：开发服务器"
+          />
         </label>
-        <label className="form-field">
+        <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
           <span>启动命令</span>
           <textarea
+            className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
             value={start}
             onChange={(event) => setStart(event.target.value)}
             rows={3}
             placeholder="例如：pnpm dev"
           />
         </label>
-        <label className="form-field">
+        <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
           <span>停止命令（可选）</span>
           <textarea
+            className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
             value={stop}
             onChange={(event) => setStop(event.target.value)}
             rows={2}
             placeholder="留空则发送 Ctrl+C"
           />
         </label>
-        {error ? <div className="form-error">{error}</div> : null}
-        <div className="modal-actions">
-          <button type="button" className="button" onClick={onClose}>
+        {error ? <div className="text-fs-caption text-error">{error}</div> : null}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn" onClick={onClose}>
             取消
           </button>
-          <button type="button" className="button button-primary" onClick={handleSubmit}>
+          <button type="button" className="btn btn-primary" onClick={handleSubmit}>
             确定
           </button>
         </div>

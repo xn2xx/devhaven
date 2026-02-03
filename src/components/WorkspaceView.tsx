@@ -30,7 +30,7 @@ export default function WorkspaceView({
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
   return (
-    <div className="workspace-root">
+    <div className="flex h-full flex-col">
       <TabBar
         sessions={sessions}
         activeSessionId={activeSessionId}

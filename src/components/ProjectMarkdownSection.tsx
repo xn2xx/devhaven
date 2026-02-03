@@ -130,19 +130,19 @@ export default function ProjectMarkdownSection({ project }: ProjectMarkdownSecti
       if (node.type === "folder") {
         const isExpanded = expandedFolders.has(node.path);
         return (
-          <div key={node.path} className="markdown-tree-group">
+          <div key={node.path} className="flex flex-col">
             <button
-              className="tag-row markdown-row is-folder"
+              className="tag-row-base tag-row-hover justify-start gap-1.5 text-sidebar-title font-semibold"
               style={{ paddingLeft: `${depth * 12 + 12}px` }}
               type="button"
               onClick={() => toggleMarkdownFolder(node.path)}
               title={node.path}
             >
-              <span className="markdown-caret">{isExpanded ? "▾" : "▸"}</span>
-              <span className="markdown-label">{node.name}</span>
+              <span className="w-3 text-center text-[10px] text-sidebar-secondary">{isExpanded ? "▾" : "▸"}</span>
+              <span className="min-w-0 truncate">{node.name}</span>
             </button>
             {isExpanded && node.children && node.children.length > 0 ? (
-              <div className="markdown-tree-children">{renderMarkdownNodes(node.children, depth + 1)}</div>
+              <div className="flex flex-col">{renderMarkdownNodes(node.children, depth + 1)}</div>
             ) : null}
           </div>
         );
@@ -153,7 +153,9 @@ export default function ProjectMarkdownSection({ project }: ProjectMarkdownSecti
       return (
         <button
           key={node.path}
-          className={`tag-row markdown-row is-file${isActive ? " is-selected" : ""}`}
+          className={`tag-row-base tag-row-hover justify-start gap-1.5 text-sidebar-secondary ${
+            isActive ? "tag-row-selected" : ""
+          }`}
           style={{ paddingLeft: `${depth * 12 + 28}px` }}
           type="button"
           onClick={() => setActiveMarkdownPath(node.path)}
@@ -164,35 +166,35 @@ export default function ProjectMarkdownSection({ project }: ProjectMarkdownSecti
           }}
           title={node.path}
         >
-          <span className="markdown-label">{label}</span>
+          <span className="min-w-0 truncate">{label}</span>
         </button>
       );
     });
 
   if (!project) {
-    return <div className="detail-muted">请选择项目查看 Markdown</div>;
+    return <div className="text-fs-caption text-secondary-text">请选择项目查看 Markdown</div>;
   }
 
   return (
-    <div className="detail-markdown-panel">
-      <div className="detail-markdown-list">
+    <div className="flex flex-col gap-2">
+      <div className="max-h-[160px] overflow-y-auto rounded-lg border border-border bg-secondary-background py-1">
         {markdownError ? (
-          <div className="detail-muted">{`读取失败：${markdownError}`}</div>
+          <div className="px-3 py-2 text-fs-caption text-secondary-text">{`读取失败：${markdownError}`}</div>
         ) : markdownLoading ? (
-          <div className="detail-muted">正在扫描 Markdown...</div>
+          <div className="px-3 py-2 text-fs-caption text-secondary-text">正在扫描 Markdown...</div>
         ) : markdownTree.length === 0 ? (
-          <div className="detail-muted">未发现 Markdown 文件</div>
+          <div className="px-3 py-2 text-fs-caption text-secondary-text">未发现 Markdown 文件</div>
         ) : (
-          <div className="markdown-tree">{renderMarkdownNodes(markdownTree)}</div>
+          <div className="flex flex-col gap-0.5 pb-1">{renderMarkdownNodes(markdownTree)}</div>
         )}
       </div>
-      <div className="detail-markdown-preview">
+      <div className="max-h-[240px] min-h-[140px] overflow-y-auto rounded-lg border border-border bg-secondary-background px-3 py-2.5 text-fs-caption leading-relaxed text-text">
         {markdownContentError ? (
-          <div className="detail-muted">{`预览失败：${markdownContentError}`}</div>
+          <div className="text-fs-caption text-secondary-text">{`预览失败：${markdownContentError}`}</div>
         ) : markdownContentLoading ? (
-          <div className="detail-muted">正在加载内容...</div>
+          <div className="text-fs-caption text-secondary-text">正在加载内容...</div>
         ) : activeMarkdownPath && !markdownContent ? (
-          <div className="detail-muted">Markdown 内容为空</div>
+          <div className="text-fs-caption text-secondary-text">Markdown 内容为空</div>
         ) : renderedMarkdown ? (
           <div
             className="markdown-content"
@@ -201,7 +203,7 @@ export default function ProjectMarkdownSection({ project }: ProjectMarkdownSecti
             }}
           />
         ) : (
-          <div className="detail-muted">请选择 Markdown 文件进行预览</div>
+          <div className="text-fs-caption text-secondary-text">请选择 Markdown 文件进行预览</div>
         )}
       </div>
     </div>

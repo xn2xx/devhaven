@@ -36,32 +36,36 @@ export default function TabBar({
   };
 
   return (
-    <div className="workspace-header">
+    <div className="flex items-center gap-3 border-b border-divider bg-search-area-bg px-3 py-2.5">
       {readOnly ? null : (
-        <button className="icon-button workspace-back" type="button" onClick={onExitWorkspace} aria-label="返回项目列表">
+        <button className="icon-btn text-titlebar-icon" type="button" onClick={onExitWorkspace} aria-label="返回项目列表">
           <IconArrowLeft size={16} />
         </button>
       )}
-      <div className="workspace-tabs">
+      <div className="flex flex-1 items-center gap-2 overflow-x-auto">
         {sessions.map((session) => {
           const isActive = session.id === activeSessionId;
           return (
             <div
               key={session.id}
-              className={`workspace-tab${isActive ? " is-active" : ""}`}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-secondary-text ${
+                isActive
+                  ? "border-accent bg-[rgba(69,59,231,0.2)] text-text"
+                  : "border-border bg-card-bg"
+              }`}
               title={session.projectPath}
             >
               <button
-                className="workspace-tab-trigger"
+                className="inline-flex items-center gap-1.5 px-1 py-0.5 text-fs-caption"
                 type="button"
                 onClick={() => onSelectSession(session.id)}
               >
                 <IconTerminal size={14} />
-                <span className="workspace-tab-title">{session.projectName}</span>
+                <span className="max-w-[160px] truncate">{session.projectName}</span>
               </button>
               {readOnly ? null : (
                 <button
-                  className="workspace-tab-close"
+                  className="inline-flex items-center justify-center p-0.5 opacity-60 hover:opacity-100"
                   type="button"
                   aria-label={`关闭 ${session.projectName}`}
                   onClick={() => void handleCloseSession(session)}
@@ -73,7 +77,7 @@ export default function TabBar({
           );
         })}
       </div>
-      {rightSlot ? <div className="workspace-actions">{rightSlot}</div> : null}
+      {rightSlot ? <div className="inline-flex items-center gap-2">{rightSlot}</div> : null}
     </div>
   );
 }

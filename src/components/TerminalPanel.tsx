@@ -332,7 +332,7 @@ export default function TerminalPanel({
 
   if (!activeSession) {
     return (
-      <div className="workspace-terminal terminal-empty">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 border-t border-divider bg-[#002b36] text-[13px] text-secondary-text">
         <div>暂无可用终端</div>
         <div>双击项目卡片以创建会话</div>
       </div>
@@ -340,23 +340,29 @@ export default function TerminalPanel({
   }
 
   return (
-    <div className="workspace-terminal">
-      <div className="workspace-windowbar">
-        <div className="window-actions">
+    <div className="flex min-h-0 flex-1 flex-col border-t border-divider bg-[#002b36]">
+      <div className="flex items-center gap-3 border-b border-divider bg-[rgba(3,22,28,0.7)] px-3 py-2">
+        <div className="inline-flex items-center gap-2">
           {attachCommand ? (
             <>
-              <button className="window-action-button" type="button" onClick={handleCopyAttachCommand}>
+              <button
+                className="rounded-md border border-[rgba(255,255,255,0.12)] bg-[rgba(8,37,46,0.85)] px-2 py-1 text-[12px] text-secondary-text transition-colors duration-150 hover:border-[rgba(255,255,255,0.3)] hover:text-text"
+                type="button"
+                onClick={handleCopyAttachCommand}
+              >
                 复制恢复命令
               </button>
-              <span className="window-attach-command">{attachCommand}</span>
+              <span className="rounded-md border border-[rgba(255,255,255,0.08)] bg-[rgba(3,22,28,0.6)] px-2 py-1 font-mono text-[12px] text-secondary-text whitespace-nowrap">
+                {attachCommand}
+              </span>
             </>
           ) : null}
-          {copyHint ? <span className="window-copy-hint">{copyHint}</span> : null}
+          {copyHint ? <span className="text-[12px] text-secondary-text">{copyHint}</span> : null}
         </div>
       </div>
-      <div className="terminal-shell">
-        <div ref={containerRef} className="terminal-surface">
-          <div className="terminal-panes">
+      <div className="relative flex h-full min-h-0 flex-1 bg-[#002b36]">
+        <div ref={containerRef} className="terminal-surface relative h-full min-h-0 flex-1 overflow-hidden bg-[#002b36]">
+          <div className="absolute inset-0">
             {panes.map((pane) => {
               const left = windowWidth > 0 ? `${(pane.left / windowWidth) * 100}%` : "0%";
               const top = windowHeight > 0 ? `${(pane.top / windowHeight) * 100}%` : "0%";
@@ -366,12 +372,14 @@ export default function TerminalPanel({
               return (
                 <div
                   key={pane.id}
-                  className={`terminal-pane${isActive ? " is-active" : ""}`}
+                  className={`absolute box-border bg-[#002b36] ${
+                    isActive ? "outline outline-1 outline-[rgba(69,59,231,0.6)] outline-offset-[-1px]" : ""
+                  }`}
                   style={{ left, top, width, height }}
                   onMouseDown={() => focusPane(pane.id)}
                   tabIndex={0}
                 >
-                  <div ref={(element) => registerPane(pane.id, element)} className="terminal-pane-surface" />
+                  <div ref={(element) => registerPane(pane.id, element)} className="h-full w-full bg-[#002b36]" />
                 </div>
               );
             })}
@@ -386,8 +394,12 @@ export default function TerminalPanel({
               return (
                 <div
                   key={divider.id}
-                  className={`terminal-divider is-${divider.orientation}${
-                    draggingDividerId === divider.id ? " is-dragging" : ""
+                  className={`absolute z-10 bg-[rgba(255,255,255,0.08)] opacity-60 transition-colors duration-150 touch-none hover:bg-[rgba(255,255,255,0.2)] hover:opacity-100 ${
+                    divider.orientation === "vertical"
+                      ? "-translate-x-1 cursor-col-resize w-2"
+                      : "-translate-y-1 cursor-row-resize h-2"
+                  } ${
+                    draggingDividerId === divider.id ? "bg-[rgba(255,255,255,0.2)] opacity-100" : ""
                   }`}
                   style={style}
                   role="separator"
@@ -399,8 +411,8 @@ export default function TerminalPanel({
           </div>
         </div>
         {status !== "ready" && (
-          <div className="terminal-overlay">
-            <div className="terminal-status">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-[rgba(15,17,21,0.85)] px-4 text-center text-[12px] text-secondary-text">
+            <div className="max-w-[280px]">
               {(status === "idle" || status === "preparing") && "正在准备终端..."}
               {status === "connecting" && "正在连接终端..."}
               {status === "error" && "终端启动失败"}
