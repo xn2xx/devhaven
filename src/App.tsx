@@ -8,7 +8,6 @@ import DetailPanel from "./components/DetailPanel";
 import TagEditDialog from "./components/TagEditDialog";
 import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
-import WorkspaceView from "./components/WorkspaceView";
 import RecycleBinModal from "./components/RecycleBinModal";
 import MonitorWindow from "./components/MonitorWindow";
 import { useCodexSessions } from "./hooks/useCodexSessions";
@@ -16,9 +15,8 @@ import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
-import type { TerminalSessionInfo, TmuxSupportStatus, WorkspaceSession } from "./models/terminal";
 import type { CodexSessionSummary, CodexSessionView } from "./models/codex";
-import type { ColorData, Project, ProjectScript, TagData } from "./models/types";
+import type { ColorData, Project, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
@@ -26,17 +24,8 @@ import { buildGitIdentitySignature } from "./utils/gitIdentity";
 import { pickColorForTag } from "./utils/tagColors";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
-import { copyToClipboard, openInTerminal, sendSystemNotification } from "./services/system";
+import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
-import {
-  closeTerminalSession,
-  createTerminalSession,
-  getTmuxSupportStatus,
-  listTerminalSessions,
-  sendTmuxInput,
-} from "./services/terminal";
-
-type AppMode = "gallery" | "workspace";
 
 const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
 const MAIN_WINDOW_LABEL = "main";
@@ -87,10 +76,6 @@ function buildCodexSessionViews(sessions: CodexSessionSummary[], projects: Proje
   });
 }
 
-function normalizeScriptInput(value: string) {
-  return value.replace(/\r\n/g, "\n");
-}
-
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
   const {
@@ -113,7 +98,6 @@ function AppLayout() {
     refreshProject,
     updateGitDaily,
     updateSettings,
-    updateProjectScripts,
     moveProjectToRecycleBin,
     restoreProjectFromRecycleBin,
   } = useDevHavenContext();
@@ -134,14 +118,7 @@ function AppLayout() {
   );
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [previewTerminalUseWebglRenderer, setPreviewTerminalUseWebglRenderer] = useState<boolean | null>(null);
-  const [appMode, setAppMode] = useState<AppMode>("gallery");
-  const [workspaceSessions, setWorkspaceSessions] = useState<WorkspaceSession[]>([]);
-  const [activeWorkspaceSessionId, setActiveWorkspaceSessionId] = useState<string | null>(null);
-  const [tmuxSupport, setTmuxSupport] = useState<TmuxSupportStatus>({ supported: true });
-  const [tmuxSessionsLoaded, setTmuxSessionsLoaded] = useState(false);
   const [showRecycleBin, setShowRecycleBin] = useState(false);
-  const [runningScriptByProjectId, setRunningScriptByProjectId] = useState<Record<string, string | null>>({});
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
 
@@ -162,16 +139,8 @@ function AppLayout() {
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
   const gitIdentitySignatureRef = useRef<string | null>(null);
-  const pendingMonitorSessionRef = useRef<MonitorOpenSessionPayload | null>(null);
   const codexSessionSnapshotRef = useRef<Map<string, CodexSessionView>>(new Map());
   const codexSessionSnapshotReadyRef = useRef(false);
-  const activePaneBySessionRef = useRef<Map<string, string | null>>(new Map());
-  const pendingScriptRunRef = useRef<
-    { sessionId: string; projectId: string; projectPath: string; script: ProjectScript } | null
-  >(null);
-  const scriptRunTargetRef = useRef<
-    Map<string, { sessionId: string; paneId: string | null }>
-  >(new Map());
   const recycleBinPaths = appState.recycleBin ?? [];
   const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
   const recycleBinCount = recycleBinPaths.length;
@@ -204,32 +173,10 @@ function AppLayout() {
     () => codexSessionViews.filter((session) => session.isRunning),
     [codexSessionViews],
   );
-  const terminalSettings = appState.settings.terminalOpenTool;
-  const terminalUseWebglRenderer =
-    previewTerminalUseWebglRenderer ?? appState.settings.terminalUseWebglRenderer;
 
   const hiddenTags = useMemo(
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
     [appState.tags],
-  );
-
-  const buildWorkspaceSession = useCallback(
-    (sessionInfo: TerminalSessionInfo): WorkspaceSession => {
-      const byPath =
-        sessionInfo.projectPath.length > 0
-          ? projects.find((project) => project.path === sessionInfo.projectPath)
-          : null;
-      const byName = projects.find((project) => project.name === sessionInfo.id);
-      const byId = projectMap.get(sessionInfo.projectId) ?? null;
-      const matchedProject = byPath ?? byName ?? byId;
-      return {
-        ...sessionInfo,
-        projectId: matchedProject?.id ?? sessionInfo.projectId,
-        projectPath: matchedProject?.path ?? sessionInfo.projectPath,
-        projectName: sessionInfo.id,
-      };
-    },
-    [projectMap, projects],
   );
 
   const filteredProjects = useMemo(() => {
@@ -421,50 +368,6 @@ function AppLayout() {
   }, []);
 
   useEffect(() => {
-    let canceled = false;
-    void (async () => {
-      try {
-        const status = await getTmuxSupportStatus();
-        if (!canceled) {
-          setTmuxSupport(status);
-        }
-      } catch (error) {
-        console.error("获取 tmux 支持状态失败。", error);
-        if (!canceled) {
-          setTmuxSupport({ supported: false, reason: "无法检测 tmux 状态" });
-        }
-      }
-    })();
-    return () => {
-      canceled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!tmuxSupport.supported || isLoading || tmuxSessionsLoaded) {
-      return;
-    }
-    let canceled = false;
-    void (async () => {
-      try {
-        const sessions = await listTerminalSessions();
-        if (!canceled) {
-          setWorkspaceSessions(sessions.map((session) => buildWorkspaceSession(session)));
-        }
-      } catch (error) {
-        console.error("加载 tmux 会话失败。", error);
-      } finally {
-        if (!canceled) {
-          setTmuxSessionsLoaded(true);
-        }
-      }
-    })();
-    return () => {
-      canceled = true;
-    };
-  }, [buildWorkspaceSession, isLoading, tmuxSessionsLoaded, tmuxSupport.supported]);
-
-  useEffect(() => {
     if (isLoading) {
       return;
     }
@@ -514,21 +417,6 @@ function AppLayout() {
     }
     void updateGitDaily(gitPaths);
   }, [gitIdentitySignature, isLoading, updateGitDaily, visibleProjects]);
-
-  useEffect(() => {
-    if (workspaceSessions.length === 0) {
-      setActiveWorkspaceSessionId(null);
-      if (appMode === "workspace") {
-        setAppMode("gallery");
-      }
-      return;
-    }
-
-    if (activeWorkspaceSessionId && workspaceSessions.some((session) => session.id === activeWorkspaceSessionId)) {
-      return;
-    }
-    setActiveWorkspaceSessionId(workspaceSessions[0].id);
-  }, [activeWorkspaceSessionId, appMode, workspaceSessions]);
 
   const handleTagSubmit = useCallback(
     async (name: string, colorHex: string) => {
@@ -582,177 +470,6 @@ function AppLayout() {
     [showToast],
   );
 
-  const handleOpenInTerminal = useCallback(
-    async (path: string) => {
-      const commandPath = terminalSettings.commandPath.trim();
-      const argumentsList = terminalSettings.arguments.map((arg) => arg.trim()).filter(Boolean);
-      try {
-        await openInTerminal({
-          path,
-          command_path: commandPath.length > 0 ? commandPath : null,
-          arguments: commandPath.length > 0 && argumentsList.length > 0 ? argumentsList : null,
-        });
-      } catch (error) {
-        console.error("终端打开失败。", error);
-        showToast("终端打开失败，请检查终端配置", "error");
-      }
-    },
-    [terminalSettings.arguments, terminalSettings.commandPath, showToast],
-  );
-
-  const findWorkspaceSession = useCallback(
-    (project: Project) =>
-      workspaceSessions.find(
-        (session) =>
-          session.projectId === project.id ||
-          (session.projectPath.length > 0 && session.projectPath === project.path) ||
-          session.projectName === project.name,
-      ) ?? null,
-    [workspaceSessions],
-  );
-
-  const activateWorkspaceSession = useCallback((sessionId: string) => {
-    setActiveWorkspaceSessionId(sessionId);
-    setAppMode("workspace");
-  }, []);
-
-  const ensureWorkspaceSession = useCallback(
-    async (project: Project) => {
-      if (!tmuxSupport.supported) {
-        showToast(tmuxSupport.reason ?? "tmux 工作空间不可用", "error");
-        return null;
-      }
-      const existing = findWorkspaceSession(project);
-      if (existing) {
-        return existing;
-      }
-      try {
-        const sessionInfo = await createTerminalSession(project.id, project.path, project.name);
-        const nextSession = buildWorkspaceSession(sessionInfo);
-        setWorkspaceSessions((prev) => {
-          if (prev.some((session) => session.id === sessionInfo.id || session.projectId === project.id)) {
-            return prev;
-          }
-          return [...prev, nextSession];
-        });
-        return nextSession;
-      } catch (error) {
-        console.error("终端会话创建失败。", error);
-        showToast("终端启动失败，请检查默认 shell 与权限", "error");
-        return null;
-      }
-    },
-    [buildWorkspaceSession, findWorkspaceSession, showToast, tmuxSupport.reason, tmuxSupport.supported],
-  );
-
-  const handleEnterWorkspace = useCallback(
-    async (project: Project) => {
-      const session = await ensureWorkspaceSession(project);
-      if (!session) {
-        return;
-      }
-      activateWorkspaceSession(session.id);
-    },
-    [activateWorkspaceSession, ensureWorkspaceSession],
-  );
-
-  const buildScriptStartPayload = useCallback((projectPath: string, command: string) => {
-    const escapedPath = projectPath.replace(/"/g, "\\\"");
-    const normalized = normalizeScriptInput(command);
-    const suffix = normalized.endsWith("\n") ? "" : "\n";
-    return "cd \"" + escapedPath + "\"\n" + normalized + suffix;
-  }, []);
-
-  const runScriptOnPane = useCallback(
-    async (paneId: string, sessionId: string, projectPath: string, script: ProjectScript) => {
-      const payload = buildScriptStartPayload(projectPath, script.start.trim());
-      await sendTmuxInput(paneId, payload);
-      scriptRunTargetRef.current.set(script.id, { sessionId, paneId });
-    },
-    [buildScriptStartPayload],
-  );
-
-  const handleRunProjectScript = useCallback(
-    async (project: Project, script: ProjectScript) => {
-      const trimmedStart = script.start.trim();
-      if (!trimmedStart) {
-        showToast("启动命令不能为空", "error");
-        return;
-      }
-      const session = await ensureWorkspaceSession(project);
-      if (!session) {
-        return;
-      }
-      activateWorkspaceSession(session.id);
-      setRunningScriptByProjectId((prev) => ({ ...prev, [project.id]: script.id }));
-      const paneId = activePaneBySessionRef.current.get(session.id) ?? null;
-      if (paneId) {
-        try {
-          await runScriptOnPane(paneId, session.id, project.path, script);
-        } catch (error) {
-          console.error("脚本启动失败。", error);
-          showToast("脚本启动失败，请检查命令", "error");
-          setRunningScriptByProjectId((prev) => ({ ...prev, [project.id]: null }));
-        }
-        return;
-      }
-      pendingScriptRunRef.current = {
-        sessionId: session.id,
-        projectId: project.id,
-        projectPath: project.path,
-        script,
-      };
-    },
-    [activateWorkspaceSession, ensureWorkspaceSession, runScriptOnPane, showToast],
-  );
-
-  const handleStopProjectScript = useCallback(
-    async (project: Project, script: ProjectScript) => {
-      const cached = scriptRunTargetRef.current.get(script.id) ?? null;
-      const sessionId = cached?.sessionId ?? findWorkspaceSession(project)?.id ?? null;
-      const paneId = cached?.paneId ?? (sessionId ? activePaneBySessionRef.current.get(sessionId) ?? null : null);
-      if (!paneId) {
-        showToast("未找到可停止的终端面板", "error");
-        return;
-      }
-      const stopCommand = script.stop?.trim();
-      try {
-        if (stopCommand) {
-          const normalized = normalizeScriptInput(stopCommand);
-          const payload = normalized.endsWith("\n") ? normalized : normalized + "\n";
-          await sendTmuxInput(paneId, payload);
-        } else {
-          await sendTmuxInput(paneId, "\u0003");
-        }
-        setRunningScriptByProjectId((prev) => ({
-          ...prev,
-          [project.id]: prev[project.id] === script.id ? null : prev[project.id],
-        }));
-      } catch (error) {
-        console.error("脚本停止失败。", error);
-        showToast("脚本停止失败，请稍后重试", "error");
-      }
-    },
-    [findWorkspaceSession, showToast],
-  );
-
-  const handleWorkspacePaneChange = useCallback(
-    (sessionId: string, paneId: string | null) => {
-      activePaneBySessionRef.current.set(sessionId, paneId);
-      const pending = pendingScriptRunRef.current;
-      if (!pending || pending.sessionId !== sessionId || !paneId) {
-        return;
-      }
-      pendingScriptRunRef.current = null;
-      runScriptOnPane(paneId, sessionId, pending.projectPath, pending.script).catch((error) => {
-        console.error("脚本启动失败。", error);
-        showToast("脚本启动失败，请检查命令", "error");
-        setRunningScriptByProjectId((prev) => ({ ...prev, [pending.projectId]: null }));
-      });
-    },
-    [runScriptOnPane, showToast],
-  );
-
   const handleOpenCodexSession = useCallback(
     (session: CodexSessionView) => {
       if (!session.projectId) {
@@ -764,9 +481,9 @@ function AppLayout() {
         showToast("项目不存在或已移除", "error");
         return;
       }
-      void handleEnterWorkspace(project);
+      showToast(`终端模块已移除，无法打开 ${project.name}`, "error");
     },
-    [handleEnterWorkspace, projectMap, showToast],
+    [projectMap, showToast],
   );
 
   const resolveProjectFromPayload = useCallback(
@@ -809,17 +526,13 @@ function AppLayout() {
           const project = resolveProjectFromPayload(payload);
           if (!project) {
             if (isLoading) {
-              const pending = pendingMonitorSessionRef.current;
-              if (!pending || pending.sessionId !== payload.sessionId) {
-                showToast("项目加载中，稍后自动进入");
-              }
-              pendingMonitorSessionRef.current = payload;
+              showToast("项目加载中，请稍后重试");
               return;
             }
             showToast("项目不存在或已移除", "error");
             return;
           }
-          void handleEnterWorkspace(project);
+          showToast(`终端模块已移除，无法打开 ${project.name}`, "error");
         });
       } catch (error) {
         console.error("监听悬浮窗跳转事件失败。", error);
@@ -829,24 +542,7 @@ function AppLayout() {
     return () => {
       unlisten?.();
     };
-  }, [handleEnterWorkspace, isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
-
-  useEffect(() => {
-    if (isMonitorView || isLoading) {
-      return;
-    }
-    const pending = pendingMonitorSessionRef.current;
-    if (!pending) {
-      return;
-    }
-    const project = resolveProjectFromPayload(pending);
-    pendingMonitorSessionRef.current = null;
-    if (!project) {
-      showToast("项目不存在或已移除", "error");
-      return;
-    }
-    void handleEnterWorkspace(project);
-  }, [handleEnterWorkspace, isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
+  }, [isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
 
   useEffect(() => {
     if (isMonitorView || codexSessionStore.isLoading) {
@@ -881,8 +577,7 @@ function AppLayout() {
           continue;
         }
         showToast(`Codex 已完成：${project.name}`);
-        void sendSystemNotification("Codex 已完成", `已跳转到 ${project.name}`);
-        void handleEnterWorkspace(project);
+        void sendSystemNotification("Codex 已完成", project.name);
       }
     }
     codexSessionSnapshotRef.current = nextSessions;
@@ -890,54 +585,13 @@ function AppLayout() {
   }, [
     codexSessionStore.isLoading,
     codexSessionViews,
-    handleEnterWorkspace,
     isMonitorView,
     resolveProjectFromPayload,
     showToast,
   ]);
 
-  const handleCloseWorkspaceSession = useCallback(
-    async (sessionId: string) => {
-      const closedSession = workspaceSessions.find((session) => session.id === sessionId) ?? null;
-      try {
-        await closeTerminalSession(sessionId);
-      } catch (error) {
-        console.error("终端会话关闭失败。", error);
-        showToast("终端关闭失败，请稍后重试", "error");
-      }
-      setWorkspaceSessions((prev) => prev.filter((session) => session.id !== sessionId));
-      activePaneBySessionRef.current.delete(sessionId);
-      if (pendingScriptRunRef.current?.sessionId === sessionId) {
-        pendingScriptRunRef.current = null;
-      }
-      if (closedSession) {
-        setRunningScriptByProjectId((prev) => ({ ...prev, [closedSession.projectId]: null }));
-        const project = projectMap.get(closedSession.projectId);
-        if (project) {
-          project.scripts.forEach((script) => {
-            scriptRunTargetRef.current.delete(script.id);
-          });
-        }
-      }
-    },
-    [projectMap, showToast, workspaceSessions],
-  );
-
-  const handleSelectWorkspaceSession = useCallback((sessionId: string) => {
-    setActiveWorkspaceSessionId(sessionId);
-  }, []);
-
-  const handleExitWorkspace = useCallback(() => {
-    setAppMode("gallery");
-  }, []);
-
   const handleCloseSettings = useCallback(() => {
     setShowSettings(false);
-    setPreviewTerminalUseWebglRenderer(null);
-  }, []);
-
-  const handlePreviewTerminalRenderer = useCallback((enabled: boolean) => {
-    setPreviewTerminalUseWebglRenderer(enabled);
   }, []);
 
   const handleSaveSettings = useCallback(
@@ -978,99 +632,80 @@ function AppLayout() {
 
   return (
     <div className="h-full bg-background">
-      {appMode === "workspace" ? (
-        <WorkspaceView
-          sessions={workspaceSessions}
-          activeSessionId={activeWorkspaceSessionId}
-          onSelectSession={handleSelectWorkspaceSession}
-          onCloseSession={handleCloseWorkspaceSession}
-          onExitWorkspace={handleExitWorkspace}
-          terminalUseWebglRenderer={terminalUseWebglRenderer}
-          onActivePaneChange={handleWorkspacePaneChange}
+      <div
+        className={`grid h-full ${
+          showDetailPanel
+            ? "grid-cols-[220px_minmax(0,1fr)_380px]"
+            : "grid-cols-[220px_minmax(0,1fr)]"
+        }`}
+      >
+        <Sidebar
+          appState={appState}
+          projects={visibleProjects}
+          heatmapData={sidebarHeatmapData}
+          heatmapSelectedDateKey={heatmapSelectedDateKey}
+          selectedTags={selectedTags}
+          selectedDirectory={selectedDirectory}
+          heatmapFilteredProjectIds={heatmapFilteredProjectIds}
+          onSelectTag={handleSelectTag}
+          onClearHeatmapFilter={() => {
+            setHeatmapFilteredProjectIds(new Set());
+            setHeatmapSelectedDateKey(null);
+          }}
+          onSelectHeatmapDate={handleSelectHeatmapDate}
+          onSelectDirectory={setSelectedDirectory}
+          onOpenTagEditor={handleOpenTagEditor}
+          onToggleTagHidden={toggleTagHidden}
+          onRemoveTag={removeTag}
+          onAssignTagToProjects={handleAssignTagToProjects}
+          onAddDirectory={addDirectory}
+          onRemoveDirectory={removeDirectory}
+          onOpenRecycleBin={() => setShowRecycleBin(true)}
+          onRefresh={refresh}
+          onAddProjects={addProjects}
+          isHeatmapLoading={heatmapStore.isLoading}
+          codexSessions={codexSessionViews}
+          codexSessionsLoading={codexSessionStore.isLoading}
+          codexSessionsError={codexSessionStore.error}
+          onOpenCodexSession={handleOpenCodexSession}
         />
-      ) : (
-        <div
-          className={`grid h-full ${
-            showDetailPanel
-              ? "grid-cols-[220px_minmax(0,1fr)_380px]"
-              : "grid-cols-[220px_minmax(0,1fr)]"
-          }`}
-        >
-          <Sidebar
-            appState={appState}
-            projects={visibleProjects}
-            heatmapData={sidebarHeatmapData}
-            heatmapSelectedDateKey={heatmapSelectedDateKey}
-            selectedTags={selectedTags}
-            selectedDirectory={selectedDirectory}
-            heatmapFilteredProjectIds={heatmapFilteredProjectIds}
-            onSelectTag={handleSelectTag}
-            onClearHeatmapFilter={() => {
-              setHeatmapFilteredProjectIds(new Set());
-              setHeatmapSelectedDateKey(null);
-            }}
-            onSelectHeatmapDate={handleSelectHeatmapDate}
-            onSelectDirectory={setSelectedDirectory}
-            onOpenTagEditor={handleOpenTagEditor}
-            onToggleTagHidden={toggleTagHidden}
-            onRemoveTag={removeTag}
-            onAssignTagToProjects={handleAssignTagToProjects}
-            onAddDirectory={addDirectory}
-            onRemoveDirectory={removeDirectory}
-            onOpenRecycleBin={() => setShowRecycleBin(true)}
-            onRefresh={refresh}
-            onAddProjects={addProjects}
-            isHeatmapLoading={heatmapStore.isLoading}
-            codexSessions={codexSessionViews}
-            codexSessionsLoading={codexSessionStore.isLoading}
-            codexSessionsError={codexSessionStore.error}
-            onOpenCodexSession={handleOpenCodexSession}
-          />
-          <MainContent
-            projects={visibleProjects}
-            filteredProjects={filteredProjects}
-            recycleBinCount={recycleBinCount}
-            isLoading={isLoading}
-            error={error}
-            searchText={searchText}
-            onSearchTextChange={setSearchText}
-            dateFilter={dateFilter}
-            onDateFilterChange={setDateFilter}
-            gitFilter={gitFilter}
-            onGitFilterChange={setGitFilter}
-            showDetailPanel={showDetailPanel}
-            onToggleDetailPanel={handleToggleDetail}
-            onOpenDashboard={() => setShowDashboard(true)}
-            onOpenSettings={() => setShowSettings(true)}
-            selectedProjects={selectedProjects}
-            onSelectProject={handleSelectProject}
-            onEnterWorkspace={handleEnterWorkspace}
-            onTagSelected={handleSelectTag}
+        <MainContent
+          projects={visibleProjects}
+          filteredProjects={filteredProjects}
+          recycleBinCount={recycleBinCount}
+          isLoading={isLoading}
+          error={error}
+          searchText={searchText}
+          onSearchTextChange={setSearchText}
+          dateFilter={dateFilter}
+          onDateFilterChange={setDateFilter}
+          gitFilter={gitFilter}
+          onGitFilterChange={setGitFilter}
+          showDetailPanel={showDetailPanel}
+          onToggleDetailPanel={handleToggleDetail}
+          onOpenDashboard={() => setShowDashboard(true)}
+          onOpenSettings={() => setShowSettings(true)}
+          selectedProjects={selectedProjects}
+          onSelectProject={handleSelectProject}
+          onTagSelected={handleSelectTag}
+          onRemoveTagFromProject={removeTagFromProject}
+          onRefreshProject={refreshProject}
+          onCopyPath={handleCopyPath}
+          onMoveToRecycleBin={handleMoveProjectToRecycleBin}
+          getTagColor={getTagColor}
+          searchInputRef={searchInputRef}
+        />
+        {showDetailPanel ? (
+          <DetailPanel
+            project={resolvedSelectedProject}
+            tags={appState.tags}
+            onClose={() => setShowDetailPanel(false)}
+            onAddTagToProject={addTagToProject}
             onRemoveTagFromProject={removeTagFromProject}
-            onRefreshProject={refreshProject}
-            onCopyPath={handleCopyPath}
-            onOpenInTerminal={handleOpenInTerminal}
-            onRunScript={handleRunProjectScript}
-            onMoveToRecycleBin={handleMoveProjectToRecycleBin}
             getTagColor={getTagColor}
-            searchInputRef={searchInputRef}
           />
-          {showDetailPanel ? (
-            <DetailPanel
-              project={resolvedSelectedProject}
-              tags={appState.tags}
-              onClose={() => setShowDetailPanel(false)}
-              onAddTagToProject={addTagToProject}
-              onRemoveTagFromProject={removeTagFromProject}
-              getTagColor={getTagColor}
-              runningScriptId={resolvedSelectedProject ? runningScriptByProjectId[resolvedSelectedProject.id] ?? null : null}
-              onUpdateProjectScripts={updateProjectScripts}
-              onRunProjectScript={handleRunProjectScript}
-              onStopProjectScript={handleStopProjectScript}
-            />
-          ) : null}
-        </div>
-      )}
+        ) : null}
+      </div>
 
       <TagEditDialog
         title={tagDialogState?.mode === "edit" ? "编辑标签" : "新建标签"}
@@ -1102,10 +737,8 @@ function AppLayout() {
       {showSettings ? (
         <SettingsModal
           settings={appState.settings}
-          projects={visibleProjects}
           onClose={handleCloseSettings}
           onSaveSettings={handleSaveSettings}
-          onPreviewTerminalRenderer={handlePreviewTerminalRenderer}
         />
       ) : null}
       {toast ? (

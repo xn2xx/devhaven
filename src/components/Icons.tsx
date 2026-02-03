@@ -184,16 +184,6 @@ export function IconFolder(props: IconProps) {
   );
 }
 
-export function IconTerminal(props: IconProps) {
-  return (
-    <IconBase {...props}>
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <polyline points="7 9 10 12 7 15" />
-      <line x1="12" y1="15" x2="17" y2="15" />
-    </IconBase>
-  );
-}
-
 export function IconCopy(props: IconProps) {
   return (
     <IconBase {...props}>

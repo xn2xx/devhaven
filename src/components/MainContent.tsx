@@ -1,4 +1,4 @@
-import type { Project, ProjectScript } from "../models/types";
+import type { Project } from "../models/types";
 import type { DateFilter, GitFilter } from "../models/filters";
 import { DATE_FILTER_OPTIONS, GIT_FILTER_OPTIONS } from "../models/filters";
 import ProjectCard from "./ProjectCard";
@@ -29,13 +29,10 @@ export type MainContentProps = {
   onOpenSettings: () => void;
   selectedProjects: Set<string>;
   onSelectProject: (project: Project, event: React.MouseEvent<HTMLDivElement>) => void;
-  onEnterWorkspace: (project: Project) => void;
   onTagSelected: (tag: string) => void;
   onRemoveTagFromProject: (projectId: string, tag: string) => void;
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
-  onOpenInTerminal: (path: string) => void;
-  onRunScript: (project: Project, script: ProjectScript) => void;
   onMoveToRecycleBin: (project: Project) => void;
   getTagColor: (tag: string) => string;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
@@ -60,13 +57,10 @@ export default function MainContent({
   onOpenSettings,
   selectedProjects,
   onSelectProject,
-  onEnterWorkspace,
   onTagSelected,
   onRemoveTagFromProject,
   onRefreshProject,
   onCopyPath,
-  onOpenInTerminal,
-  onRunScript,
   onMoveToRecycleBin,
   getTagColor,
   searchInputRef,
@@ -155,14 +149,11 @@ export default function MainContent({
                 isSelected={selectedProjects.has(project.id)}
                 selectedProjectIds={selectedProjects}
                 onSelect={(event) => onSelectProject(project, event)}
-                onEnterWorkspace={() => onEnterWorkspace(project)}
                 onTagClick={onTagSelected}
                 onRemoveTag={onRemoveTagFromProject}
                 getTagColor={getTagColor}
                 onRefreshProject={onRefreshProject}
                 onCopyPath={onCopyPath}
-                onOpenInTerminal={onOpenInTerminal}
-                onRunScript={onRunScript}
                 onMoveToRecycleBin={onMoveToRecycleBin}
               />
             ))}

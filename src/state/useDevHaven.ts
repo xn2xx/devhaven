@@ -55,7 +55,6 @@ export type DevHavenActions = {
   restoreProjectFromRecycleBin: (path: string) => Promise<void>;
   updateSettings: (settings: AppStateFile["settings"]) => Promise<void>;
   updateTags: (tags: TagData[]) => Promise<void>;
-  updateProjectScripts: (projectId: string, scripts: Project["scripts"]) => Promise<void>;
   addTag: (name: string, colorHex?: string) => Promise<void>;
   renameTag: (from: string, to: string) => Promise<void>;
   removeTag: (name: string) => Promise<void>;
@@ -377,18 +376,6 @@ export function useDevHaven(): DevHavenStore {
     [appState],
   );
 
-  /** 更新项目脚本配置并持久化。 */
-  const updateProjectScripts = useCallback(
-    async (projectId: string, scripts: Project["scripts"]) => {
-      const nextProjects = projects.map((project) =>
-        project.id === projectId ? { ...project, scripts } : project,
-      );
-      setProjects(nextProjects);
-      await saveProjects(nextProjects);
-    },
-    [projects],
-  );
-
   /** 为指定项目添加标签并同步全局标签。 */
   const addTagToProject = useCallback(
     async (projectId: string, tag: string) => {
@@ -436,7 +423,6 @@ export function useDevHaven(): DevHavenStore {
     restoreProjectFromRecycleBin,
     updateSettings,
     updateTags,
-    updateProjectScripts,
     addTag,
     renameTag,
     removeTag,

@@ -58,7 +58,6 @@ impl Default for AppSettings {
 fn default_terminal_use_webgl_renderer() -> bool {
     true
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenToolSettings {
