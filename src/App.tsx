@@ -10,6 +10,7 @@ import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import RecycleBinModal from "./components/RecycleBinModal";
 import MonitorWindow from "./components/MonitorWindow";
+import TerminalWorkspaceView from "./components/terminal/TerminalWorkspaceView";
 import { useCodexSessions } from "./hooks/useCodexSessions";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
@@ -26,6 +27,7 @@ import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
+import { openTerminalWorkspaceWindow } from "./services/terminalWindow";
 
 const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
 const MAIN_WINDOW_LABEL = "main";
@@ -53,11 +55,14 @@ function matchProjectByCwd(cwd: string, projects: Project[]): Project | null {
   return bestMatch;
 }
 
-function resolveAppView(): "main" | "monitor" {
+function resolveAppView(): "main" | "monitor" | "terminal" {
   if (typeof window === "undefined") {
     return "main";
   }
   const params = new URLSearchParams(window.location.search);
+  if (params.get("view") === "terminal") {
+    return "terminal";
+  }
   if (params.get("view") === "monitor") {
     return "monitor";
   }
@@ -121,6 +126,7 @@ function AppLayout() {
   const [showRecycleBin, setShowRecycleBin] = useState(false);
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
+  const isTerminalView = appView === "terminal";
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -470,6 +476,10 @@ function AppLayout() {
     [showToast],
   );
 
+  const handleOpenTerminal = useCallback((project: Project) => {
+    void openTerminalWorkspaceWindow(project);
+  }, []);
+
   const handleOpenCodexSession = useCallback(
     (session: CodexSessionView) => {
       if (!session.projectId) {
@@ -481,7 +491,7 @@ function AppLayout() {
         showToast("项目不存在或已移除", "error");
         return;
       }
-      showToast(`终端模块已移除，无法打开 ${project.name}`, "error");
+      void openTerminalWorkspaceWindow(project);
     },
     [projectMap, showToast],
   );
@@ -515,7 +525,7 @@ function AppLayout() {
   }, []);
 
   useEffect(() => {
-    if (isMonitorView) {
+    if (isMonitorView || isTerminalView) {
       return;
     }
     let unlisten: (() => void) | null = null;
@@ -532,7 +542,7 @@ function AppLayout() {
             showToast("项目不存在或已移除", "error");
             return;
           }
-          showToast(`终端模块已移除，无法打开 ${project.name}`, "error");
+          void openTerminalWorkspaceWindow(project);
         });
       } catch (error) {
         console.error("监听悬浮窗跳转事件失败。", error);
@@ -542,10 +552,10 @@ function AppLayout() {
     return () => {
       unlisten?.();
     };
-  }, [isLoading, isMonitorView, resolveProjectFromPayload, showToast]);
+  }, [isLoading, isMonitorView, isTerminalView, resolveProjectFromPayload, showToast]);
 
   useEffect(() => {
-    if (isMonitorView || codexSessionStore.isLoading) {
+    if (isMonitorView || isTerminalView || codexSessionStore.isLoading) {
       return;
     }
     const previousSessions = codexSessionSnapshotRef.current;
@@ -607,7 +617,7 @@ function AppLayout() {
   );
 
   useEffect(() => {
-    if (isMonitorView) {
+    if (isMonitorView || isTerminalView) {
       return;
     }
     if (appState.settings.showMonitorWindow) {
@@ -615,7 +625,11 @@ function AppLayout() {
     } else {
       void closeMonitorWindow();
     }
-  }, [appState.settings.showMonitorWindow, isMonitorView]);
+  }, [appState.settings.showMonitorWindow, isMonitorView, isTerminalView]);
+
+  if (isTerminalView) {
+    return <TerminalWorkspaceView />;
+  }
 
   if (isMonitorView) {
     return (
@@ -691,6 +705,7 @@ function AppLayout() {
           onRemoveTagFromProject={removeTagFromProject}
           onRefreshProject={refreshProject}
           onCopyPath={handleCopyPath}
+          onOpenTerminal={handleOpenTerminal}
           onMoveToRecycleBin={handleMoveProjectToRecycleBin}
           getTagColor={getTagColor}
           searchInputRef={searchInputRef}

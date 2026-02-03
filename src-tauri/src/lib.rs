@@ -8,6 +8,7 @@ mod storage;
 mod system;
 mod time_utils;
 mod codex_sessions;
+mod terminal;
 
 use std::time::Instant;
 use tauri::AppHandle;
@@ -16,9 +17,12 @@ use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
     AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitIdentity, HeatmapCacheFile,
-    MarkdownFileEntry, Project,
+    MarkdownFileEntry, Project, TerminalWorkspace,
 };
 use crate::system::EditorOpenParams;
+use crate::terminal::{
+    terminal_create_session, terminal_kill, terminal_resize, terminal_write, TerminalState,
+};
 
 #[tauri::command]
 /// 读取应用状态。
@@ -183,6 +187,29 @@ fn save_heatmap_cache(app: AppHandle, cache: HeatmapCacheFile) -> Result<(), Str
 }
 
 #[tauri::command]
+fn load_terminal_workspace(
+    app: AppHandle,
+    project_path: String,
+) -> Result<Option<TerminalWorkspace>, String> {
+    log_command_result("load_terminal_workspace", || {
+        log::info!("load_terminal_workspace path={}", project_path);
+        storage::load_terminal_workspace(&app, &project_path)
+    })
+}
+
+#[tauri::command]
+fn save_terminal_workspace(
+    app: AppHandle,
+    project_path: String,
+    workspace: TerminalWorkspace,
+) -> Result<(), String> {
+    log_command_result("save_terminal_workspace", || {
+        log::info!("save_terminal_workspace path={}", project_path);
+        storage::save_terminal_workspace(&app, &project_path, workspace)
+    })
+}
+
+#[tauri::command]
 fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
     log_command_result("list_codex_sessions", || {
         if let Err(error) = codex_sessions::ensure_session_watcher(&app) {
@@ -208,6 +235,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(TerminalState::default())
         .setup(|app| {
             log::info!(
                 "app start name={} version={}",
@@ -242,7 +270,13 @@ pub fn run() {
             collect_git_daily,
             load_heatmap_cache,
             save_heatmap_cache,
+            load_terminal_workspace,
+            save_terminal_workspace,
             list_codex_sessions,
+            terminal_create_session,
+            terminal_write,
+            terminal_resize,
+            terminal_kill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

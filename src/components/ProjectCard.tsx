@@ -10,6 +10,7 @@ export type ProjectCardProps = {
   isSelected: boolean;
   selectedProjectIds: Set<string>;
   onSelect: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onOpenTerminal: (project: Project) => void;
   onTagClick: (tag: string) => void;
   onRemoveTag: (projectId: string, tag: string) => void;
   getTagColor: (tag: string) => string;
@@ -33,6 +34,7 @@ function ProjectCard({
   isSelected,
   selectedProjectIds,
   onSelect,
+  onOpenTerminal,
   onTagClick,
   onRemoveTag,
   getTagColor,
@@ -57,6 +59,7 @@ function ProjectCard({
     <div
       className={`card ${isSelected ? "card-selected" : "hover:bg-card-hover"}`}
       onClick={onSelect}
+      onDoubleClick={() => onOpenTerminal(project)}
       draggable
       onDragStart={handleDragStart}
     >

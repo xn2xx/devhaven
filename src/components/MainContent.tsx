@@ -33,6 +33,7 @@ export type MainContentProps = {
   onRemoveTagFromProject: (projectId: string, tag: string) => void;
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
+  onOpenTerminal: (project: Project) => void;
   onMoveToRecycleBin: (project: Project) => void;
   getTagColor: (tag: string) => string;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
@@ -61,6 +62,7 @@ export default function MainContent({
   onRemoveTagFromProject,
   onRefreshProject,
   onCopyPath,
+  onOpenTerminal,
   onMoveToRecycleBin,
   getTagColor,
   searchInputRef,
@@ -149,6 +151,7 @@ export default function MainContent({
                 isSelected={selectedProjects.has(project.id)}
                 selectedProjectIds={selectedProjects}
                 onSelect={(event) => onSelectProject(project, event)}
+                onOpenTerminal={onOpenTerminal}
                 onTagClick={onTagSelected}
                 onRemoveTag={onRemoveTagFromProject}
                 getTagColor={getTagColor}

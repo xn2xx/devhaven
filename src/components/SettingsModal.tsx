@@ -35,6 +35,9 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const [gitIdentities, setGitIdentities] = useState<GitIdentity[]>(settings.gitIdentities);
   const [showMonitorWindow, setShowMonitorWindow] = useState(settings.showMonitorWindow);
+  const [terminalUseWebglRenderer, setTerminalUseWebglRenderer] = useState(
+    settings.terminalUseWebglRenderer,
+  );
   const [versionLabel, setVersionLabel] = useState("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [isSaving, setIsSaving] = useState(false);
@@ -44,24 +47,28 @@ export default function SettingsModal({
     () => ({
       ...settings,
       showMonitorWindow,
+      terminalUseWebglRenderer,
       gitIdentities: normalizedGitIdentities,
     }),
-    [normalizedGitIdentities, settings, showMonitorWindow],
+    [normalizedGitIdentities, settings, showMonitorWindow, terminalUseWebglRenderer],
   );
   const isDirty = useMemo(() => {
     const normalizedStoredIdentities = normalizeGitIdentities(settings.gitIdentities);
     return !(
       isSameIdentities(nextSettings.gitIdentities, normalizedStoredIdentities) &&
-      nextSettings.showMonitorWindow === settings.showMonitorWindow
+      nextSettings.showMonitorWindow === settings.showMonitorWindow &&
+      nextSettings.terminalUseWebglRenderer === settings.terminalUseWebglRenderer
     );
   }, [nextSettings, settings]);
 
   useEffect(() => {
     setGitIdentities(settings.gitIdentities);
     setShowMonitorWindow(settings.showMonitorWindow);
+    setTerminalUseWebglRenderer(settings.terminalUseWebglRenderer);
   }, [
     settings.gitIdentities,
     settings.showMonitorWindow,
+    settings.terminalUseWebglRenderer,
   ]);
 
   const handleAddGitIdentity = () => {
@@ -82,6 +89,10 @@ export default function SettingsModal({
 
   const handleToggleMonitorWindow = (enabled: boolean) => {
     setShowMonitorWindow(enabled);
+  };
+
+  const handleToggleTerminalWebgl = (enabled: boolean) => {
+    setTerminalUseWebglRenderer(enabled);
   };
 
   useEffect(() => {
@@ -201,6 +212,22 @@ export default function SettingsModal({
           </label>
           <div className="text-fs-caption text-secondary-text">
             关闭设置窗口后生效，手动关闭悬浮窗不会修改开关状态。
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-xl border border-border bg-card-bg p-3">
+          <div className="text-[13px] font-semibold">终端</div>
+          <label className="flex items-center gap-2 text-text">
+            <input
+              className="h-3.5 w-3.5"
+              type="checkbox"
+              checked={terminalUseWebglRenderer}
+              onChange={(event) => handleToggleTerminalWebgl(event.target.checked)}
+            />
+            <span>启用 WebGL 渲染（提升性能）</span>
+          </label>
+          <div className="text-fs-caption text-secondary-text">
+            关闭设置窗口后生效，适配部分老旧设备可能需要关闭。
           </div>
         </section>
 

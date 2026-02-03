@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 pub type SwiftDate = f64;
 
@@ -13,6 +14,24 @@ pub struct AppStateFile {
     pub recycle_bin: Vec<String>,
     #[serde(default)]
     pub settings: AppSettings,
+}
+
+pub type TerminalWorkspace = JsonValue;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TerminalWorkspacesFile {
+    pub version: i32,
+    #[serde(default)]
+    pub workspaces: HashMap<String, TerminalWorkspace>,
+}
+
+impl Default for TerminalWorkspacesFile {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            workspaces: HashMap::new(),
+        }
+    }
 }
 
 impl Default for AppStateFile {

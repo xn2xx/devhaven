@@ -5,7 +5,9 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
-use crate::models::{AppStateFile, HeatmapCacheFile, Project};
+use crate::models::{
+    AppStateFile, HeatmapCacheFile, Project, TerminalWorkspace, TerminalWorkspacesFile,
+};
 
 // 获取应用数据目录。
 fn app_support_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -94,4 +96,48 @@ pub fn save_heatmap_cache(app: &AppHandle, cache: &HeatmapCacheFile) -> Result<(
     ensure_dir(&dir)?;
     let file_path = dir.join("heatmap_cache.json");
     write_json_pretty(&file_path, cache)
+}
+
+/// 读取终端工作空间集合。
+pub fn load_terminal_workspaces(app: &AppHandle) -> Result<TerminalWorkspacesFile, String> {
+    let dir = app_support_dir(app)?;
+    ensure_dir(&dir)?;
+    let file_path = dir.join("terminal_workspaces.json");
+    if !file_path.exists() {
+        return Ok(TerminalWorkspacesFile::default());
+    }
+    read_json(&file_path)
+}
+
+/// 保存终端工作空间集合。
+pub fn save_terminal_workspaces(
+    app: &AppHandle,
+    workspaces: &TerminalWorkspacesFile,
+) -> Result<(), String> {
+    let dir = app_support_dir(app)?;
+    ensure_dir(&dir)?;
+    let file_path = dir.join("terminal_workspaces.json");
+    write_json_pretty(&file_path, workspaces)
+}
+
+/// 读取指定项目终端工作空间。
+pub fn load_terminal_workspace(
+    app: &AppHandle,
+    project_path: &str,
+) -> Result<Option<TerminalWorkspace>, String> {
+    let workspaces = load_terminal_workspaces(app)?;
+    Ok(workspaces.workspaces.get(project_path).cloned())
+}
+
+/// 保存指定项目终端工作空间。
+pub fn save_terminal_workspace(
+    app: &AppHandle,
+    project_path: &str,
+    workspace: TerminalWorkspace,
+) -> Result<(), String> {
+    let mut workspaces = load_terminal_workspaces(app)?;
+    workspaces
+        .workspaces
+        .insert(project_path.to_string(), workspace);
+    save_terminal_workspaces(app, &workspaces)
 }
