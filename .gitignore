@@ -25,3 +25,10 @@ dist-ssr
 *.sw?
 .ace-tool/
 /wezterm/
+
+# Local artifacts
+.beads/daemon-error
+.codex/
+openspec/changes/add-ghostty-terminal-core/
+public/wasm/
+src/terminal/
