@@ -12,6 +12,7 @@ export type WorkspaceViewProps = {
   terminalUseWebglRenderer: boolean;
   readOnly?: boolean;
   rightSlot?: ReactNode;
+  onActivePaneChange?: (sessionId: string, paneId: string | null) => void;
 };
 
 /** 开发模式主视图。 */
@@ -24,6 +25,7 @@ export default function WorkspaceView({
   terminalUseWebglRenderer,
   readOnly,
   rightSlot,
+  onActivePaneChange,
 }: WorkspaceViewProps) {
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
 
@@ -43,6 +45,7 @@ export default function WorkspaceView({
         activeSession={activeSession}
         terminalUseWebglRenderer={terminalUseWebglRenderer}
         readOnly={readOnly}
+        onActivePaneChange={onActivePaneChange}
       />
     </div>
   );

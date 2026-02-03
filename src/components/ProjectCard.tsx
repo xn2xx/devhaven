@@ -1,6 +1,6 @@
 import { memo } from "react";
 
-import type { Project } from "../models/types";
+import type { Project, ProjectScript } from "../models/types";
 import { swiftDateToJsDate } from "../models/types";
 import { openInFinder } from "../services/system";
 import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTerminal, IconTrash, IconX } from "./Icons";
@@ -17,6 +17,7 @@ export type ProjectCardProps = {
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
   onOpenInTerminal: (path: string) => void;
+  onRunScript: (project: Project, script: ProjectScript) => void;
   onMoveToRecycleBin: (project: Project) => void;
 };
 
@@ -42,6 +43,7 @@ function ProjectCard({
   onRefreshProject,
   onCopyPath,
   onOpenInTerminal,
+  onRunScript,
   onMoveToRecycleBin,
 }: ProjectCardProps) {
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
@@ -56,6 +58,8 @@ function ProjectCard({
     event.stopPropagation();
     action();
   };
+
+  const quickScripts = project.scripts?.slice(0, 2) ?? [];
 
   return (
     <div
@@ -152,6 +156,24 @@ function ProjectCard({
           </span>
         ))}
       </div>
+      {quickScripts.length > 0 ? (
+        <div className="project-card-scripts">
+          {quickScripts.map((script) => (
+            <button
+              key={script.id}
+              className="script-quick-button"
+              onClick={(event) =>
+                handleActionClick(event, () => onRunScript(project, script))
+              }
+              aria-label={"运行脚本 " + script.name}
+              title={script.name}
+            >
+              <IconTerminal size={12} />
+              <span>{script.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

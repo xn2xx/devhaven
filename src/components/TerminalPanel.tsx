@@ -10,6 +10,7 @@ export type TerminalPanelProps = {
   activeSession: WorkspaceSession | null;
   terminalUseWebglRenderer: boolean;
   readOnly?: boolean;
+  onActivePaneChange?: (sessionId: string, paneId: string | null) => void;
 };
 
 const COPY_HINT_DURATION = 1600;
@@ -36,7 +37,13 @@ type DividerDragState = {
 };
 
 /** 工作空间终端展示区域。 */
-export default function TerminalPanel({ sessions, activeSession, terminalUseWebglRenderer, readOnly }: TerminalPanelProps) {
+export default function TerminalPanel({
+  sessions,
+  activeSession,
+  terminalUseWebglRenderer,
+  readOnly,
+  onActivePaneChange,
+}: TerminalPanelProps) {
   const {
     status,
     containerRef,
@@ -215,6 +222,13 @@ export default function TerminalPanel({ sessions, activeSession, terminalUseWebg
   );
 
   useEffect(() => stopDividerDrag, [stopDividerDrag]);
+
+  useEffect(() => {
+    if (!onActivePaneChange || !activeSession) {
+      return;
+    }
+    onActivePaneChange(activeSession.id, activePaneId);
+  }, [activePaneId, activeSession, onActivePaneChange]);
 
   const handleCopyAttachCommand = useCallback(async () => {
     if (!attachCommand) {

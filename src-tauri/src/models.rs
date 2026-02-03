@@ -103,6 +103,8 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub scripts: Vec<ProjectScript>,
     pub mtime: SwiftDate,
     pub size: i64,
     pub checksum: String,
@@ -111,6 +113,16 @@ pub struct Project {
     pub git_daily: Option<String>,
     pub created: SwiftDate,
     pub checked: SwiftDate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectScript {
+    pub id: String,
+    pub name: String,
+    pub start: String,
+    #[serde(default)]
+    pub stop: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -19,7 +19,7 @@ import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
 import type { TerminalSessionInfo, TmuxSupportStatus, WorkspaceSession } from "./models/terminal";
 import type { CodexSessionSummary, CodexSessionView } from "./models/codex";
-import type { ColorData, Project, TagData } from "./models/types";
+import type { ColorData, Project, ProjectScript, TagData } from "./models/types";
 import { swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
@@ -34,6 +34,7 @@ import {
   createTerminalSession,
   getTmuxSupportStatus,
   listTerminalSessions,
+  sendTmuxInput,
 } from "./services/terminal";
 
 type AppMode = "gallery" | "workspace";
@@ -87,6 +88,10 @@ function buildCodexSessionViews(sessions: CodexSessionSummary[], projects: Proje
   });
 }
 
+function normalizeScriptInput(value: string) {
+  return value.replace(/\r\n/g, "\n");
+}
+
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
   const {
@@ -109,6 +114,7 @@ function AppLayout() {
     refreshProject,
     updateGitDaily,
     updateSettings,
+    updateProjectScripts,
     moveProjectToRecycleBin,
     restoreProjectFromRecycleBin,
   } = useDevHavenContext();
@@ -136,6 +142,7 @@ function AppLayout() {
   const [tmuxSupport, setTmuxSupport] = useState<TmuxSupportStatus>({ supported: true });
   const [tmuxSessionsLoaded, setTmuxSessionsLoaded] = useState(false);
   const [showRecycleBin, setShowRecycleBin] = useState(false);
+  const [runningScriptByProjectId, setRunningScriptByProjectId] = useState<Record<string, string | null>>({});
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
 
@@ -159,6 +166,13 @@ function AppLayout() {
   const pendingMonitorSessionRef = useRef<MonitorOpenSessionPayload | null>(null);
   const codexSessionSnapshotRef = useRef<Map<string, CodexSessionView>>(new Map());
   const codexSessionSnapshotReadyRef = useRef(false);
+  const activePaneBySessionRef = useRef<Map<string, string | null>>(new Map());
+  const pendingScriptRunRef = useRef<
+    { sessionId: string; projectId: string; projectPath: string; script: ProjectScript } | null
+  >(null);
+  const scriptRunTargetRef = useRef<
+    Map<string, { sessionId: string; paneId: string | null }>
+  >(new Map());
   const recycleBinPaths = appState.recycleBin ?? [];
   const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
   const recycleBinCount = recycleBinPaths.length;
@@ -587,24 +601,32 @@ function AppLayout() {
     [terminalSettings.arguments, terminalSettings.commandPath, showToast],
   );
 
-  const handleEnterWorkspace = useCallback(
-    async (project: Project) => {
-      if (!tmuxSupport.supported) {
-        showToast(tmuxSupport.reason ?? "tmux 工作空间不可用", "error");
-        return;
-      }
-      const existing = workspaceSessions.find(
+  const findWorkspaceSession = useCallback(
+    (project: Project) =>
+      workspaceSessions.find(
         (session) =>
           session.projectId === project.id ||
           (session.projectPath.length > 0 && session.projectPath === project.path) ||
           session.projectName === project.name,
-      );
-      if (existing) {
-        setActiveWorkspaceSessionId(existing.id);
-        setAppMode("workspace");
-        return;
-      }
+      ) ?? null,
+    [workspaceSessions],
+  );
 
+  const activateWorkspaceSession = useCallback((sessionId: string) => {
+    setActiveWorkspaceSessionId(sessionId);
+    setAppMode("workspace");
+  }, []);
+
+  const ensureWorkspaceSession = useCallback(
+    async (project: Project) => {
+      if (!tmuxSupport.supported) {
+        showToast(tmuxSupport.reason ?? "tmux 工作空间不可用", "error");
+        return null;
+      }
+      const existing = findWorkspaceSession(project);
+      if (existing) {
+        return existing;
+      }
       try {
         const sessionInfo = await createTerminalSession(project.id, project.path, project.name);
         const nextSession = buildWorkspaceSession(sessionInfo);
@@ -614,14 +636,122 @@ function AppLayout() {
           }
           return [...prev, nextSession];
         });
-        setActiveWorkspaceSessionId(sessionInfo.id);
-        setAppMode("workspace");
+        return nextSession;
       } catch (error) {
         console.error("终端会话创建失败。", error);
         showToast("终端启动失败，请检查默认 shell 与权限", "error");
+        return null;
       }
     },
-    [buildWorkspaceSession, showToast, tmuxSupport.reason, tmuxSupport.supported, workspaceSessions],
+    [buildWorkspaceSession, findWorkspaceSession, showToast, tmuxSupport.reason, tmuxSupport.supported],
+  );
+
+  const handleEnterWorkspace = useCallback(
+    async (project: Project) => {
+      const session = await ensureWorkspaceSession(project);
+      if (!session) {
+        return;
+      }
+      activateWorkspaceSession(session.id);
+    },
+    [activateWorkspaceSession, ensureWorkspaceSession],
+  );
+
+  const buildScriptStartPayload = useCallback((projectPath: string, command: string) => {
+    const escapedPath = projectPath.replace(/"/g, "\\\"");
+    const normalized = normalizeScriptInput(command);
+    const suffix = normalized.endsWith("\n") ? "" : "\n";
+    return "cd \"" + escapedPath + "\"\n" + normalized + suffix;
+  }, []);
+
+  const runScriptOnPane = useCallback(
+    async (paneId: string, sessionId: string, projectPath: string, script: ProjectScript) => {
+      const payload = buildScriptStartPayload(projectPath, script.start.trim());
+      await sendTmuxInput(paneId, payload);
+      scriptRunTargetRef.current.set(script.id, { sessionId, paneId });
+    },
+    [buildScriptStartPayload],
+  );
+
+  const handleRunProjectScript = useCallback(
+    async (project: Project, script: ProjectScript) => {
+      const trimmedStart = script.start.trim();
+      if (!trimmedStart) {
+        showToast("启动命令不能为空", "error");
+        return;
+      }
+      const session = await ensureWorkspaceSession(project);
+      if (!session) {
+        return;
+      }
+      activateWorkspaceSession(session.id);
+      setRunningScriptByProjectId((prev) => ({ ...prev, [project.id]: script.id }));
+      const paneId = activePaneBySessionRef.current.get(session.id) ?? null;
+      if (paneId) {
+        try {
+          await runScriptOnPane(paneId, session.id, project.path, script);
+        } catch (error) {
+          console.error("脚本启动失败。", error);
+          showToast("脚本启动失败，请检查命令", "error");
+          setRunningScriptByProjectId((prev) => ({ ...prev, [project.id]: null }));
+        }
+        return;
+      }
+      pendingScriptRunRef.current = {
+        sessionId: session.id,
+        projectId: project.id,
+        projectPath: project.path,
+        script,
+      };
+    },
+    [activateWorkspaceSession, ensureWorkspaceSession, runScriptOnPane, showToast],
+  );
+
+  const handleStopProjectScript = useCallback(
+    async (project: Project, script: ProjectScript) => {
+      const cached = scriptRunTargetRef.current.get(script.id) ?? null;
+      const sessionId = cached?.sessionId ?? findWorkspaceSession(project)?.id ?? null;
+      const paneId = cached?.paneId ?? (sessionId ? activePaneBySessionRef.current.get(sessionId) ?? null : null);
+      if (!paneId) {
+        showToast("未找到可停止的终端面板", "error");
+        return;
+      }
+      const stopCommand = script.stop?.trim();
+      try {
+        if (stopCommand) {
+          const normalized = normalizeScriptInput(stopCommand);
+          const payload = normalized.endsWith("\n") ? normalized : normalized + "\n";
+          await sendTmuxInput(paneId, payload);
+        } else {
+          await sendTmuxInput(paneId, "\u0003");
+        }
+        setRunningScriptByProjectId((prev) => ({
+          ...prev,
+          [project.id]: prev[project.id] === script.id ? null : prev[project.id],
+        }));
+      } catch (error) {
+        console.error("脚本停止失败。", error);
+        showToast("脚本停止失败，请稍后重试", "error");
+      }
+    },
+    [findWorkspaceSession, showToast],
+  );
+
+  const handleWorkspacePaneChange = useCallback(
+    (sessionId: string, paneId: string | null) => {
+      activePaneBySessionRef.current.set(sessionId, paneId);
+      const pending = pendingScriptRunRef.current;
+      if (!pending || pending.sessionId !== sessionId || !paneId) {
+        return;
+      }
+      pendingScriptRunRef.current = null;
+      runScriptOnPane(paneId, sessionId, pending.projectPath, pending.script).catch((error) => {
+        console.error("脚本启动失败。", error);
+        showToast("脚本启动失败，请检查命令", "error");
+        setRunningScriptByProjectId((prev) => ({ ...prev, [pending.projectId]: null }));
+      });
+    },
+    [runScriptOnPane, showToast],
   );
 
   const handleOpenCodexSession = useCallback(
@@ -769,6 +899,7 @@ function AppLayout() {
 
   const handleCloseWorkspaceSession = useCallback(
     async (sessionId: string) => {
+      const closedSession = workspaceSessions.find((session) => session.id === sessionId) ?? null;
       try {
         await closeTerminalSession(sessionId);
       } catch (error) {
@@ -776,8 +907,21 @@ function AppLayout() {
         showToast("终端关闭失败，请稍后重试", "error");
       }
       setWorkspaceSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      activePaneBySessionRef.current.delete(sessionId);
+      if (pendingScriptRunRef.current?.sessionId === sessionId) {
+        pendingScriptRunRef.current = null;
+      }
+      if (closedSession) {
+        setRunningScriptByProjectId((prev) => ({ ...prev, [closedSession.projectId]: null }));
+        const project = projectMap.get(closedSession.projectId);
+        if (project) {
+          project.scripts.forEach((script) => {
+            scriptRunTargetRef.current.delete(script.id);
+          });
+        }
+      }
     },
-    [showToast],
+    [projectMap, showToast, workspaceSessions],
   );
 
   const handleSelectWorkspaceSession = useCallback((sessionId: string) => {
@@ -843,6 +987,7 @@ function AppLayout() {
           onCloseSession={handleCloseWorkspaceSession}
           onExitWorkspace={handleExitWorkspace}
           terminalUseWebglRenderer={terminalUseWebglRenderer}
+          onActivePaneChange={handleWorkspacePaneChange}
         />
       ) : (
         <div className={`app-split${showDetailPanel ? " has-detail" : ""}`}>
@@ -900,6 +1045,7 @@ function AppLayout() {
             onRefreshProject={refreshProject}
             onCopyPath={handleCopyPath}
             onOpenInTerminal={handleOpenInTerminal}
+            onRunScript={handleRunProjectScript}
             onMoveToRecycleBin={handleMoveProjectToRecycleBin}
             getTagColor={getTagColor}
             searchInputRef={searchInputRef}
@@ -912,6 +1058,10 @@ function AppLayout() {
               onAddTagToProject={addTagToProject}
               onRemoveTagFromProject={removeTagFromProject}
               getTagColor={getTagColor}
+              runningScriptId={resolvedSelectedProject ? runningScriptByProjectId[resolvedSelectedProject.id] ?? null : null}
+              onUpdateProjectScripts={updateProjectScripts}
+              onRunProjectScript={handleRunProjectScript}
+              onStopProjectScript={handleStopProjectScript}
             />
           ) : null}
         </div>

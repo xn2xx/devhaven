@@ -13,6 +13,13 @@ export type TagData = {
   hidden: boolean;
 };
 
+export type ProjectScript = {
+  id: string;
+  name: string;
+  start: string;
+  stop?: string | null;
+};
+
 export type OpenToolSettings = {
   commandPath: string;
   arguments: string[];
@@ -44,6 +51,7 @@ export type Project = {
   name: string;
   path: string;
   tags: string[];
+  scripts: ProjectScript[];
   mtime: SwiftDate;
   size: number;
   checksum: string;
