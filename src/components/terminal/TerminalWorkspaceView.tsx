@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ITheme } from "xterm";
 
 import type { SplitDirection, TerminalWorkspace } from "../../models/terminal";
 import { useDevHavenContext } from "../../state/DevHavenContext";
@@ -23,6 +24,7 @@ export type TerminalWorkspaceViewProps = {
   projectName?: string | null;
   isActive: boolean;
   windowLabel: string;
+  xtermTheme: ITheme;
 };
 
 export default function TerminalWorkspaceView({
@@ -31,6 +33,7 @@ export default function TerminalWorkspaceView({
   projectName,
   isActive,
   windowLabel,
+  xtermTheme,
 }: TerminalWorkspaceViewProps) {
   const { appState } = useDevHavenContext();
 
@@ -417,7 +420,7 @@ export default function TerminalWorkspaceView({
 
   if (!projectPath) {
     return (
-      <div className="flex h-full items-center justify-center text-secondary-text">
+      <div className="flex h-full items-center justify-center text-[var(--terminal-muted-fg)]">
         未找到项目
       </div>
     );
@@ -425,7 +428,7 @@ export default function TerminalWorkspaceView({
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-secondary-text">
+      <div className="flex h-full items-center justify-center text-[var(--terminal-muted-fg)]">
         {error}
       </div>
     );
@@ -433,16 +436,16 @@ export default function TerminalWorkspaceView({
 
   if (!workspace) {
     return (
-      <div className="flex h-full items-center justify-center text-secondary-text">
+      <div className="flex h-full items-center justify-center text-[var(--terminal-muted-fg)]">
         正在加载终端工作空间...
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#0b0b0b] text-text">
-      <header className="flex items-center gap-3 border-b border-divider bg-secondary-background px-3 py-2">
-        <div className="max-w-[200px] truncate text-[13px] font-semibold text-text">
+    <div className="flex h-full flex-col bg-[var(--terminal-bg)] text-[var(--terminal-fg)]">
+      <header className="flex items-center gap-3 border-b border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)] px-3 py-2">
+        <div className="max-w-[200px] truncate text-[13px] font-semibold text-[var(--terminal-fg)]">
           {projectName ?? projectPath}
         </div>
         <TerminalTabs
@@ -473,6 +476,7 @@ export default function TerminalWorkspaceView({
                   savedState={workspace.sessions[sessionId]?.savedState ?? null}
                   windowLabel={windowLabel}
                   useWebgl={appState.settings.terminalUseWebglRenderer}
+                  theme={xtermTheme}
                   isActive={tab.id === workspace.activeTabId && isActive}
                   onActivate={(nextSessionId) => handleActivateSession(tab.id, nextSessionId)}
                   onExit={handleSessionExit}

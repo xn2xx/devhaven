@@ -34,6 +34,7 @@ export type AppSettings = {
   editorOpenTool: OpenToolSettings;
   terminalOpenTool: OpenToolSettings;
   terminalUseWebglRenderer: boolean;
+  terminalTheme: string;
   showMonitorWindow: boolean;
   gitIdentities: GitIdentity[];
 };

@@ -125,6 +125,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - UI：`src/components/SettingsModal.tsx`
 - 设置模型：`src/models/types.ts`（`AppSettings`）
 - 保存入口：`src/App.tsx`（打开/关闭设置弹窗 + 保存设置）与 `src/state/useDevHaven.ts`（`updateSettings` 持久化到 `app_state.json`）
+- 终端主题配色（Ghostty 风格 `light:xxx,dark:yyy`）：`src/themes/terminalThemes.ts`、`src/hooks/useSystemColorScheme.ts`、`src/components/terminal/*`
 
 ## 3) 回写（维护）AGENTS.md 的逻辑
 

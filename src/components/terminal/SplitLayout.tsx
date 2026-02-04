@@ -27,7 +27,7 @@ function SplitDivider({ orientation, index, ratios, path, containerRef, onResize
   const isVertical = orientation === "v";
   const cursor = isVertical ? "cursor-col-resize" : "cursor-row-resize";
   const dividerSize = isVertical ? "w-1.5" : "h-1.5";
-  const dividerClass = `${dividerSize} bg-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.2)]`;
+  const dividerClass = `${dividerSize} bg-[var(--terminal-split-divider)] hover:bg-[var(--terminal-split-divider-hover)]`;
 
   const handleMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();

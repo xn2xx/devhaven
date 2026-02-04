@@ -56,6 +56,8 @@ pub struct AppSettings {
     pub terminal_open_tool: OpenToolSettings,
     #[serde(default = "default_terminal_use_webgl_renderer")]
     pub terminal_use_webgl_renderer: bool,
+    #[serde(default = "default_terminal_theme")]
+    pub terminal_theme: String,
     #[serde(default)]
     pub show_monitor_window: bool,
     #[serde(default)]
@@ -68,6 +70,7 @@ impl Default for AppSettings {
             editor_open_tool: OpenToolSettings::default(),
             terminal_open_tool: OpenToolSettings::default(),
             terminal_use_webgl_renderer: true,
+            terminal_theme: default_terminal_theme(),
             show_monitor_window: false,
             git_identities: Vec::new(),
         }
@@ -76,6 +79,10 @@ impl Default for AppSettings {
 
 fn default_terminal_use_webgl_renderer() -> bool {
     true
+}
+
+fn default_terminal_theme() -> String {
+    "DevHaven Dark".to_string()
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,7 +1,14 @@
+import type { CSSProperties } from "react";
 import { useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { Project } from "../../models/types";
+import { useSystemColorScheme } from "../../hooks/useSystemColorScheme";
+import { useDevHavenContext } from "../../state/DevHavenContext";
+import {
+  getTerminalThemePresetByName,
+  resolveTerminalThemeName,
+} from "../../themes/terminalThemes";
 import TerminalWorkspaceView from "./TerminalWorkspaceView";
 
 export type TerminalWorkspaceWindowProps = {
@@ -21,6 +28,20 @@ export default function TerminalWorkspaceWindow({
   windowLabel,
   isVisible,
 }: TerminalWorkspaceWindowProps) {
+  const { appState } = useDevHavenContext();
+  const systemScheme = useSystemColorScheme();
+  const terminalThemePreset = useMemo(() => {
+    const resolvedName = resolveTerminalThemeName(appState.settings.terminalTheme, systemScheme);
+    return getTerminalThemePresetByName(resolvedName);
+  }, [appState.settings.terminalTheme, systemScheme]);
+
+  const terminalStyle = useMemo(() => {
+    return {
+      ...terminalThemePreset.uiVars,
+      colorScheme: terminalThemePreset.colorScheme,
+    } as CSSProperties;
+  }, [terminalThemePreset]);
+
   const activeProject = useMemo(() => {
     if (openProjects.length === 0) {
       return null;
@@ -49,19 +70,22 @@ export default function TerminalWorkspaceWindow({
 
   if (openProjects.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-secondary-text">
+      <div className="flex h-full items-center justify-center text-[var(--terminal-muted-fg)]">
         未找到项目
       </div>
     );
   }
 
   return (
-    <div className="flex h-full bg-[#0b0b0b] text-text">
-      <aside className="w-[220px] shrink-0 border-r border-divider bg-secondary-background">
+    <div className="flex h-full bg-[var(--terminal-bg)] text-[var(--terminal-fg)]" style={terminalStyle}>
+      <aside className="w-[220px] shrink-0 border-r border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)]">
         <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <div className="text-[12px] font-semibold text-secondary-text">已打开项目</div>
+          <div className="text-[12px] font-semibold text-[var(--terminal-muted-fg)]">已打开项目</div>
           {onExit ? (
-            <button className="btn btn-outline h-7 px-2 text-[12px]" onClick={onExit}>
+            <button
+              className="inline-flex h-7 items-center justify-center rounded-md border border-[var(--terminal-divider)] px-2 text-[12px] font-semibold text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+              onClick={onExit}
+            >
               返回
             </button>
           ) : null}
@@ -74,8 +98,8 @@ export default function TerminalWorkspaceWindow({
                 key={project.id}
                 className={`rounded-md px-2.5 py-2 text-left text-[12px] font-semibold transition-colors ${
                   isActive
-                    ? "bg-[rgba(69,59,231,0.25)] text-text"
-                    : "text-secondary-text hover:bg-button-hover hover:text-text"
+                    ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
+                    : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
                 }`}
                 onClick={() => onSelectProject(project.id)}
                 title={project.path}
@@ -102,6 +126,7 @@ export default function TerminalWorkspaceWindow({
                 projectName={project.name}
                 isActive={isVisible && isActive}
                 windowLabel={windowLabel}
+                xtermTheme={terminalThemePreset.xterm}
               />
             </div>
           );

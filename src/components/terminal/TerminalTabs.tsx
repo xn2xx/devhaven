@@ -23,15 +23,15 @@ export default function TerminalTabs({
           key={tab.id}
           className={`flex items-center gap-2 rounded-md px-2.5 py-1 text-[12px] font-semibold ${
             tab.id === activeTabId
-              ? "bg-[rgba(69,59,231,0.25)] text-text"
-              : "text-secondary-text hover:bg-button-hover hover:text-text"
+              ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
+              : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
           }`}
           onClick={() => onSelect(tab.id)}
         >
           <span className="truncate max-w-[140px]">{tab.title}</span>
           {tabs.length > 1 ? (
             <span
-              className="inline-flex h-4 w-4 items-center justify-center rounded hover:bg-[rgba(255,255,255,0.2)]"
+              className="inline-flex h-4 w-4 items-center justify-center rounded hover:bg-[var(--terminal-hover-bg)]"
               onClick={(event) => {
                 event.stopPropagation();
                 onCloseTab(tab.id);
@@ -42,7 +42,11 @@ export default function TerminalTabs({
           ) : null}
         </button>
       ))}
-      <button className="icon-btn" onClick={onNewTab} aria-label="新建终端 Tab">
+      <button
+        className="inline-flex items-center justify-center min-w-6 min-h-6 p-1 rounded-md text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+        onClick={onNewTab}
+        aria-label="新建终端 Tab"
+      >
         <IconPlusCircle size={16} />
       </button>
     </div>

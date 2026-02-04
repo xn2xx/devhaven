@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal } from "xterm";
+import { Terminal, type ITheme } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebglAddon } from "xterm-addon-webgl";
 import { SerializeAddon } from "xterm-addon-serialize";
@@ -139,6 +139,7 @@ export type TerminalPaneProps = {
   savedState?: string | null;
   windowLabel: string;
   useWebgl: boolean;
+  theme: ITheme;
   isActive: boolean;
   onActivate: (sessionId: string) => void;
   onExit: (sessionId: string, code?: number | null) => void;
@@ -151,6 +152,7 @@ export default function TerminalPane({
   savedState,
   windowLabel,
   useWebgl,
+  theme,
   isActive,
   onActivate,
   onExit,
@@ -163,6 +165,8 @@ export default function TerminalPane({
   const webglAddonRef = useRef<WebglAddon | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const restoredRef = useRef(false);
+  const themeRef = useRef<ITheme>(theme);
+  themeRef.current = theme;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -180,10 +184,7 @@ export default function TerminalPane({
       fontSize: 12,
       cursorBlink: true,
       scrollback: 1000,
-      theme: {
-        background: "#0b0b0b",
-        foreground: "#e5e7eb",
-      },
+      theme: themeRef.current,
     });
     const fitAddon = new FitAddon();
     const serializeAddon = new SerializeAddon();
@@ -392,6 +393,19 @@ export default function TerminalPane({
   }, [cwd, savedState, sessionId, useWebgl, windowLabel, onExit, onRegisterSnapshotProvider]);
 
   useEffect(() => {
+    const term = termRef.current;
+    if (!term) {
+      return;
+    }
+    try {
+      term.options.theme = theme;
+      term.refresh(0, Math.max(0, term.rows - 1));
+    } catch (error) {
+      console.warn("更新终端主题失败。", error);
+    }
+  }, [theme]);
+
+  useEffect(() => {
     if (!isActive) {
       return;
     }
@@ -417,7 +431,7 @@ export default function TerminalPane({
     <div
       ref={containerRef}
       className={`terminal-pane h-full w-full ${
-        isActive ? "outline outline-1 outline-[rgba(69,59,231,0.35)]" : ""
+        isActive ? "outline outline-1 outline-[var(--terminal-accent-outline)]" : ""
       }`}
       onMouseDown={() => onActivate(sessionId)}
     />
