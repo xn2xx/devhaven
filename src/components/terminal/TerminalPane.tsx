@@ -5,6 +5,7 @@ import { WebglAddon } from "xterm-addon-webgl";
 import { SerializeAddon } from "xterm-addon-serialize";
 import "xterm/css/xterm.css";
 
+import { copyToClipboard } from "../../services/system";
 import {
   createTerminalSession,
   killTerminal,
@@ -188,6 +189,47 @@ export default function TerminalPane({
       cursorBlink: true,
       scrollback: 1000,
       theme: themeRef.current,
+    });
+    // 参考 Tabby：在 macOS 上拦截 Cmd 系快捷键，避免：
+    // - 被浏览器/ WebView 当成默认快捷键（全选/复制等）触发页面滚动；
+    // - 被 xterm 认为是“用户输入”导致 viewport 自动滚动到光标（底部）。
+    //
+    // 约定：真正的 SIGINT 仍使用 Ctrl+C；Cmd 组合键不下发到 PTY。
+    term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.type !== "keydown") {
+        return true;
+      }
+
+      // 仅按下 Cmd（Meta）时也可能触发“滚到光标区域”，因此直接拦截。
+      if (event.key === "Meta" || event.code === "MetaLeft" || event.code === "MetaRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+
+      // 在终端聚焦时，统一拦截所有 Cmd 组合键，避免落到 WebView 默认行为。
+      // 保留 Ctrl/Alt 的终端语义（例如 Ctrl+C / Option+B 等）。
+      if (event.metaKey && !event.ctrlKey && !event.altKey) {
+        const key = event.key.toLowerCase();
+        // 允许系统粘贴走默认通路（paste event），否则会导致终端无法 Cmd+V 粘贴。
+        if (key === "v") {
+          return true;
+        }
+        if (key === "a") {
+          term.selectAll();
+        } else if (key === "c") {
+          const selection = term.getSelection();
+          if (selection) {
+            void copyToClipboard(selection);
+            term.clearSelection();
+          }
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+      return true;
     });
     // 忽略 DECSCUSR（CSI Ps SP q），避免 shell/应用切换插入/正常模式时改成条形光标等。
     const cursorStyleHandler = term.parser.registerCsiHandler({ intermediates: " ", final: "q" }, () => true);
@@ -438,7 +480,12 @@ export default function TerminalPane({
       className={`terminal-pane flex h-full w-full min-h-0 min-w-0 p-[10px] ${
         isActive ? "outline outline-1 outline-[var(--terminal-accent-outline)]" : ""
       }`}
-      onMouseDownCapture={() => onActivate(sessionId)}
+      onMouseDownCapture={() => {
+        onActivate(sessionId);
+        // 关键：当 Pane 已经是 active 时，useEffect 不会再次触发 focus。
+        // 这会导致 ⌘A/⌘C 落到浏览器默认行为（全选页面/复制）并引发页面滚动到底部。
+        requestAnimationFrame(() => termRef.current?.focus());
+      }}
     >
       <div ref={containerRef} className="min-h-0 min-w-0 flex-1" />
     </div>

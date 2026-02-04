@@ -313,6 +313,13 @@ export default function TerminalWorkspaceView({
       }
       const key = event.key.toLowerCase();
 
+      // 仅按下 Cmd（Meta）本身也可能触发 WebView/页面滚动（尤其在终端处于非底部时），直接吞掉。
+      if (key === "meta") {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       // iTerm2 风格：⌘D 向右分屏，⌘⇧D 向下分屏。
       if (key === "d") {
         event.preventDefault();
