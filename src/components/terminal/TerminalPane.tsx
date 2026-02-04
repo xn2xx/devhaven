@@ -14,6 +14,125 @@ import {
   writeTerminal,
 } from "../../services/terminal";
 
+type PtyRegistryEntry = {
+  ptyId: string | null;
+  cachedState: string | null;
+  refs: number;
+  killTimer: number | null;
+  creating: Promise<string> | null;
+};
+
+const PTY_REGISTRY = new Map<string, PtyRegistryEntry>();
+const PTY_KILL_GRACE_MS = 1000;
+
+function buildPtyRegistryKey(windowLabel: string, sessionId: string) {
+  return `${windowLabel}::${sessionId}`;
+}
+
+function getOrCreateRegistryEntry(key: string): PtyRegistryEntry {
+  const existing = PTY_REGISTRY.get(key);
+  if (existing) {
+    return existing;
+  }
+  const next: PtyRegistryEntry = { ptyId: null, cachedState: null, refs: 0, killTimer: null, creating: null };
+  PTY_REGISTRY.set(key, next);
+  return next;
+}
+
+function retainPtySession(key: string) {
+  const entry = getOrCreateRegistryEntry(key);
+  entry.refs += 1;
+  if (entry.killTimer !== null) {
+    window.clearTimeout(entry.killTimer);
+    entry.killTimer = null;
+  }
+}
+
+function releasePtySession(key: string) {
+  const entry = PTY_REGISTRY.get(key);
+  if (!entry) {
+    return;
+  }
+  entry.refs = Math.max(0, entry.refs - 1);
+  if (entry.refs > 0) {
+    return;
+  }
+  if (entry.killTimer !== null) {
+    return;
+  }
+  if (!entry.ptyId && !entry.creating) {
+    PTY_REGISTRY.delete(key);
+    return;
+  }
+
+  entry.killTimer = window.setTimeout(() => {
+    void (async () => {
+      const current = PTY_REGISTRY.get(key);
+      if (!current || current.refs > 0) {
+        return;
+      }
+      current.killTimer = null;
+
+      let ptyId = current.ptyId;
+      if (!ptyId && current.creating) {
+        try {
+          ptyId = await current.creating;
+        } catch {
+          // ignore
+        }
+      }
+
+      const latest = PTY_REGISTRY.get(key);
+      if (!latest || latest.refs > 0) {
+        return;
+      }
+
+      if (ptyId) {
+        try {
+          await killTerminal(ptyId);
+        } catch {
+          // ignore
+        }
+      }
+      PTY_REGISTRY.delete(key);
+    })();
+  }, PTY_KILL_GRACE_MS);
+}
+
+async function ensurePtyId(
+  key: string,
+  request: { cwd: string; cols: number; rows: number; windowLabel: string; sessionId: string },
+): Promise<string> {
+  const entry = getOrCreateRegistryEntry(key);
+  if (entry.ptyId) {
+    return entry.ptyId;
+  }
+  if (entry.creating) {
+    return entry.creating;
+  }
+
+  entry.creating = (async () => {
+    const result = await createTerminalSession({
+      projectPath: request.cwd,
+      cols: request.cols,
+      rows: request.rows,
+      windowLabel: request.windowLabel,
+      sessionId: request.sessionId,
+    });
+    entry.ptyId = result.ptyId;
+    return result.ptyId;
+  })();
+
+  try {
+    return await entry.creating;
+  } finally {
+    const latest = PTY_REGISTRY.get(key);
+    if (latest) {
+      latest.creating = null;
+    }
+  }
+}
+
 export type TerminalPaneProps = {
   sessionId: string;
   cwd: string;
@@ -50,6 +169,10 @@ export default function TerminalPane({
     if (!container) {
       return;
     }
+    const registryKey = buildPtyRegistryKey(windowLabel, sessionId);
+    retainPtySession(registryKey);
+    const registryEntry = getOrCreateRegistryEntry(registryKey);
+
     let disposed = false;
     const term = new Terminal({
       fontFamily:
@@ -105,9 +228,11 @@ export default function TerminalPane({
       }
       safeFit();
     });
-    if (savedState && !restoredRef.current) {
+    const stateToRestore = registryEntry.cachedState ?? savedState;
+    if (stateToRestore && !restoredRef.current) {
       restoredRef.current = true;
-      term.write(savedState);
+      registryEntry.cachedState = null;
+      term.write(stateToRestore);
     }
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -135,10 +260,10 @@ export default function TerminalPane({
     let unlistenExit: (() => void) | null = null;
 
     const connect = async () => {
-      let result: { ptyId: string } | null = null;
+      let ptyId: string | null = null;
       try {
-        result = await createTerminalSession({
-          projectPath: cwd,
+        ptyId = await ensurePtyId(registryKey, {
+          cwd,
           cols: term.cols,
           rows: term.rows,
           windowLabel,
@@ -151,12 +276,11 @@ export default function TerminalPane({
       }
 
       if (disposed) {
-        await killTerminal(result.ptyId);
         return;
       }
 
-      ptyIdRef.current = result.ptyId;
-      void resizeTerminal(result.ptyId, term.cols, term.rows);
+      ptyIdRef.current = ptyId;
+      void resizeTerminal(ptyId, term.cols, term.rows);
 
       try {
         const outputUnlisten = await listenTerminalOutput((event) => {
@@ -170,14 +294,19 @@ export default function TerminalPane({
         });
         if (disposed) {
           outputUnlisten();
-          void killTerminal(result.ptyId);
           return;
         }
         unlistenOutput = outputUnlisten;
       } catch (error) {
         console.error("订阅终端输出事件失败。", error);
         term.write("\r\n[订阅终端输出事件失败：请检查 Tauri capabilities 是否允许 terminal-* 窗口使用 core:event.listen]\r\n");
-        void killTerminal(result.ptyId);
+        // 无法监听输出时，这个会话基本不可用，避免在后台残留。
+        const entry = PTY_REGISTRY.get(registryKey);
+        const currentPty = entry?.ptyId ?? null;
+        PTY_REGISTRY.delete(registryKey);
+        if (currentPty) {
+          void killTerminal(currentPty);
+        }
         return;
       }
 
@@ -194,7 +323,6 @@ export default function TerminalPane({
         if (disposed) {
           exitUnlisten();
           unlistenOutput?.();
-          void killTerminal(result.ptyId);
           return;
         }
         unlistenExit = exitUnlisten;
@@ -220,15 +348,25 @@ export default function TerminalPane({
 
     return () => {
       disposed = true;
+      try {
+        const entry = PTY_REGISTRY.get(registryKey);
+        const addon = serializeAddonRef.current;
+        if (entry && addon) {
+          entry.cachedState = addon.serialize({
+            excludeAltBuffer: false,
+            excludeModes: true,
+            scrollback: 1000,
+          });
+        }
+      } catch (error) {
+        console.warn("缓存终端状态失败。", error);
+      }
       unregisterSnapshot();
       disposable.dispose();
       resizeObserver.disconnect();
       unlistenOutput?.();
       unlistenExit?.();
-      const ptyId = ptyIdRef.current;
-      if (ptyId) {
-        void killTerminal(ptyId);
-      }
+      releasePtySession(registryKey);
       // 注意：xterm@5 的 AddonManager 会在 core dispose 之后再 dispose addons，
       // WebglAddon 的 dispose 会调用 renderService.setRenderer，这时 renderService 已被 dispose
       // 会导致 `this._renderer.value.onRequestRedraw` 报错。

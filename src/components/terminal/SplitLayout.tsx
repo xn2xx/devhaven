@@ -87,38 +87,42 @@ export default function SplitLayout({
   renderPane,
   path = [],
 }: SplitLayoutProps) {
-  if (root.type === "pane") {
-    return <div className="h-full w-full">{renderPane(root.sessionId, root.sessionId === activeSessionId)}</div>;
-  }
-
   const containerRef = useRef<HTMLDivElement>(null);
-  const isVertical = root.orientation === "v";
+  const isVertical = root.type === "split" ? root.orientation === "v" : true;
   const containerClass = `flex h-full w-full min-h-0 min-w-0 ${isVertical ? "flex-row" : "flex-col"}`;
+  const children = root.type === "split" ? root.children : [root];
+  const ratios = root.type === "split" ? root.ratios : [1];
+  const showDivider = root.type === "split";
 
   return (
     <div ref={containerRef} className={containerClass}>
-      {root.children.map((child, index) => {
-        const ratio = root.ratios[index] ?? 1 / root.children.length;
+      {children.map((child, index) => {
+        const ratio = ratios[index] ?? 1 / children.length;
+        const childKey = child.type === "pane" ? `pane:${child.sessionId}` : `${path.join("-")}-${index}`;
         return (
-          <Fragment key={`${path.join("-")}-${index}`}>
+          <Fragment key={childKey}>
             <div
               className="min-h-0 min-w-0 flex"
               style={{ flexBasis: `${ratio * 100}%`, flexGrow: ratio, flexShrink: 0 }}
             >
-              <SplitLayout
-                root={child}
-                activeSessionId={activeSessionId}
-                onActivate={onActivate}
-                onResize={onResize}
-                renderPane={renderPane}
-                path={[...path, index]}
-              />
+              {child.type === "pane" ? (
+                <div className="h-full w-full">{renderPane(child.sessionId, child.sessionId === activeSessionId)}</div>
+              ) : (
+                <SplitLayout
+                  root={child}
+                  activeSessionId={activeSessionId}
+                  onActivate={onActivate}
+                  onResize={onResize}
+                  renderPane={renderPane}
+                  path={[...path, index]}
+                />
+              )}
             </div>
-            {index < root.children.length - 1 ? (
+            {showDivider && index < children.length - 1 ? (
               <SplitDivider
-                orientation={root.orientation}
+                orientation={root.type === "split" ? root.orientation : "v"}
                 index={index}
-                ratios={root.ratios}
+                ratios={ratios}
                 path={path}
                 containerRef={containerRef}
                 onResize={onResize}
