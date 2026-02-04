@@ -133,51 +133,73 @@ export default function TerminalPane({
     let unlistenExit: (() => void) | null = null;
 
     const connect = async () => {
-      const result = await createTerminalSession({
-        projectPath: cwd,
-        cols: term.cols,
-        rows: term.rows,
-        windowLabel,
-        sessionId,
-      });
+      let result: { ptyId: string } | null = null;
+      try {
+        result = await createTerminalSession({
+          projectPath: cwd,
+          cols: term.cols,
+          rows: term.rows,
+          windowLabel,
+          sessionId,
+        });
+      } catch (error) {
+        console.error("创建终端会话失败。", error);
+        term.write("\r\n[创建终端会话失败]\r\n");
+        return;
+      }
+
       if (disposed) {
         await killTerminal(result.ptyId);
         return;
       }
+
       ptyIdRef.current = result.ptyId;
       void resizeTerminal(result.ptyId, term.cols, term.rows);
-      const outputUnlisten = await listenTerminalOutput((event) => {
-        if (event.payload.sessionId !== sessionId) {
-          return;
-        }
-        if (disposed) {
-          return;
-        }
-        term.write(event.payload.data);
-      });
-      if (disposed) {
-        outputUnlisten();
-        void killTerminal(result.ptyId);
-        return;
-      }
-      unlistenOutput = outputUnlisten;
 
-      const exitUnlisten = await listenTerminalExit((event) => {
-        if (event.payload.sessionId !== sessionId) {
-          return;
-        }
+      try {
+        const outputUnlisten = await listenTerminalOutput((event) => {
+          if (event.payload.sessionId !== sessionId) {
+            return;
+          }
+          if (disposed) {
+            return;
+          }
+          term.write(event.payload.data);
+        });
         if (disposed) {
+          outputUnlisten();
+          void killTerminal(result.ptyId);
           return;
         }
-        term.write("\r\n[会话已结束]\r\n");
-      });
-      if (disposed) {
-        exitUnlisten();
-        unlistenOutput?.();
+        unlistenOutput = outputUnlisten;
+      } catch (error) {
+        console.error("订阅终端输出事件失败。", error);
+        term.write("\r\n[订阅终端输出事件失败：请检查 Tauri capabilities 是否允许 terminal-* 窗口使用 core:event.listen]\r\n");
         void killTerminal(result.ptyId);
         return;
       }
-      unlistenExit = exitUnlisten;
+
+      try {
+        const exitUnlisten = await listenTerminalExit((event) => {
+          if (event.payload.sessionId !== sessionId) {
+            return;
+          }
+          if (disposed) {
+            return;
+          }
+          term.write("\r\n[会话已结束]\r\n");
+        });
+        if (disposed) {
+          exitUnlisten();
+          unlistenOutput?.();
+          void killTerminal(result.ptyId);
+          return;
+        }
+        unlistenExit = exitUnlisten;
+      } catch (error) {
+        console.error("订阅终端退出事件失败。", error);
+        term.write("\r\n[订阅终端退出事件失败：请检查 Tauri capabilities 是否允许 terminal-* 窗口使用 core:event.listen]\r\n");
+      }
     };
 
     void connect();
@@ -207,7 +229,11 @@ export default function TerminalPane({
       }
       // 注意：xterm@5 的 AddonManager 会在 core dispose 之后再 dispose addons，
       // WebglAddon 的 dispose 会调用 renderService.setRenderer，这时 renderService 已被 dispose
-      // 会导致 `this._renderer.value.onRequestRedraw` 报错。提前手动释放 WebglAddon 可规避该问题。
+      // 会导致 `this._renderer.value.onRequestRedraw` 报错。
+      //
+      // 这里手动先 dispose WebglAddon，并把 `term.dispose()` 延迟到下一轮事件循环，
+      // 避免 WebglAddon dispose 触发的渲染刷新/Viewport 定时器在 renderer 被销毁后执行，
+      // 导致 `this._renderer.value.dimensions` 等空引用报错。
       try {
         webglAddonRef.current?.dispose();
       } catch (error) {
@@ -215,7 +241,13 @@ export default function TerminalPane({
       } finally {
         webglAddonRef.current = null;
       }
-      term.dispose();
+      setTimeout(() => {
+        try {
+          term.dispose();
+        } catch (error) {
+          console.warn("释放终端实例失败。", error);
+        }
+      }, 0);
     };
   }, [cwd, savedState, sessionId, useWebgl, windowLabel, onRegisterSnapshotProvider]);
 
