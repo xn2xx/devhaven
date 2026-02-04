@@ -139,6 +139,7 @@ function AppLayout() {
   }, [isMonitorView]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const lastTerminalVisibleRef = useRef(showTerminalWorkspace);
   const toastTimerRef = useRef<number | null>(null);
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
@@ -642,6 +643,18 @@ function AppLayout() {
     }
   }, [appState.settings.showMonitorWindow, isMonitorView]);
 
+  useEffect(() => {
+    const wasVisible = lastTerminalVisibleRef.current;
+    lastTerminalVisibleRef.current = showTerminalWorkspace;
+    if (!wasVisible || showTerminalWorkspace) {
+      return;
+    }
+    // 终端隐藏后，把焦点移回主界面搜索框，避免继续把输入写入后台 xterm。
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  }, [showTerminalWorkspace]);
+
   if (isMonitorView) {
     return (
       <div className="h-full bg-transparent">
@@ -655,20 +668,8 @@ function AppLayout() {
     );
   }
 
-  if (showTerminalWorkspace) {
-    return (
-      <TerminalWorkspaceWindow
-        openProjects={terminalOpenProjects}
-        activeProjectId={terminalActiveProjectId}
-        onSelectProject={setTerminalActiveProjectId}
-        onExit={() => setShowTerminalWorkspace(false)}
-        windowLabel={MAIN_WINDOW_LABEL}
-      />
-    );
-  }
-
   return (
-    <div className="h-full bg-background">
+    <div className="relative h-full bg-background">
       <div
         className={`grid h-full ${
           showDetailPanel
@@ -788,6 +789,23 @@ function AppLayout() {
           }`}
         >
           {toast.message}
+        </div>
+      ) : null}
+
+      {terminalOpenProjects.length > 0 ? (
+        <div
+          className={`absolute inset-0 z-[80] transition-opacity duration-150 ${
+            showTerminalWorkspace ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
+        >
+          <TerminalWorkspaceWindow
+            openProjects={terminalOpenProjects}
+            activeProjectId={terminalActiveProjectId}
+            onSelectProject={setTerminalActiveProjectId}
+            onExit={() => setShowTerminalWorkspace(false)}
+            windowLabel={MAIN_WINDOW_LABEL}
+            isVisible={showTerminalWorkspace}
+          />
         </div>
       ) : null}
     </div>

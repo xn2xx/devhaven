@@ -10,6 +10,7 @@ export type TerminalWorkspaceWindowProps = {
   onSelectProject: (projectId: string) => void;
   onExit?: () => void;
   windowLabel: string;
+  isVisible: boolean;
 };
 
 export default function TerminalWorkspaceWindow({
@@ -18,6 +19,7 @@ export default function TerminalWorkspaceWindow({
   onSelectProject,
   onExit,
   windowLabel,
+  isVisible,
 }: TerminalWorkspaceWindowProps) {
   const activeProject = useMemo(() => {
     if (openProjects.length === 0) {
@@ -30,13 +32,20 @@ export default function TerminalWorkspaceWindow({
   }, [activeProjectId, openProjects]);
 
   useEffect(() => {
+    // 仅在终端可见时更新窗口标题；隐藏时恢复默认标题，避免主界面停留在“xx - 终端”。
+    if (!isVisible) {
+      getCurrentWindow()
+        .setTitle("DevHaven")
+        .catch(() => undefined);
+      return;
+    }
     if (!activeProject) {
       return;
     }
     getCurrentWindow()
       .setTitle(`${activeProject.name} - 终端`)
       .catch(() => undefined);
-  }, [activeProject]);
+  }, [activeProject, isVisible]);
 
   if (openProjects.length === 0) {
     return (
@@ -91,7 +100,7 @@ export default function TerminalWorkspaceWindow({
                 projectId={project.id}
                 projectPath={project.path}
                 projectName={project.name}
-                isActive={isActive}
+                isActive={isVisible && isActive}
                 windowLabel={windowLabel}
               />
             </div>
