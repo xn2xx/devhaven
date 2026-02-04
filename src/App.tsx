@@ -27,7 +27,6 @@ import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
-import { openTerminalWorkspaceWindow } from "./services/terminalWindow";
 
 const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
 const MAIN_WINDOW_LABEL = "main";
@@ -55,14 +54,11 @@ function matchProjectByCwd(cwd: string, projects: Project[]): Project | null {
   return bestMatch;
 }
 
-function resolveAppView(): "main" | "monitor" | "terminal" {
+function resolveAppView(): "main" | "monitor" {
   if (typeof window === "undefined") {
     return "main";
   }
   const params = new URLSearchParams(window.location.search);
-  if (params.get("view") === "terminal") {
-    return "terminal";
-  }
   if (params.get("view") === "monitor") {
     return "monitor";
   }
@@ -124,9 +120,11 @@ function AppLayout() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRecycleBin, setShowRecycleBin] = useState(false);
+  const [showTerminalWorkspace, setShowTerminalWorkspace] = useState(false);
+  const [terminalOpenProjects, setTerminalOpenProjects] = useState<Project[]>([]);
+  const [terminalActiveProjectId, setTerminalActiveProjectId] = useState<string | null>(null);
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
-  const isTerminalView = appView === "terminal";
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -476,9 +474,26 @@ function AppLayout() {
     [showToast],
   );
 
-  const handleOpenTerminal = useCallback((project: Project) => {
-    void openTerminalWorkspaceWindow(project);
+  const openTerminalWorkspace = useCallback((project: Project) => {
+    setShowTerminalWorkspace(true);
+    setTerminalOpenProjects((prev) => {
+      const index = prev.findIndex((item) => item.id === project.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = project;
+        return next;
+      }
+      return [...prev, project];
+    });
+    setTerminalActiveProjectId(project.id);
   }, []);
+
+  const handleOpenTerminal = useCallback(
+    (project: Project) => {
+      openTerminalWorkspace(project);
+    },
+    [openTerminalWorkspace],
+  );
 
   const handleOpenCodexSession = useCallback(
     (session: CodexSessionView) => {
@@ -491,9 +506,9 @@ function AppLayout() {
         showToast("项目不存在或已移除", "error");
         return;
       }
-      void openTerminalWorkspaceWindow(project);
+      openTerminalWorkspace(project);
     },
-    [projectMap, showToast],
+    [openTerminalWorkspace, projectMap, showToast],
   );
 
   const resolveProjectFromPayload = useCallback(
@@ -525,7 +540,7 @@ function AppLayout() {
   }, []);
 
   useEffect(() => {
-    if (isMonitorView || isTerminalView) {
+    if (isMonitorView) {
       return;
     }
     let unlisten: (() => void) | null = null;
@@ -542,7 +557,7 @@ function AppLayout() {
             showToast("项目不存在或已移除", "error");
             return;
           }
-          void openTerminalWorkspaceWindow(project);
+          openTerminalWorkspace(project);
         });
       } catch (error) {
         console.error("监听悬浮窗跳转事件失败。", error);
@@ -552,10 +567,10 @@ function AppLayout() {
     return () => {
       unlisten?.();
     };
-  }, [isLoading, isMonitorView, isTerminalView, resolveProjectFromPayload, showToast]);
+  }, [isLoading, isMonitorView, openTerminalWorkspace, resolveProjectFromPayload, showToast]);
 
   useEffect(() => {
-    if (isMonitorView || isTerminalView || codexSessionStore.isLoading) {
+    if (isMonitorView || codexSessionStore.isLoading) {
       return;
     }
     const previousSessions = codexSessionSnapshotRef.current;
@@ -617,7 +632,7 @@ function AppLayout() {
   );
 
   useEffect(() => {
-    if (isMonitorView || isTerminalView) {
+    if (isMonitorView) {
       return;
     }
     if (appState.settings.showMonitorWindow) {
@@ -625,11 +640,7 @@ function AppLayout() {
     } else {
       void closeMonitorWindow();
     }
-  }, [appState.settings.showMonitorWindow, isMonitorView, isTerminalView]);
-
-  if (isTerminalView) {
-    return <TerminalWorkspaceWindow />;
-  }
+  }, [appState.settings.showMonitorWindow, isMonitorView]);
 
   if (isMonitorView) {
     return (
@@ -641,6 +652,18 @@ function AppLayout() {
           onOpenSession={handleMonitorOpenCodexSession}
         />
       </div>
+    );
+  }
+
+  if (showTerminalWorkspace) {
+    return (
+      <TerminalWorkspaceWindow
+        openProjects={terminalOpenProjects}
+        activeProjectId={terminalActiveProjectId}
+        onSelectProject={setTerminalActiveProjectId}
+        onExit={() => setShowTerminalWorkspace(false)}
+        windowLabel={MAIN_WINDOW_LABEL}
+      />
     );
   }
 
