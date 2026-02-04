@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -48,6 +49,48 @@ fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
 }
 
+fn ensure_terminal_env(cmd: &mut CommandBuilder) {
+    // GUI 启动的 macOS App 往往缺少 TERM/PATH 等环境变量，导致交互式 shell 初始化时报错。
+    if cmd.get_env("TERM").is_none() {
+        cmd.env("TERM", "xterm-256color");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Homebrew 典型安装路径不一定在 Finder 启动的进程 PATH 中，补齐以保持 dev/打包一致。
+        let current = cmd
+            .get_env("PATH")
+            .map(|p| p.to_os_string())
+            .unwrap_or_default();
+        let existing: Vec<PathBuf> = std::env::split_paths(&current).collect();
+
+        let mut prepend: Vec<PathBuf> = Vec::new();
+        for dir in [
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",
+            "/usr/local/sbin",
+        ] {
+            let p = Path::new(dir);
+            if !p.exists() {
+                continue;
+            }
+            if existing.iter().any(|e| e == p) || prepend.iter().any(|e| e == p) {
+                continue;
+            }
+            prepend.push(p.to_path_buf());
+        }
+
+        if !prepend.is_empty() {
+            let mut merged = prepend;
+            merged.extend(existing);
+            if let Ok(joined) = std::env::join_paths(merged) {
+                cmd.env("PATH", joined);
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub fn terminal_create_session(
     app: AppHandle,
@@ -71,6 +114,7 @@ pub fn terminal_create_session(
 
     let mut cmd = CommandBuilder::new(shell.clone());
     cmd.cwd(project_path);
+    ensure_terminal_env(&mut cmd);
 
     let child = pair
         .slave
