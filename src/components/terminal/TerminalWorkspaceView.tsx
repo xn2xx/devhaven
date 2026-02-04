@@ -25,6 +25,7 @@ export type TerminalWorkspaceViewProps = {
   isActive: boolean;
   windowLabel: string;
   xtermTheme: ITheme;
+  codexRunningCount?: number;
 };
 
 export default function TerminalWorkspaceView({
@@ -34,6 +35,7 @@ export default function TerminalWorkspaceView({
   isActive,
   windowLabel,
   xtermTheme,
+  codexRunningCount = 0,
 }: TerminalWorkspaceViewProps) {
   const { appState } = useDevHavenContext();
 
@@ -448,6 +450,15 @@ export default function TerminalWorkspaceView({
         <div className="max-w-[200px] truncate text-[13px] font-semibold text-[var(--terminal-fg)]">
           {projectName ?? projectPath}
         </div>
+        {codexRunningCount > 0 ? (
+          <div
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--terminal-divider)] bg-[var(--terminal-hover-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--terminal-muted-fg)]"
+            title={`Codex 运行中（${codexRunningCount} 个会话）`}
+          >
+            <span className="h-2 w-2 rounded-full bg-[var(--terminal-accent)]" aria-hidden="true" />
+            <span className="whitespace-nowrap">Codex 运行中</span>
+          </div>
+        ) : null}
         <TerminalTabs
           tabs={workspace.tabs}
           activeTabId={workspace.activeTabId}

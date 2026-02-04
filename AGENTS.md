@@ -43,6 +43,9 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
   - `heatmap_cache.json`：热力图缓存
   - `terminal_workspaces.json`：终端工作区/布局缓存
 
+### 开发环境注意（不要入库）
+- `.beads/`：bd/beads 本地工作区目录（可能由本地 git hooks 触发）；项目运行不依赖该目录，仓库应忽略/不提交。若 `git commit` 因 bd flush 报错，删除 `.beads/` 或移除本地 `.git/hooks/pre-commit` 中 bd 段落即可。
+
 ## 2) 功能列表 + 对应位置（功能地图）
 
 下面按“用户功能 → 前端入口/UI → 前端服务层 → Rust 后端”给出快速定位点。
@@ -101,6 +104,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - 终端窗口管理：`src/services/terminalWindow.ts`、`src/components/terminal/TerminalWorkspaceWindow.tsx`
 - 关闭已打开项目（并删除该项目的终端工作区 sessions/tabs 持久化）：`src/components/terminal/TerminalWorkspaceWindow.tsx`、`src/App.tsx` → `src/services/terminalWorkspace.ts`（`deleteTerminalWorkspace`） ↔ `src-tauri/src/lib.rs`（Command：`delete_terminal_workspace`）→ `src-tauri/src/storage.rs`（删除 `terminal_workspaces.json` entry）
 - 终端 UI（xterm、分屏、标签）：`src/components/terminal/*`
+- 终端工作区显示 Codex CLI 运行状态（按项目路径归属聚合会话）：`src/utils/codexProjectStatus.ts`、`src/App.tsx` → `src/components/terminal/TerminalWorkspaceWindow.tsx`/`src/components/terminal/TerminalWorkspaceView.tsx`
 - 终端快捷键（iTerm2/浏览器风格）：`src/components/terminal/TerminalWorkspaceView.tsx`（⌘T 新建 Tab、⌘W 关闭 Pane/Tab、⌘↑/⌘↓/⌘←/⌘→ 上一/下一 Tab、⌘⇧[ / ⌘⇧] 上一/下一 Tab、⌘1..⌘9 快速切换 Tab、⌘D 分屏）
 - 会话/PTY 通信：
   - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
