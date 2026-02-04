@@ -1,29 +1,41 @@
+import { emitTo } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { Project } from "../models/types";
 
-const TERMINAL_WINDOW_PREFIX = "terminal-";
+export const TERMINAL_WINDOW_LABEL = "terminal";
+export const TERMINAL_OPEN_PROJECT_EVENT = "terminal-open-project";
 
-function buildTerminalUrl(project: Project) {
-  const params = new URLSearchParams({
-    view: "terminal",
-    projectId: project.id,
-    projectPath: project.path,
-    projectName: project.name,
-  });
+export type TerminalOpenProjectPayload = {
+  projectId: string | null;
+  projectPath: string;
+  projectName: string | null;
+};
+
+function buildTerminalUrl(project?: Project) {
+  const params = new URLSearchParams({ view: "terminal" });
+  if (project) {
+    params.set("projectId", project.id);
+    params.set("projectPath", project.path);
+    params.set("projectName", project.name);
+  }
   return `index.html?${params.toString()}`;
 }
 
 export async function openTerminalWorkspaceWindow(project: Project): Promise<void> {
-  const label = `${TERMINAL_WINDOW_PREFIX}${project.id}`;
-  const existing = await WebviewWindow.getByLabel(label);
+  const existing = await WebviewWindow.getByLabel(TERMINAL_WINDOW_LABEL);
   if (existing) {
     await existing.show().catch(() => undefined);
     await existing.setFocus().catch(() => undefined);
+    await emitTo<TerminalOpenProjectPayload>(TERMINAL_WINDOW_LABEL, TERMINAL_OPEN_PROJECT_EVENT, {
+      projectId: project.id,
+      projectPath: project.path,
+      projectName: project.name,
+    }).catch(() => undefined);
     return;
   }
-  const window = new WebviewWindow(label, {
+  const window = new WebviewWindow(TERMINAL_WINDOW_LABEL, {
     url: buildTerminalUrl(project),
-    title: `${project.name} - 终端`,
+    title: "终端",
     width: 1000,
     height: 720,
     minWidth: 640,
@@ -38,11 +50,4 @@ export async function openTerminalWorkspaceWindow(project: Project): Promise<voi
   window.once("tauri://error", (event) => {
     console.error("终端窗口创建失败。", event);
   });
-}
-
-export function getTerminalWindowLabel(projectId: string | null) {
-  if (!projectId) {
-    return "terminal";
-  }
-  return `${TERMINAL_WINDOW_PREFIX}${projectId}`;
 }

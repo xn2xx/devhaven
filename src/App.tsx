@@ -10,7 +10,7 @@ import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import RecycleBinModal from "./components/RecycleBinModal";
 import MonitorWindow from "./components/MonitorWindow";
-import TerminalWorkspaceView from "./components/terminal/TerminalWorkspaceView";
+import TerminalWorkspaceWindow from "./components/terminal/TerminalWorkspaceWindow";
 import { useCodexSessions } from "./hooks/useCodexSessions";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
@@ -628,7 +628,7 @@ function AppLayout() {
   }, [appState.settings.showMonitorWindow, isMonitorView, isTerminalView]);
 
   if (isTerminalView) {
-    return <TerminalWorkspaceView />;
+    return <TerminalWorkspaceWindow />;
   }
 
   if (isMonitorView) {

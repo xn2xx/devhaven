@@ -2,11 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "terminal",
   "description": "Capability for terminal windows",
-  "windows": ["terminal-*"],
+  "windows": ["terminal", "terminal-*"],
   "permissions": [
     "core:event:default",
     "core:window:allow-set-title",
     "log:default"
   ]
 }
-

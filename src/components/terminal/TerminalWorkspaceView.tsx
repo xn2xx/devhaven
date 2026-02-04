@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SplitDirection, TerminalWorkspace } from "../../models/terminal";
 import { useDevHavenContext } from "../../state/DevHavenContext";
 import { saveTerminalWorkspace, loadTerminalWorkspace } from "../../services/terminalWorkspace";
-import { getTerminalWindowLabel } from "../../services/terminalWindow";
 import {
   collectSessionIds,
   createDefaultWorkspace,
@@ -17,29 +15,20 @@ import SplitLayout from "./SplitLayout";
 import TerminalPane from "./TerminalPane";
 import TerminalTabs from "./TerminalTabs";
 
-export default function TerminalWorkspaceView() {
-  const { appState, projects, projectMap, isLoading } = useDevHavenContext();
-  const searchParams = useMemo(() => new URLSearchParams(window.location.search), []);
-  const projectIdParam = searchParams.get("projectId");
-  const projectPathParam = searchParams.get("projectPath");
-  const projectNameParam = searchParams.get("projectName");
+export type TerminalWorkspaceViewProps = {
+  projectId: string | null;
+  projectPath: string;
+  projectName?: string | null;
+  windowLabel: string;
+};
 
-  const project = useMemo(() => {
-    if (projectIdParam) {
-      return projectMap.get(projectIdParam) ?? null;
-    }
-    if (projectPathParam) {
-      return projects.find((item) => item.path === projectPathParam) ?? null;
-    }
-    if (projectNameParam) {
-      return projects.find((item) => item.name === projectNameParam) ?? null;
-    }
-    return null;
-  }, [projectIdParam, projectMap, projectNameParam, projectPathParam, projects]);
-
-  const projectPath = project?.path ?? projectPathParam ?? "";
-  const projectId = project?.id ?? projectIdParam ?? null;
-  const windowLabel = getTerminalWindowLabel(projectId);
+export default function TerminalWorkspaceView({
+  projectId,
+  projectPath,
+  projectName,
+  windowLabel,
+}: TerminalWorkspaceViewProps) {
+  const { appState } = useDevHavenContext();
 
   const [workspace, setWorkspace] = useState<TerminalWorkspace | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,15 +66,6 @@ export default function TerminalWorkspaceView() {
       cancelled = true;
     };
   }, [projectId, projectPath]);
-
-  useEffect(() => {
-    if (!project) {
-      return;
-    }
-    getCurrentWindow()
-      .setTitle(`${project.name} - 终端`)
-      .catch(() => undefined);
-  }, [project]);
 
   const registerSnapshotProvider = useCallback(
     (sessionId: string, provider: () => string | null) => {
@@ -266,7 +246,7 @@ export default function TerminalWorkspaceView() {
   if (!projectPath) {
     return (
       <div className="flex h-full items-center justify-center text-secondary-text">
-        {isLoading ? "正在加载项目..." : "未找到项目"}
+        未找到项目
       </div>
     );
   }
@@ -291,7 +271,7 @@ export default function TerminalWorkspaceView() {
     <div className="flex h-full flex-col bg-[#0b0b0b] text-text">
       <header className="flex items-center gap-3 border-b border-divider bg-secondary-background px-3 py-2">
         <div className="max-w-[200px] truncate text-[13px] font-semibold text-text">
-          {project?.name ?? projectPath}
+          {projectName ?? projectPath}
         </div>
         <TerminalTabs
           tabs={workspace.tabs}
