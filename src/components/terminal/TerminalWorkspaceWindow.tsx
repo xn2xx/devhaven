@@ -91,6 +91,7 @@ export default function TerminalWorkspaceWindow({
                 projectId={project.id}
                 projectPath={project.path}
                 projectName={project.name}
+                isActive={isActive}
                 windowLabel={windowLabel}
               />
             </div>
@@ -100,4 +101,3 @@ export default function TerminalWorkspaceWindow({
     </div>
   );
 }
-

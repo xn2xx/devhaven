@@ -19,6 +19,7 @@ export type TerminalWorkspaceViewProps = {
   projectId: string | null;
   projectPath: string;
   projectName?: string | null;
+  isActive: boolean;
   windowLabel: string;
 };
 
@@ -26,6 +27,7 @@ export default function TerminalWorkspaceView({
   projectId,
   projectPath,
   projectName,
+  isActive,
   windowLabel,
 }: TerminalWorkspaceViewProps) {
   const { appState } = useDevHavenContext();
@@ -212,6 +214,33 @@ export default function TerminalWorkspaceView({
     },
     [updateWorkspace],
   );
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) {
+        return;
+      }
+      // iTerm2 风格：⌘D 向右分屏，⌘⇧D 向下分屏。
+      if (!event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (event.key.toLowerCase() !== "d") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      handleSplit(event.shiftKey ? "b" : "r");
+    };
+
+    // Capture phase：确保终端（xterm）聚焦时也能触发快捷键。
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [handleSplit, isActive]);
 
   const handleResize = useCallback(
     (path: number[], ratios: number[]) => {
