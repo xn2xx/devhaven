@@ -56,3 +56,6 @@ sudo xattr -r -d com.apple.quarantine "/Applications/DevHaven.app"
 - React 文档：https://react.dev/
 - Vite 文档：https://vite.dev/
 - Git 文档：https://git-scm.com/docs
+
+## 许可证
+本项目采用 GNU General Public License v3.0（GPL-3.0-only）开源发布，详见 `LICENSE`。
