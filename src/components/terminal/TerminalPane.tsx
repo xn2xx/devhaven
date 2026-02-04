@@ -179,13 +179,18 @@ export default function TerminalPane({
 
     let disposed = false;
     const term = new Terminal({
+      // 需要用 parser hook 过滤光标形态控制序列（Ghostty: shell-integration-features = no-cursor）。
+      allowProposedApi: true,
       fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
+        "\"Hack\", \"Hack Nerd Font\", \"Noto Sans SC\", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
       fontSize: 12,
+      cursorStyle: "block",
       cursorBlink: true,
       scrollback: 1000,
       theme: themeRef.current,
     });
+    // 忽略 DECSCUSR（CSI Ps SP q），避免 shell/应用切换插入/正常模式时改成条形光标等。
+    const cursorStyleHandler = term.parser.registerCsiHandler({ intermediates: " ", final: "q" }, () => true);
     const fitAddon = new FitAddon();
     const serializeAddon = new SerializeAddon();
     term.loadAddon(fitAddon);
@@ -363,6 +368,7 @@ export default function TerminalPane({
         console.warn("缓存终端状态失败。", error);
       }
       unregisterSnapshot();
+      cursorStyleHandler.dispose();
       disposable.dispose();
       resizeObserver.disconnect();
       unlistenOutput?.();
@@ -429,11 +435,12 @@ export default function TerminalPane({
 
   return (
     <div
-      ref={containerRef}
-      className={`terminal-pane h-full w-full ${
+      className={`terminal-pane flex h-full w-full min-h-0 min-w-0 p-[10px] ${
         isActive ? "outline outline-1 outline-[var(--terminal-accent-outline)]" : ""
       }`}
-      onMouseDown={() => onActivate(sessionId)}
-    />
+      onMouseDownCapture={() => onActivate(sessionId)}
+    >
+      <div ref={containerRef} className="min-h-0 min-w-0 flex-1" />
+    </div>
   );
 }
