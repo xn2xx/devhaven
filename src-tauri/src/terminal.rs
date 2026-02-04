@@ -12,6 +12,52 @@ use uuid::Uuid;
 const TERMINAL_OUTPUT_EVENT: &str = "terminal-output";
 const TERMINAL_EXIT_EVENT: &str = "terminal-exit";
 
+/// 将 PTY 的字节流按 UTF-8 逐步解码。
+///
+/// 关键点：PTY 读到的字节可能会把一个 UTF-8 字符拆到两次 read() 里。
+/// 如果每次 read() 都直接 `String::from_utf8_lossy(&chunk)`，就会把拆开的字符解成 `�`，
+/// 在中文/emoji 等多字节字符场景看起来像“乱码”。
+fn drain_utf8_stream(pending: &mut Vec<u8>) -> String {
+    if pending.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::new();
+    loop {
+        match std::str::from_utf8(pending) {
+            Ok(text) => {
+                out.push_str(text);
+                pending.clear();
+                break;
+            }
+            Err(err) => {
+                let valid_up_to = err.valid_up_to();
+                if valid_up_to > 0 {
+                    // SAFETY: valid_up_to 之前的字节已被 UTF-8 校验为有效。
+                    let valid = unsafe { std::str::from_utf8_unchecked(&pending[..valid_up_to]) };
+                    out.push_str(valid);
+                    pending.drain(..valid_up_to);
+                    continue;
+                }
+
+                match err.error_len() {
+                    None => {
+                        // 不完整的 UTF-8 序列（通常发生在末尾），等待更多字节再解码。
+                        break;
+                    }
+                    Some(len) => {
+                        // 非法字节：输出替换字符并跳过该段，避免死循环。
+                        out.push('\u{FFFD}');
+                        pending.drain(..len);
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
+
 #[derive(Default)]
 pub struct TerminalState {
     pub sessions: Arc<Mutex<HashMap<String, Arc<PtySession>>>>,
@@ -156,23 +202,43 @@ pub fn terminal_create_session(
     thread::spawn(move || {
         let mut reader = reader;
         let mut buffer = [0u8; 8192];
+        let mut pending_utf8: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buffer) {
                 Ok(0) => break,
                 Ok(size) => {
-                    let data = String::from_utf8_lossy(&buffer[..size]).to_string();
-                    let _ = app_handle.emit_to(
-                        &window_label_for_output,
-                        TERMINAL_OUTPUT_EVENT,
-                        TerminalOutputPayload {
-                            session_id: session_id_for_output.clone(),
-                            data,
-                        },
-                    );
+                    pending_utf8.extend_from_slice(&buffer[..size]);
+                    let data = drain_utf8_stream(&mut pending_utf8);
+                    if !data.is_empty() {
+                        let _ = app_handle.emit_to(
+                            &window_label_for_output,
+                            TERMINAL_OUTPUT_EVENT,
+                            TerminalOutputPayload {
+                                session_id: session_id_for_output.clone(),
+                                data,
+                            },
+                        );
+                    }
                 }
                 Err(_) => break,
             }
         }
+
+        // 尽量不要丢尾巴：如果最后残留了半个字符（或非法字节），用 lossy 方式吐出来。
+        if !pending_utf8.is_empty() {
+            let data = String::from_utf8_lossy(&pending_utf8).to_string();
+            if !data.is_empty() {
+                let _ = app_handle.emit_to(
+                    &window_label_for_output,
+                    TERMINAL_OUTPUT_EVENT,
+                    TerminalOutputPayload {
+                        session_id: session_id_for_output.clone(),
+                        data,
+                    },
+                );
+            }
+        }
+
         let _ = app_handle.emit_to(
             &window_label_for_output,
             TERMINAL_EXIT_EVENT,
@@ -194,7 +260,11 @@ pub fn terminal_create_session(
 }
 
 #[tauri::command]
-pub fn terminal_write(state: State<TerminalState>, pty_id: String, data: String) -> Result<(), String> {
+pub fn terminal_write(
+    state: State<TerminalState>,
+    pty_id: String,
+    data: String,
+) -> Result<(), String> {
     let sessions = state
         .sessions
         .lock()
@@ -216,7 +286,12 @@ pub fn terminal_write(state: State<TerminalState>, pty_id: String, data: String)
 }
 
 #[tauri::command]
-pub fn terminal_resize(state: State<TerminalState>, pty_id: String, cols: u16, rows: u16) -> Result<(), String> {
+pub fn terminal_resize(
+    state: State<TerminalState>,
+    pty_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
     let sessions = state
         .sessions
         .lock()
