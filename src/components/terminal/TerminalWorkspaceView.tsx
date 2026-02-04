@@ -309,14 +309,6 @@ export default function TerminalWorkspaceView({
           onNewTab={handleNewTab}
           onCloseTab={handleCloseTab}
         />
-        <div className="ml-auto flex items-center gap-2">
-          <button className="btn btn-outline" onClick={() => handleSplit("r")}>
-            右分屏
-          </button>
-          <button className="btn btn-outline" onClick={() => handleSplit("b")}>
-            下分屏
-          </button>
-        </div>
       </header>
       <div className="relative flex min-h-0 flex-1">
         {workspace.tabs.map((tab) => (
