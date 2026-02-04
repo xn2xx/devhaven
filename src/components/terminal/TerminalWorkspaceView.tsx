@@ -190,6 +190,35 @@ export default function TerminalWorkspaceView({
     [updateWorkspace],
   );
 
+  const handleSelectTabRelative = useCallback(
+    (delta: number) => {
+      updateWorkspace((current) => {
+        if (current.tabs.length <= 1) {
+          return current;
+        }
+        const currentIndex = current.tabs.findIndex((tab) => tab.id === current.activeTabId);
+        if (currentIndex < 0) {
+          return current;
+        }
+        const nextIndex = (currentIndex + delta + current.tabs.length) % current.tabs.length;
+        return { ...current, activeTabId: current.tabs[nextIndex].id };
+      });
+    },
+    [updateWorkspace],
+  );
+
+  const handleSelectTabIndex = useCallback(
+    (index: number) => {
+      updateWorkspace((current) => {
+        if (index < 0 || index >= current.tabs.length) {
+          return current;
+        }
+        return { ...current, activeTabId: current.tabs[index].id };
+      });
+    },
+    [updateWorkspace],
+  );
+
   const handleSplit = useCallback(
     (direction: SplitDirection) => {
       updateWorkspace((current) => {
@@ -212,63 +241,6 @@ export default function TerminalWorkspaceView({
             [newSessionId]: { id: newSessionId, cwd: current.projectPath, savedState: null },
           },
         };
-      });
-    },
-    [updateWorkspace],
-  );
-
-  useEffect(() => {
-    if (!isActive) {
-      return;
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat) {
-        return;
-      }
-      // iTerm2 风格：⌘D 向右分屏，⌘⇧D 向下分屏。
-      if (!event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      if (event.key.toLowerCase() !== "d") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      handleSplit(event.shiftKey ? "b" : "r");
-    };
-
-    // Capture phase：确保终端（xterm）聚焦时也能触发快捷键。
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-    };
-  }, [handleSplit, isActive]);
-
-  const handleResize = useCallback(
-    (path: number[], ratios: number[]) => {
-      updateWorkspace((current) => {
-        const activeTab = current.tabs.find((tab) => tab.id === current.activeTabId);
-        if (!activeTab) {
-          return current;
-        }
-        const nextRoot = updateSplitRatios(activeTab.root, path, ratios);
-        const nextTab = { ...activeTab, root: nextRoot };
-        return {
-          ...current,
-          tabs: current.tabs.map((tab) => (tab.id === activeTab.id ? nextTab : tab)),
-        };
-      });
-    },
-    [updateWorkspace],
-  );
-
-  const handleActivateSession = useCallback(
-    (tabId: string, sessionId: string) => {
-      updateWorkspace((current) => {
-        const nextTabs = current.tabs.map((tab) =>
-          tab.id === tabId ? { ...tab, activeSessionId: sessionId } : tab,
-        );
-        return { ...current, tabs: nextTabs };
       });
     },
     [updateWorkspace],
@@ -318,6 +290,126 @@ export default function TerminalWorkspaceView({
           tabs: current.tabs.map((tab) => (tab.id === targetTab.id ? nextTab : tab)),
           sessions: nextSessions,
         };
+      });
+    },
+    [updateWorkspace],
+  );
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) {
+        return;
+      }
+      if (!event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+
+      // iTerm2 风格：⌘D 向右分屏，⌘⇧D 向下分屏。
+      if (key === "d") {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSplit(event.shiftKey ? "b" : "r");
+        return;
+      }
+
+      // ⌘T：新建标签页
+      if (key === "t" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleNewTab();
+        return;
+      }
+
+      // ⌘W：关闭当前 Pane；若该 Tab 只剩最后一个 Pane，则关闭 Tab
+      if (key === "w" && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        const current = workspaceRef.current;
+        if (!current) {
+          return;
+        }
+        const activeTab = current.tabs.find((tab) => tab.id === current.activeTabId);
+        if (!activeTab) {
+          return;
+        }
+        handleSessionExit(activeTab.activeSessionId);
+        return;
+      }
+
+      // ⌘↑/⌘←：上一 Tab；⌘↓/⌘→：下一 Tab
+      if (
+        !event.shiftKey &&
+        (event.code === "ArrowLeft" ||
+          event.code === "ArrowRight" ||
+          event.code === "ArrowUp" ||
+          event.code === "ArrowDown")
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSelectTabRelative(event.code === "ArrowLeft" || event.code === "ArrowUp" ? -1 : 1);
+        return;
+      }
+
+      // ⌘⇧[ / ⌘⇧]：上一/下一 Tab（浏览器/iTerm2 常用）
+      if (event.shiftKey && (event.code === "BracketLeft" || event.code === "BracketRight")) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSelectTabRelative(event.code === "BracketLeft" ? -1 : 1);
+        return;
+      }
+
+      // ⌘1..⌘8：切换到对应 Tab；⌘9：切到最后一个 Tab（浏览器常用）
+      if (!event.shiftKey) {
+        const digit = Number.parseInt(key, 10);
+        if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
+          event.preventDefault();
+          event.stopPropagation();
+          const current = workspaceRef.current;
+          if (!current) {
+            return;
+          }
+          const index = digit === 9 ? current.tabs.length - 1 : digit - 1;
+          handleSelectTabIndex(index);
+        }
+      }
+    };
+
+    // Capture phase：确保终端（xterm）聚焦时也能触发快捷键。
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [handleNewTab, handleSelectTabIndex, handleSelectTabRelative, handleSessionExit, handleSplit, isActive]);
+
+  const handleResize = useCallback(
+    (path: number[], ratios: number[]) => {
+      updateWorkspace((current) => {
+        const activeTab = current.tabs.find((tab) => tab.id === current.activeTabId);
+        if (!activeTab) {
+          return current;
+        }
+        const nextRoot = updateSplitRatios(activeTab.root, path, ratios);
+        const nextTab = { ...activeTab, root: nextRoot };
+        return {
+          ...current,
+          tabs: current.tabs.map((tab) => (tab.id === activeTab.id ? nextTab : tab)),
+        };
+      });
+    },
+    [updateWorkspace],
+  );
+
+  const handleActivateSession = useCallback(
+    (tabId: string, sessionId: string) => {
+      updateWorkspace((current) => {
+        const nextTabs = current.tabs.map((tab) =>
+          tab.id === tabId ? { ...tab, activeSessionId: sessionId } : tab,
+        );
+        return { ...current, tabs: nextTabs };
       });
     },
     [updateWorkspace],

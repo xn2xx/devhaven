@@ -100,6 +100,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 ### G. 终端工作区（内置终端 + 布局持久化）
 - 终端窗口管理：`src/services/terminalWindow.ts`、`src/components/terminal/TerminalWorkspaceWindow.tsx`
 - 终端 UI（xterm、分屏、标签）：`src/components/terminal/*`
+- 终端快捷键（iTerm2/浏览器风格）：`src/components/terminal/TerminalWorkspaceView.tsx`（⌘T 新建 Tab、⌘W 关闭 Pane/Tab、⌘↑/⌘↓/⌘←/⌘→ 上一/下一 Tab、⌘⇧[ / ⌘⇧] 上一/下一 Tab、⌘1..⌘9 快速切换 Tab、⌘D 分屏）
 - 会话/PTY 通信：
   - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
   - 后端：`src-tauri/src/terminal.rs`
