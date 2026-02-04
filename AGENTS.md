@@ -17,44 +17,134 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
-# Agent Instructions
+# 项目概览（DevHaven）
 
-This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交互（React + Vite + UnoCSS），后端负责本地能力（Rust + Tauri Commands：文件扫描、Git 读取、存储、PTY 终端等）。
 
-## Quick Reference
+## 1) 开发语言 + 框架
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --status in_progress  # Claim work
-bd close <id>         # Complete work
-bd sync               # Sync with git
-```
+### 前端（UI）
+- 语言：TypeScript
+- 框架：React（见 `package.json`）
+- 构建：Vite（见 `vite.config.ts`）
+- 样式：UnoCSS（见 `unocss.config.ts`，入口 `src/main.tsx` 引入 `uno.css`）
+- 入口：`src/main.tsx` → `src/App.tsx`
 
-## Landing the Plane (Session Completion)
+### 桌面/后端（Tauri）
+- 语言：Rust
+- 框架：Tauri v2（见 `src-tauri/`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`）
+- 前后端通信：前端 `@tauri-apps/api/core` 的 `invoke`（`src/services/*`） ↔ 后端 `#[tauri::command]`（集中在 `src-tauri/src/lib.rs`）
+- 插件：dialog/opener/clipboard/log（在 `src-tauri/src/lib.rs` 初始化）
 
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+### 本地数据落盘位置（便于排查）
+- 应用数据目录：`~/.devhaven/`（实现：`src-tauri/src/storage.rs`）
+  - `app_state.json`：应用状态（目录、标签、回收站、设置等）
+  - `projects.json`：项目缓存列表
+  - `heatmap_cache.json`：热力图缓存
+  - `terminal_workspaces.json`：终端工作区/布局缓存
 
-**MANDATORY WORKFLOW:**
+## 2) 功能列表 + 对应位置（功能地图）
 
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
+下面按“用户功能 → 前端入口/UI → 前端服务层 → Rust 后端”给出快速定位点。
 
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
+### A. 工作目录/项目扫描与项目列表
+- 侧边栏「目录」区：`src/components/Sidebar.tsx`
+- 主列表/卡片渲染：`src/components/MainContent.tsx`、`src/components/ProjectCard.tsx`
+- 核心状态与动作（刷新/扫描/合并/持久化）：`src/state/useDevHaven.ts`、`src/state/DevHavenContext.tsx`
+- 调用 Tauri 命令：`src/services/appStorage.ts`（`discoverProjects/buildProjects/load/save`）
+- 扫描与构建项目元数据（是否 Git 仓库、提交数、最后提交时间）：`src-tauri/src/project_loader.rs`
+- Command 注册处：`src-tauri/src/lib.rs`（`discover_projects`、`build_projects`、`load_projects`、`save_projects`）
 
-Use 'bd' for task tracking
+### B. 筛选（标签/目录/搜索/时间范围/Git 状态）
+- 筛选状态与组合逻辑（搜索词、目录、标签、日期、Git Filter 等）：`src/App.tsx`
+- 筛选模型与选项：`src/models/filters.ts`
+- 搜索输入组件：`src/components/SearchBar.tsx`
+
+### C. 标签管理（新建/编辑/隐藏/颜色/批量打标）
+- 标签列表与入口：`src/components/Sidebar.tsx`
+- 标签编辑弹窗：`src/components/TagEditDialog.tsx`
+- 颜色工具：`src/utils/tagColors.ts`、`src/utils/colors.ts`
+- 标签持久化与变更动作：`src/state/useDevHaven.ts`（写入 `app_state.json`）
+
+### D. 项目详情面板（备注/分支/Markdown/快捷操作）
+- 详情面板容器：`src/components/DetailPanel.tsx`
+- 项目卡片：`src/components/ProjectCard.tsx`（通常在主列表中触发打开详情）
+- Git 分支列表：
+  - 前端：`src/services/git.ts`
+  - 后端：`src-tauri/src/git_ops.rs`（`list_branches`）
+  - Command：`src-tauri/src/lib.rs`（`list_branches`）
+- 项目备注 `PROJECT_NOTES.md`：
+  - 前端：`src/services/notes.ts`
+  - 后端：`src-tauri/src/notes.rs`
+  - Command：`src-tauri/src/lib.rs`（`read_project_notes/write_project_notes`）
+- 项目内 Markdown 文件浏览/预览：
+  - UI：`src/components/ProjectMarkdownSection.tsx`
+  - 前端：`src/services/markdown.ts`
+  - 后端：`src-tauri/src/markdown.rs`
+  - Command：`src-tauri/src/lib.rs`（`list_project_markdown_files/read_project_markdown_file`）
+- 系统快捷操作（打开目录/复制路径/外部编辑器）：
+  - 前端：`src/services/system.ts`
+  - 后端：`src-tauri/src/system.rs`
+  - Command：`src-tauri/src/lib.rs`（`open_in_finder/open_in_editor/copy_to_clipboard`）
+
+### E. Git 活跃度统计与热力图/仪表盘
+- Git 每日提交统计（批量）：`src/services/gitDaily.ts` ↔ `src-tauri/src/git_daily.rs`（Command：`collect_git_daily`）
+- 热力图数据管理（缓存/加载/计算）：`src/state/useHeatmapData.ts`、`src/services/heatmap.ts`
+- 侧边栏热力图组件：`src/components/Heatmap.tsx`（在 `src/components/Sidebar.tsx` 使用）
+- 仪表盘弹窗：`src/components/DashboardModal.tsx`（数据模型：`src/models/dashboard.ts`）
+
+### F. 回收站（隐藏项目/恢复）
+- UI：`src/components/RecycleBinModal.tsx`
+- 数据与动作：`src/state/useDevHaven.ts`（`appState.recycleBin`，持久化在 `app_state.json`）
+
+### G. 终端工作区（内置终端 + 布局持久化）
+- 终端窗口管理：`src/services/terminalWindow.ts`、`src/components/terminal/TerminalWorkspaceWindow.tsx`
+- 终端 UI（xterm、分屏、标签）：`src/components/terminal/*`
+- 会话/PTY 通信：
+  - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
+  - 后端：`src-tauri/src/terminal.rs`
+  - Command：`src-tauri/src/lib.rs`（`terminal_create_session/terminal_write/terminal_resize/terminal_kill`）
+- 工作区持久化：
+  - 前端：`src/services/terminalWorkspace.ts`
+  - 后端：`src-tauri/src/storage.rs`（`terminal_workspaces.json`）
+
+### H. 悬浮监控窗（Monitor）
+- 窗口创建/置顶/跨工作区：`src/services/monitorWindow.ts`
+- macOS 全屏空间辅助显示：`src-tauri/src/lib.rs`（`set_window_fullscreen_auxiliary/apply_fullscreen_auxiliary`）
+- 悬浮窗 UI：`src/components/MonitorWindow.tsx`
+
+### I. Codex CLI 会话集成（监听 ~/.codex/sessions）
+- 前端：`src/hooks/useCodexSessions.ts`、`src/services/codex.ts`、`src/components/CodexSessionSection.tsx`
+- 后端：`src-tauri/src/codex_sessions.rs`（文件监听 + 事件 `codex-sessions-update`）
+
+### J. 更新检查
+- GitHub Releases latest 检查：`src/services/update.ts`
+
+### K. 设置（更新/悬浮窗开关/Git 身份/终端渲染）
+- UI：`src/components/SettingsModal.tsx`
+- 设置模型：`src/models/types.ts`（`AppSettings`）
+- 保存入口：`src/App.tsx`（打开/关闭设置弹窗 + 保存设置）与 `src/state/useDevHaven.ts`（`updateSettings` 持久化到 `app_state.json`）
+
+## 3) 回写（维护）AGENTS.md 的逻辑
+
+本文件是“给 LLM/新同学看的项目索引”，要求随代码演进同步更新（回写）。
+
+### 触发回写的场景（满足任一就需要更新本文件）
+- 新增/删除/重命名用户可见功能（UI、弹窗、窗口、入口按钮、菜单项等）。
+- 新增/删除/重命名 Tauri Command（`src-tauri/src/lib.rs` 的 `#[tauri::command]` 或 `invoke_handler!` 列表变更）。
+- 新增/删除/重命名前端 service（`src/services/*` 的 `invoke(...)` 包装、事件名、窗口 label）。
+- 变更本地存储结构/文件名/目录（`src-tauri/src/storage.rs`、`~/.devhaven/*`）。
+- 变更核心状态模型或持久化字段（`src/models/types.ts`、`src/state/useDevHaven.ts`）。
+- 引入新的语言/框架/构建系统/关键依赖（例如新增后端服务、数据库、状态库、路由方案等）。
+
+### 回写原则（怎么写）
+- **不修改**受管块：`<!-- OPENSPEC:START --> ... <!-- OPENSPEC:END -->`（只允许在块外补充内容）。
+- 以“功能 → 入口/UI → services → Rust 后端/Command”的链路补齐定位信息，至少给出 1 个关键文件路径。
+- 新功能优先补到现有 A~K 模块；确实不适配再新增字母段落（保持顺序、命名清晰）。
+- 涉及 Tauri 调用时，尽量在描述中点出 command 名称（例如 `collect_git_daily`），便于全局搜索对齐。
+- 保持简洁：只写“能快速找到代码”的信息，不写大段实现细节；实现细节在对应源码内补注释/README。
+
+### 快速定位约定（让回写更一致）
+- 前端入口通常从 `src/App.tsx`（全局状态/弹窗/窗口联动）和 `src/components/*`（具体 UI）开始找。
+- “调用后端”的入口优先在 `src/services/*` 搜 `invoke(` 或事件名，再去 `src-tauri/src/lib.rs` 找同名 command。
+- “数据怎么落盘/缓存”优先看 `src-tauri/src/storage.rs`，前端只负责触发（`src/services/appStorage.ts`、`src/services/heatmap.ts`、`src/services/terminalWorkspace.ts` 等）。

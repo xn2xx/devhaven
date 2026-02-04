@@ -22,6 +22,7 @@ export type TerminalPaneProps = {
   useWebgl: boolean;
   isActive: boolean;
   onActivate: (sessionId: string) => void;
+  onExit: (sessionId: string, code?: number | null) => void;
   onRegisterSnapshotProvider: (sessionId: string, provider: () => string | null) => () => void;
 };
 
@@ -33,6 +34,7 @@ export default function TerminalPane({
   useWebgl,
   isActive,
   onActivate,
+  onExit,
   onRegisterSnapshotProvider,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -187,7 +189,7 @@ export default function TerminalPane({
           if (disposed) {
             return;
           }
-          term.write("\r\n[会话已结束]\r\n");
+          onExit(sessionId, event.payload.code ?? null);
         });
         if (disposed) {
           exitUnlisten();
@@ -249,7 +251,7 @@ export default function TerminalPane({
         }
       }, 0);
     };
-  }, [cwd, savedState, sessionId, useWebgl, windowLabel, onRegisterSnapshotProvider]);
+  }, [cwd, savedState, sessionId, useWebgl, windowLabel, onExit, onRegisterSnapshotProvider]);
 
   useEffect(() => {
     if (!isActive) {

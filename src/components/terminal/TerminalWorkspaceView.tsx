@@ -7,7 +7,9 @@ import {
   collectSessionIds,
   createDefaultWorkspace,
   createId,
+  findPanePath,
   normalizeWorkspace,
+  removePane,
   splitPane,
   updateSplitRatios,
 } from "../../utils/terminalLayout";
@@ -272,6 +274,55 @@ export default function TerminalWorkspaceView({
     [updateWorkspace],
   );
 
+  const handleSessionExit = useCallback(
+    (sessionId: string) => {
+      updateWorkspace((current) => {
+        const targetIndex = current.tabs.findIndex((tab) => findPanePath(tab.root, sessionId) !== null);
+        if (targetIndex < 0) {
+          return current;
+        }
+
+        const targetTab = current.tabs[targetIndex];
+        const nextRoot = removePane(targetTab.root, sessionId);
+        const beforeSessionIds = collectSessionIds(targetTab.root);
+        const afterSessionIds = nextRoot ? collectSessionIds(nextRoot) : [];
+        const afterSet = new Set(afterSessionIds);
+        const removedSessions = beforeSessionIds.filter((id) => !afterSet.has(id));
+
+        const nextSessions = { ...current.sessions };
+        removedSessions.forEach((id) => {
+          delete nextSessions[id];
+        });
+
+        if (!nextRoot) {
+          const remainingTabs = current.tabs.filter((tab) => tab.id !== targetTab.id);
+          if (remainingTabs.length === 0) {
+            return createDefaultWorkspace(current.projectPath, current.projectId);
+          }
+          const nextActiveTabId =
+            current.activeTabId === targetTab.id ? remainingTabs[0].id : current.activeTabId;
+          return {
+            ...current,
+            tabs: remainingTabs,
+            activeTabId: nextActiveTabId,
+            sessions: nextSessions,
+          };
+        }
+
+        const nextActiveSessionId = afterSet.has(targetTab.activeSessionId)
+          ? targetTab.activeSessionId
+          : afterSessionIds[0];
+        const nextTab = { ...targetTab, root: nextRoot, activeSessionId: nextActiveSessionId };
+        return {
+          ...current,
+          tabs: current.tabs.map((tab) => (tab.id === targetTab.id ? nextTab : tab)),
+          sessions: nextSessions,
+        };
+      });
+    },
+    [updateWorkspace],
+  );
+
   if (!projectPath) {
     return (
       <div className="flex h-full items-center justify-center text-secondary-text">
@@ -332,6 +383,7 @@ export default function TerminalWorkspaceView({
                   useWebgl={appState.settings.terminalUseWebglRenderer}
                   isActive={tab.id === workspace.activeTabId && isActive}
                   onActivate={(nextSessionId) => handleActivateSession(tab.id, nextSessionId)}
+                  onExit={handleSessionExit}
                   onRegisterSnapshotProvider={registerSnapshotProvider}
                 />
               )}

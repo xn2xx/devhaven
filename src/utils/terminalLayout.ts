@@ -185,6 +185,10 @@ export function updateSplitRatios(root: SplitNode, path: number[], ratios: numbe
   return updateNodeAtPath(root, path, updated);
 }
 
+export function removePane(root: SplitNode, sessionId: string): SplitNode | null {
+  return removePaneFromNode(root, sessionId);
+}
+
 function splitOrientationFor(direction: SplitDirection): SplitOrientation {
   return direction === "l" || direction === "r" ? "v" : "h";
 }
@@ -265,4 +269,43 @@ function normalizeRatios(ratios: number[], count: number) {
     return Array.from({ length: count }, () => 1 / count);
   }
   return next.map((value) => value / sum);
+}
+
+function removePaneFromNode(node: SplitNode, sessionId: string): SplitNode | null {
+  if (node.type === "pane") {
+    return node.sessionId === sessionId ? null : node;
+  }
+
+  let changed = false;
+  const nextChildren: SplitNode[] = [];
+  const nextRatios: number[] = [];
+
+  node.children.forEach((child, index) => {
+    const nextChild = removePaneFromNode(child, sessionId);
+    if (!nextChild) {
+      changed = true;
+      return;
+    }
+    if (nextChild !== child) {
+      changed = true;
+    }
+    nextChildren.push(nextChild);
+    nextRatios.push(node.ratios[index] ?? 1 / node.children.length);
+  });
+
+  if (!changed) {
+    return node;
+  }
+  if (nextChildren.length === 0) {
+    return null;
+  }
+  if (nextChildren.length === 1) {
+    return nextChildren[0];
+  }
+
+  return {
+    ...node,
+    children: nextChildren,
+    ratios: normalizeRatios(nextRatios, nextChildren.length),
+  };
 }
