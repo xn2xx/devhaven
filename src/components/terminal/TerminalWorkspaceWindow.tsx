@@ -15,6 +15,7 @@ export type TerminalWorkspaceWindowProps = {
   openProjects: Project[];
   activeProjectId: string | null;
   onSelectProject: (projectId: string) => void;
+  onCloseProject: (projectId: string) => void;
   onExit?: () => void;
   windowLabel: string;
   isVisible: boolean;
@@ -24,6 +25,7 @@ export default function TerminalWorkspaceWindow({
   openProjects,
   activeProjectId,
   onSelectProject,
+  onCloseProject,
   onExit,
   windowLabel,
   isVisible,
@@ -94,18 +96,32 @@ export default function TerminalWorkspaceWindow({
           {openProjects.map((project) => {
             const isActive = (activeProject?.id ?? "") === project.id;
             return (
-              <button
+              <div
                 key={project.id}
-                className={`rounded-md px-2.5 py-2 text-left text-[12px] font-semibold transition-colors ${
+                className={`group flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] font-semibold transition-colors ${
                   isActive
                     ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
                     : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
                 }`}
-                onClick={() => onSelectProject(project.id)}
                 title={project.path}
               >
-                <div className="truncate">{project.name}</div>
-              </button>
+                <button className="min-w-0 flex-1 truncate text-left" onClick={() => onSelectProject(project.id)}>
+                  {project.name}
+                </button>
+                <button
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onCloseProject(project.id);
+                  }}
+                  aria-label={`关闭 ${project.name}`}
+                  title="关闭项目"
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
             );
           })}
         </div>

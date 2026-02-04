@@ -8,3 +8,7 @@ export async function loadTerminalWorkspace(projectPath: string): Promise<Termin
 export async function saveTerminalWorkspace(projectPath: string, workspace: TerminalWorkspace): Promise<void> {
   await invoke("save_terminal_workspace", { projectPath, workspace });
 }
+
+export async function deleteTerminalWorkspace(projectPath: string): Promise<void> {
+  await invoke("delete_terminal_workspace", { projectPath });
+}

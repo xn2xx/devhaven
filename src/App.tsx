@@ -27,6 +27,7 @@ import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
+import { deleteTerminalWorkspace } from "./services/terminalWorkspace";
 
 const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
 const MAIN_WINDOW_LABEL = "main";
@@ -140,6 +141,8 @@ function AppLayout() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastTerminalVisibleRef = useRef(showTerminalWorkspace);
+  const terminalOpenProjectsRef = useRef<Project[]>(terminalOpenProjects);
+  const terminalActiveProjectIdRef = useRef<string | null>(terminalActiveProjectId);
   const toastTimerRef = useRef<number | null>(null);
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
@@ -496,6 +499,40 @@ function AppLayout() {
     [openTerminalWorkspace],
   );
 
+  const handleCloseTerminalProject = useCallback(
+    (projectId: string) => {
+      const currentProjects = terminalOpenProjectsRef.current;
+      const closingProject = currentProjects.find((item) => item.id === projectId);
+      if (!closingProject) {
+        return;
+      }
+
+      const nextProjects = currentProjects.filter((item) => item.id !== projectId);
+      setTerminalOpenProjects(nextProjects);
+
+      if (nextProjects.length === 0) {
+        setTerminalActiveProjectId(null);
+        setShowTerminalWorkspace(false);
+      } else {
+        const currentActive = terminalActiveProjectIdRef.current;
+        const nextActive =
+          currentActive === projectId || !currentActive || !nextProjects.some((item) => item.id === currentActive)
+            ? nextProjects[0].id
+            : currentActive;
+        setTerminalActiveProjectId(nextActive);
+      }
+
+      // 先卸载终端 pane（清理 PTY/定时保存），再异步删除持久化工作区，避免竞态把 workspace 又写回去。
+      window.setTimeout(() => {
+        void deleteTerminalWorkspace(closingProject.path).catch((error) => {
+          console.error("删除终端工作区失败。", error);
+          showToast("关闭项目失败，请重试", "error");
+        });
+      }, 0);
+    },
+    [showToast],
+  );
+
   const handleOpenCodexSession = useCallback(
     (session: CodexSessionView) => {
       if (!session.projectId) {
@@ -655,6 +692,14 @@ function AppLayout() {
     });
   }, [showTerminalWorkspace]);
 
+  useEffect(() => {
+    terminalOpenProjectsRef.current = terminalOpenProjects;
+  }, [terminalOpenProjects]);
+
+  useEffect(() => {
+    terminalActiveProjectIdRef.current = terminalActiveProjectId;
+  }, [terminalActiveProjectId]);
+
   if (isMonitorView) {
     return (
       <div className="h-full bg-transparent">
@@ -802,6 +847,7 @@ function AppLayout() {
             openProjects={terminalOpenProjects}
             activeProjectId={terminalActiveProjectId}
             onSelectProject={setTerminalActiveProjectId}
+            onCloseProject={handleCloseTerminalProject}
             onExit={() => setShowTerminalWorkspace(false)}
             windowLabel={MAIN_WINDOW_LABEL}
             isVisible={showTerminalWorkspace}

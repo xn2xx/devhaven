@@ -141,3 +141,12 @@ pub fn save_terminal_workspace(
         .insert(project_path.to_string(), workspace);
     save_terminal_workspaces(app, &workspaces)
 }
+
+/// 删除指定项目终端工作空间。
+pub fn delete_terminal_workspace(app: &AppHandle, project_path: &str) -> Result<(), String> {
+    let mut workspaces = load_terminal_workspaces(app)?;
+    if workspaces.workspaces.remove(project_path).is_some() {
+        save_terminal_workspaces(app, &workspaces)?;
+    }
+    Ok(())
+}

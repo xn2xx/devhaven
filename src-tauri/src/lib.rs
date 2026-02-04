@@ -210,6 +210,14 @@ fn save_terminal_workspace(
 }
 
 #[tauri::command]
+fn delete_terminal_workspace(app: AppHandle, project_path: String) -> Result<(), String> {
+    log_command_result("delete_terminal_workspace", || {
+        log::info!("delete_terminal_workspace path={}", project_path);
+        storage::delete_terminal_workspace(&app, &project_path)
+    })
+}
+
+#[tauri::command]
 fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
     log_command_result("list_codex_sessions", || {
         if let Err(error) = codex_sessions::ensure_session_watcher(&app) {
@@ -272,6 +280,7 @@ pub fn run() {
             save_heatmap_cache,
             load_terminal_workspace,
             save_terminal_workspace,
+            delete_terminal_workspace,
             list_codex_sessions,
             terminal_create_session,
             terminal_write,
