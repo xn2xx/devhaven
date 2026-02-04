@@ -13,13 +13,6 @@ pub struct EditorOpenParams {
     pub arguments: Option<Vec<String>>,
 }
 
-#[derive(Debug, serde::Deserialize)]
-pub struct TerminalOpenParams {
-    pub path: String,
-    pub command_path: Option<String>,
-    pub arguments: Option<Vec<String>>,
-}
-
 /// 在系统文件管理器中定位路径。
 pub fn open_in_finder(path: &str) -> Result<(), String> {
     if cfg!(target_os = "macos") {
@@ -34,40 +27,6 @@ pub fn open_in_finder(path: &str) -> Result<(), String> {
     }
 
     open_with_default(path)
-}
-
-/// 在终端中打开指定目录。
-pub fn open_in_terminal(params: TerminalOpenParams) -> Result<(), String> {
-    if let Some(command_path) = params.command_path {
-        let arguments = build_command_arguments(params.arguments, &params.path);
-        let status = Command::new(command_path)
-            .args(arguments)
-            .status()
-            .map_err(|err| format!("无法打开终端: {err}"))?;
-        if status.success() {
-            return Ok(());
-        }
-        return Err("终端打开失败".to_string());
-    }
-
-    if cfg!(target_os = "macos") {
-        let escaped_path = params.path.replace('"', "\\\"");
-        let script = format!(
-            "tell application \"Terminal\"\n    do script \"cd \\\"{}\\\"\"\n    activate\nend tell",
-            escaped_path
-        );
-        let status = Command::new("/usr/bin/osascript")
-            .arg("-e")
-            .arg(script)
-            .status()
-            .map_err(|err| format!("无法打开终端: {err}"))?;
-        if status.success() {
-            return Ok(());
-        }
-        return Err("终端打开失败".to_string());
-    }
-
-    open_with_default(&params.path)
 }
 
 /// 使用指定编辑器打开文件或目录。
@@ -109,28 +68,6 @@ pub fn open_in_editor(params: EditorOpenParams) -> Result<(), String> {
     }
 
     Err("未能打开编辑器".to_string())
-}
-
-fn build_command_arguments(arguments: Option<Vec<String>>, path: &str) -> Vec<String> {
-    let mut resolved = Vec::new();
-    let mut inserted_path = false;
-
-    if let Some(arguments) = arguments {
-        for argument in arguments {
-            if argument.contains("{path}") {
-                resolved.push(argument.replace("{path}", path));
-                inserted_path = true;
-            } else {
-                resolved.push(argument);
-            }
-        }
-    }
-
-    if !inserted_path {
-        resolved.push(path.to_string());
-    }
-
-    resolved
 }
 
 /// 复制文本到系统剪贴板（跨平台）。

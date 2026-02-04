@@ -6,24 +6,22 @@ mod notes;
 mod project_loader;
 mod storage;
 mod system;
-mod terminal;
 mod time_utils;
 mod codex_sessions;
+mod terminal;
 
-use std::sync::Mutex;
 use std::time::Instant;
 use tauri::AppHandle;
 use tauri::Manager;
-use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
     AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitIdentity, HeatmapCacheFile,
-    MarkdownFileEntry, Project,
+    MarkdownFileEntry, Project, TerminalWorkspace,
 };
-use crate::system::{EditorOpenParams, TerminalOpenParams};
+use crate::system::EditorOpenParams;
 use crate::terminal::{
-    TerminalManager, TerminalSessionInfo, TmuxPaneCursor, TmuxPaneInfo, TmuxSupportStatus, TmuxWindowInfo,
+    terminal_create_session, terminal_kill, terminal_resize, terminal_write, TerminalState,
 };
 
 #[tauri::command]
@@ -87,15 +85,6 @@ fn open_in_finder(path: String) -> Result<(), String> {
     log_command_result("open_in_finder", || {
         log::info!("open_in_finder path={}", path);
         system::open_in_finder(&path)
-    })
-}
-
-#[tauri::command]
-/// 在终端中打开路径。
-fn open_in_terminal(params: TerminalOpenParams) -> Result<(), String> {
-    log_command_result("open_in_terminal", || {
-        log::info!("open_in_terminal path={}", params.path);
-        system::open_in_terminal(params)
     })
 }
 
@@ -198,8 +187,34 @@ fn save_heatmap_cache(app: AppHandle, cache: HeatmapCacheFile) -> Result<(), Str
 }
 
 #[tauri::command]
-fn get_tmux_support_status() -> TmuxSupportStatus {
-    terminal::tmux_support_status()
+fn load_terminal_workspace(
+    app: AppHandle,
+    project_path: String,
+) -> Result<Option<TerminalWorkspace>, String> {
+    log_command_result("load_terminal_workspace", || {
+        log::info!("load_terminal_workspace path={}", project_path);
+        storage::load_terminal_workspace(&app, &project_path)
+    })
+}
+
+#[tauri::command]
+fn save_terminal_workspace(
+    app: AppHandle,
+    project_path: String,
+    workspace: TerminalWorkspace,
+) -> Result<(), String> {
+    log_command_result("save_terminal_workspace", || {
+        log::info!("save_terminal_workspace path={}", project_path);
+        storage::save_terminal_workspace(&app, &project_path, workspace)
+    })
+}
+
+#[tauri::command]
+fn delete_terminal_workspace(app: AppHandle, project_path: String) -> Result<(), String> {
+    log_command_result("delete_terminal_workspace", || {
+        log::info!("delete_terminal_workspace path={}", project_path);
+        storage::delete_terminal_workspace(&app, &project_path)
+    })
 }
 
 #[tauri::command]
@@ -210,260 +225,6 @@ fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, Strin
         }
         codex_sessions::list_sessions(&app)
     })
-}
-
-#[tauri::command]
-fn create_terminal_session(
-    app: AppHandle,
-    state: State<'_, Mutex<TerminalManager>>,
-    project_id: String,
-    project_path: String,
-    project_name: String,
-) -> Result<TerminalSessionInfo, String> {
-    log_command_result("create_terminal_session", || {
-        log::info!(
-            "create_terminal_session project_id={} project_path={} project_name={}",
-            project_id,
-            project_path,
-            project_name
-        );
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .create_session(app, &project_id, &project_path, &project_name)
-    })
-}
-
-#[tauri::command]
-fn close_terminal_session(
-    state: State<'_, Mutex<TerminalManager>>,
-    session_id: String,
-) -> Result<(), String> {
-    log_command_result("close_terminal_session", || {
-        log::info!("close_terminal_session session_id={}", session_id);
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .close_session(&session_id)
-    })
-}
-
-#[tauri::command]
-fn switch_terminal_session(
-    app: AppHandle,
-    state: State<'_, Mutex<TerminalManager>>,
-    session_id: String,
-) -> Result<(), String> {
-    log_command_result("switch_terminal_session", || {
-        log::info!("switch_terminal_session session_id={}", session_id);
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .switch_session(app, &session_id)
-    })
-}
-
-#[tauri::command]
-fn list_terminal_sessions(
-    state: State<'_, Mutex<TerminalManager>>,
-) -> Result<Vec<TerminalSessionInfo>, String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .list_sessions()
-}
-
-#[tauri::command]
-fn list_tmux_windows(
-    state: State<'_, Mutex<TerminalManager>>,
-    session_id: String,
-) -> Result<Vec<TmuxWindowInfo>, String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .list_windows(&session_id)
-}
-
-#[tauri::command]
-fn list_tmux_panes(
-    state: State<'_, Mutex<TerminalManager>>,
-    window_id: String,
-) -> Result<Vec<TmuxPaneInfo>, String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .list_panes(&window_id)
-}
-
-#[tauri::command]
-fn send_tmux_input(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-    data: String,
-) -> Result<(), String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .send_input(&pane_id, &data)
-}
-
-#[tauri::command]
-fn split_tmux_pane(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-    direction: String,
-) -> Result<(), String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .split_pane(&pane_id, &direction)
-}
-
-#[tauri::command]
-fn select_tmux_pane(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-) -> Result<(), String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .select_pane(&pane_id)
-}
-
-#[tauri::command]
-fn select_tmux_pane_direction(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-    direction: String,
-) -> Result<(), String> {
-    log_command_result("select_tmux_pane_direction", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .select_pane_direction(&pane_id, &direction)
-    })
-}
-
-#[tauri::command]
-fn resize_tmux_pane(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-    direction: String,
-    count: u16,
-) -> Result<(), String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .resize_pane(&pane_id, &direction, count)
-}
-
-#[tauri::command]
-fn kill_tmux_pane(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-) -> Result<(), String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .kill_pane(&pane_id)
-}
-
-#[tauri::command]
-fn new_tmux_window(
-    state: State<'_, Mutex<TerminalManager>>,
-    session_id: String,
-    project_path: String,
-) -> Result<(), String> {
-    log_command_result("new_tmux_window", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .new_window(&session_id, &project_path)
-    })
-}
-
-#[tauri::command]
-fn select_tmux_window(
-    state: State<'_, Mutex<TerminalManager>>,
-    window_id: String,
-) -> Result<(), String> {
-    log_command_result("select_tmux_window", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .select_window(&window_id)
-    })
-}
-
-#[tauri::command]
-fn select_tmux_window_index(
-    state: State<'_, Mutex<TerminalManager>>,
-    session_id: String,
-    window_index: i32,
-) -> Result<(), String> {
-    log_command_result("select_tmux_window_index", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .select_window_index(&session_id, window_index)
-    })
-}
-
-#[tauri::command]
-fn next_tmux_window(state: State<'_, Mutex<TerminalManager>>) -> Result<(), String> {
-    log_command_result("next_tmux_window", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .next_window()
-    })
-}
-
-#[tauri::command]
-fn previous_tmux_window(state: State<'_, Mutex<TerminalManager>>) -> Result<(), String> {
-    log_command_result("previous_tmux_window", || {
-        state
-            .lock()
-            .map_err(|_| "终端状态锁异常".to_string())?
-            .previous_window()
-    })
-}
-
-#[tauri::command]
-fn resize_tmux_client(
-    app: AppHandle,
-    state: State<'_, Mutex<TerminalManager>>,
-    session_id: String,
-    cols: u16,
-    rows: u16,
-) -> Result<(), String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .resize_client(app, &session_id, cols, rows)
-}
-
-#[tauri::command]
-fn capture_tmux_pane(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-    lines: Option<u16>,
-) -> Result<String, String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .capture_pane(&pane_id, lines)
-}
-
-#[tauri::command]
-fn get_tmux_pane_cursor(
-    state: State<'_, Mutex<TerminalManager>>,
-    pane_id: String,
-) -> Result<TmuxPaneCursor, String> {
-    state
-        .lock()
-        .map_err(|_| "终端状态锁异常".to_string())?
-        .get_pane_cursor(&pane_id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -482,7 +243,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(Mutex::new(TerminalManager::new()))
+        .manage(TerminalState::default())
         .setup(|app| {
             log::info!(
                 "app start name={} version={}",
@@ -507,7 +268,6 @@ pub fn run() {
             build_projects,
             list_branches,
             open_in_finder,
-            open_in_terminal,
             open_in_editor,
             set_window_fullscreen_auxiliary,
             copy_to_clipboard,
@@ -518,28 +278,14 @@ pub fn run() {
             collect_git_daily,
             load_heatmap_cache,
             save_heatmap_cache,
-            get_tmux_support_status,
+            load_terminal_workspace,
+            save_terminal_workspace,
+            delete_terminal_workspace,
             list_codex_sessions,
-            create_terminal_session,
-            close_terminal_session,
-            switch_terminal_session,
-            list_terminal_sessions,
-            list_tmux_windows,
-            list_tmux_panes,
-            send_tmux_input,
-            split_tmux_pane,
-            select_tmux_pane,
-            select_tmux_pane_direction,
-            resize_tmux_pane,
-            kill_tmux_pane,
-            new_tmux_window,
-            select_tmux_window,
-            select_tmux_window_index,
-            next_tmux_window,
-            previous_tmux_window,
-            resize_tmux_client,
-            capture_tmux_pane,
-            get_tmux_pane_cursor,
+            terminal_create_session,
+            terminal_write,
+            terminal_resize,
+            terminal_kill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

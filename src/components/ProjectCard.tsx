@@ -1,23 +1,21 @@
 import { memo } from "react";
 
-import type { Project, ProjectScript } from "../models/types";
+import type { Project } from "../models/types";
 import { swiftDateToJsDate } from "../models/types";
 import { openInFinder } from "../services/system";
-import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTerminal, IconTrash, IconX } from "./Icons";
+import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTrash, IconX } from "./Icons";
 
 export type ProjectCardProps = {
   project: Project;
   isSelected: boolean;
   selectedProjectIds: Set<string>;
   onSelect: (event: React.MouseEvent<HTMLDivElement>) => void;
-  onEnterWorkspace: () => void;
+  onOpenTerminal: (project: Project) => void;
   onTagClick: (tag: string) => void;
   onRemoveTag: (projectId: string, tag: string) => void;
   getTagColor: (tag: string) => string;
   onRefreshProject: (path: string) => void;
   onCopyPath: (path: string) => void;
-  onOpenInTerminal: (path: string) => void;
-  onRunScript: (project: Project, script: ProjectScript) => void;
   onMoveToRecycleBin: (project: Project) => void;
 };
 
@@ -36,14 +34,12 @@ function ProjectCard({
   isSelected,
   selectedProjectIds,
   onSelect,
-  onEnterWorkspace,
+  onOpenTerminal,
   onTagClick,
   onRemoveTag,
   getTagColor,
   onRefreshProject,
   onCopyPath,
-  onOpenInTerminal,
-  onRunScript,
   onMoveToRecycleBin,
 }: ProjectCardProps) {
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
@@ -59,13 +55,11 @@ function ProjectCard({
     action();
   };
 
-  const quickScripts = project.scripts?.slice(0, 2) ?? [];
-
   return (
     <div
       className={`card ${isSelected ? "card-selected" : "hover:bg-card-hover"}`}
       onClick={onSelect}
-      onDoubleClick={onEnterWorkspace}
+      onDoubleClick={() => onOpenTerminal(project)}
       draggable
       onDragStart={handleDragStart}
     >
@@ -81,14 +75,6 @@ function ProjectCard({
             onClick={(event) => handleActionClick(event, () => void openInFinder(project.path))}
           >
             <IconFolder size={16} />
-          </button>
-          <button
-            className="icon-btn text-titlebar-icon"
-            aria-label="在终端打开"
-            title="在终端打开"
-            onClick={(event) => handleActionClick(event, () => onOpenInTerminal(project.path))}
-          >
-            <IconTerminal size={16} />
           </button>
           <button
             className="icon-btn text-titlebar-icon"
@@ -158,24 +144,6 @@ function ProjectCard({
           </span>
         ))}
       </div>
-      {quickScripts.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {quickScripts.map((script) => (
-            <button
-              key={script.id}
-              className="inline-flex items-center gap-1 rounded-md bg-button-bg px-2 py-1 text-[12px] text-text transition-colors duration-150 hover:bg-button-hover"
-              onClick={(event) =>
-                handleActionClick(event, () => onRunScript(project, script))
-              }
-              aria-label={"运行脚本 " + script.name}
-              title={script.name}
-            >
-              <IconTerminal size={12} />
-              <span className="max-w-[140px] truncate">{script.name}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -1,63 +1,37 @@
-export type TerminalSessionInfo = {
+export type SplitOrientation = "h" | "v";
+export type SplitDirection = "r" | "b" | "l" | "t";
+
+export type SplitNode =
+  | {
+      type: "pane";
+      sessionId: string;
+    }
+  | {
+      type: "split";
+      orientation: SplitOrientation;
+      ratios: number[];
+      children: SplitNode[];
+    };
+
+export type TerminalTab = {
   id: string;
-  projectId: string;
+  title: string;
+  root: SplitNode;
+  activeSessionId: string;
+};
+
+export type TerminalSessionSnapshot = {
+  id: string;
+  cwd: string;
+  savedState?: string | null;
+};
+
+export type TerminalWorkspace = {
+  version: number;
+  projectId: string | null;
   projectPath: string;
-  createdAt: number;
-};
-
-export type TmuxWindowInfo = {
-  id: string;
-  index: number;
-  name: string;
-  isActive: boolean;
-  width: number;
-  height: number;
-};
-
-export type TmuxPaneInfo = {
-  id: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  isActive: boolean;
-};
-
-export type TmuxPaneCursor = {
-  col: number;
-  row: number;
-};
-
-export type TmuxSupportStatus = {
-  supported: boolean;
-  reason?: string | null;
-};
-
-export type TmuxStatePayload = {
-  kind: string;
-  sessionId?: string | null;
-  sessionName?: string | null;
-  windowId?: string | null;
-  windowName?: string | null;
-  windowIndex?: string | null;
-  paneId?: string | null;
-  client?: string | null;
-  message?: string | null;
-  bufferName?: string | null;
-  subscriptionName?: string | null;
-  subscriptionValue?: string | null;
-  layout?: string | null;
-  visibleLayout?: string | null;
-  windowFlags?: string | null;
-  reason?: string | null;
-};
-
-export type TmuxOutputPayload = {
-  sessionId: string;
-  paneId: string;
-  data: string;
-};
-
-export type WorkspaceSession = TerminalSessionInfo & {
-  projectName: string;
+  tabs: TerminalTab[];
+  activeTabId: string;
+  sessions: Record<string, TerminalSessionSnapshot>;
+  updatedAt: number;
 };
