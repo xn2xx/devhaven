@@ -23,6 +23,7 @@ import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
 import { buildGitIdentitySignature } from "./utils/gitIdentity";
 import { pickColorForTag } from "./utils/tagColors";
+import { buildCodexProjectStatusById } from "./utils/codexProjectStatus";
 import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
@@ -176,6 +177,10 @@ function AppLayout() {
   const codexSessionViews = useMemo(
     () => buildCodexSessionViews(codexSessionStore.sessions, projects),
     [codexSessionStore.sessions, projects],
+  );
+  const codexProjectStatusById = useMemo(
+    () => buildCodexProjectStatusById(codexSessionViews),
+    [codexSessionViews],
   );
   const runningCodexSessionViews = useMemo(
     () => codexSessionViews.filter((session) => session.isRunning),
@@ -851,6 +856,7 @@ function AppLayout() {
             onExit={() => setShowTerminalWorkspace(false)}
             windowLabel={MAIN_WINDOW_LABEL}
             isVisible={showTerminalWorkspace}
+            codexProjectStatusById={codexProjectStatusById}
           />
         </div>
       ) : null}

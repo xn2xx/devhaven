@@ -9,6 +9,7 @@ import {
   getTerminalThemePresetByName,
   resolveTerminalThemeName,
 } from "../../themes/terminalThemes";
+import type { CodexProjectStatus } from "../../utils/codexProjectStatus";
 import TerminalWorkspaceView from "./TerminalWorkspaceView";
 
 export type TerminalWorkspaceWindowProps = {
@@ -19,6 +20,7 @@ export type TerminalWorkspaceWindowProps = {
   onExit?: () => void;
   windowLabel: string;
   isVisible: boolean;
+  codexProjectStatusById: Record<string, CodexProjectStatus>;
 };
 
 export default function TerminalWorkspaceWindow({
@@ -29,6 +31,7 @@ export default function TerminalWorkspaceWindow({
   onExit,
   windowLabel,
   isVisible,
+  codexProjectStatusById,
 }: TerminalWorkspaceWindowProps) {
   const { appState } = useDevHavenContext();
   const systemScheme = useSystemColorScheme();
@@ -95,6 +98,8 @@ export default function TerminalWorkspaceWindow({
         <div className="flex flex-col gap-1 p-2">
           {openProjects.map((project) => {
             const isActive = (activeProject?.id ?? "") === project.id;
+            const codexStatus = codexProjectStatusById[project.id] ?? null;
+            const codexRunningCount = codexStatus?.runningCount ?? 0;
             return (
               <div
                 key={project.id}
@@ -108,6 +113,15 @@ export default function TerminalWorkspaceWindow({
                 <button className="min-w-0 flex-1 truncate text-left" onClick={() => onSelectProject(project.id)}>
                   {project.name}
                 </button>
+                {codexRunningCount > 0 ? (
+                  <span
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--terminal-divider)] bg-[var(--terminal-hover-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--terminal-muted-fg)]"
+                    title={`Codex 运行中（${codexRunningCount} 个会话）`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-[var(--terminal-accent)]" aria-hidden="true" />
+                    <span className="whitespace-nowrap">Codex</span>
+                  </span>
+                ) : null}
                 <button
                   className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
                   onClick={(event) => {
@@ -143,6 +157,7 @@ export default function TerminalWorkspaceWindow({
                 isActive={isVisible && isActive}
                 windowLabel={windowLabel}
                 xtermTheme={terminalThemePreset.xterm}
+                codexRunningCount={codexProjectStatusById[project.id]?.runningCount ?? 0}
               />
             </div>
           );
