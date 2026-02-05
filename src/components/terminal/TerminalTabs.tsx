@@ -17,11 +17,11 @@ export default function TerminalTabs({
   onCloseTab,
 }: TerminalTabsProps) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto">
+    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
       {tabs.map((tab) => (
         <button
           key={tab.id}
-          className={`flex items-center gap-2 rounded-md px-2.5 py-1 text-[12px] font-semibold ${
+          className={`flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1 text-[12px] font-semibold ${
             tab.id === activeTabId
               ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
               : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
@@ -43,7 +43,7 @@ export default function TerminalTabs({
         </button>
       ))}
       <button
-        className="inline-flex items-center justify-center min-w-6 min-h-6 p-1 rounded-md text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+        className="inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-md p-1 text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
         onClick={onNewTab}
         aria-label="新建终端 Tab"
       >

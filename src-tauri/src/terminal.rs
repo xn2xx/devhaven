@@ -107,6 +107,7 @@ fn ensure_terminal_env(cmd: &mut CommandBuilder) {
         let current = cmd
             .get_env("PATH")
             .map(|p| p.to_os_string())
+            .or_else(|| std::env::var_os("PATH"))
             .unwrap_or_default();
         let existing: Vec<PathBuf> = std::env::split_paths(&current).collect();
 
