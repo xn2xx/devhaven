@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ITheme } from "xterm";
 
-import type { SplitDirection, TerminalWorkspace } from "../../models/terminal";
+import type { SplitDirection, TerminalTab, TerminalWorkspace } from "../../models/terminal";
 import { useDevHavenContext } from "../../state/DevHavenContext";
 import { saveTerminalWorkspace, loadTerminalWorkspace } from "../../services/terminalWorkspace";
 import {
@@ -27,6 +27,27 @@ export type TerminalWorkspaceViewProps = {
   xtermTheme: ITheme;
   codexRunningCount?: number;
 };
+
+const TERMINAL_TITLE_PATTERN = /^终端\s*(\d+)$/;
+
+function getNextTerminalTitle(tabs: TerminalTab[]): string {
+  const used = new Set<number>();
+  for (const tab of tabs) {
+    const match = tab.title.match(TERMINAL_TITLE_PATTERN);
+    if (!match) {
+      continue;
+    }
+    const value = Number(match[1]);
+    if (Number.isInteger(value) && value > 0) {
+      used.add(value);
+    }
+  }
+  let next = 1;
+  while (used.has(next)) {
+    next += 1;
+  }
+  return `终端 ${next}`;
+}
 
 export default function TerminalWorkspaceView({
   projectId,
@@ -148,7 +169,7 @@ export default function TerminalWorkspaceView({
     updateWorkspace((current) => {
       const sessionId = createId();
       const tabId = createId();
-      const title = `终端 ${current.tabs.length + 1}`;
+      const title = getNextTerminalTitle(current.tabs);
       return {
         ...current,
         activeTabId: tabId,
