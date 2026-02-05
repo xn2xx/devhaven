@@ -12,7 +12,7 @@ import type { ITheme } from "xterm";
 import type { SplitDirection, TerminalTab, TerminalWorkspace } from "../../models/terminal";
 import type { ProjectScript } from "../../models/types";
 import { useDevHavenContext } from "../../state/DevHavenContext";
-import { killTerminal, writeTerminal } from "../../services/terminal";
+import { killTerminal, listenTerminalOutput, writeTerminal } from "../../services/terminal";
 import { saveTerminalWorkspace, loadTerminalWorkspace } from "../../services/terminalWorkspace";
 import {
   TERMINAL_QUICK_COMMAND_RUN_EVENT,
@@ -55,6 +55,37 @@ type ScriptRuntime = {
 };
 
 const TERMINAL_TITLE_PATTERN = /^终端\s*(\d+)$/;
+const QUICK_COMMAND_OUTPUT_BUFFER_LIMIT = 4096;
+const QUICK_COMMAND_EXIT_MARKER_REGEX =
+  /\u001b\]633;DevHaven;qc-exit;([^;]+);(-?\d+)\u0007/;
+
+function shellQuote(value: string) {
+  // POSIX-safe single-quote escaping: 'foo'"'"'bar'
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function wrapQuickCommandForShell(command: string, token: string) {
+  const normalized = command.replace(/\r\n|\n|\r/g, "; ").trim();
+  const safeToken = token.replace(/[^a-zA-Z0-9-]/g, "");
+  if (!normalized || !safeToken) {
+    return "";
+  }
+
+  // Run the command in a sub-shell so Ctrl+C (SIGINT) still emits our qc-exit marker via trap.
+  // This keeps the outer interactive shell alive, and avoids relying on buffered follow-up lines.
+  const runnerScript =
+    'printf "\\033]633;DevHaven;qc-start;%s\\007" "$DEVHAVEN_QC_TOKEN"; ' +
+    'dh_qc_emit_exit() { printf "\\033]633;DevHaven;qc-exit;%s;%s\\007" "$DEVHAVEN_QC_TOKEN" "$1"; }; ' +
+    'trap "dh_qc_emit_exit 130; exit 130" INT; ' +
+    'eval "$DEVHAVEN_QC_CMD"; ' +
+    'code=$?; dh_qc_emit_exit "$code"; exit "$code"';
+
+  return (
+    `DEVHAVEN_QC_TOKEN=${shellQuote(safeToken)} ` +
+    `DEVHAVEN_QC_CMD=${shellQuote(normalized)} ` +
+    `sh -lc ${shellQuote(runnerScript)}`
+  );
+}
 
 function getNextTerminalTitle(tabs: TerminalTab[]): string {
   const used = new Set<number>();
@@ -105,6 +136,7 @@ export default function TerminalWorkspaceView({
   const sessionPtyIdRef = useRef(new Map<string, string>());
   const scriptIdBySessionIdRef = useRef(new Map<string, string>());
   const pendingStartBySessionIdRef = useRef(new Map<string, string>());
+  const quickCommandOutputBufferBySessionIdRef = useRef(new Map<string, string>());
   const pendingExternalActionsRef = useRef<TerminalQuickCommandAction[]>([]);
   const handledRequestIdsRef = useRef(new Set<string>());
 
@@ -151,6 +183,7 @@ export default function TerminalWorkspaceView({
     scriptIdBySessionIdRef.current.clear();
     sessionPtyIdRef.current.clear();
     pendingStartBySessionIdRef.current.clear();
+    quickCommandOutputBufferBySessionIdRef.current.clear();
     pendingExternalActionsRef.current = [];
     handledRequestIdsRef.current.clear();
     loadTerminalWorkspace(projectPath)
@@ -271,8 +304,51 @@ export default function TerminalWorkspaceView({
       sessionPtyIdRef.current.delete(sessionId);
       scriptIdBySessionIdRef.current.delete(sessionId);
       pendingStartBySessionIdRef.current.delete(sessionId);
+      quickCommandOutputBufferBySessionIdRef.current.delete(sessionId);
     });
   }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const registerListener = async () => {
+      try {
+        unlisten = await listenTerminalOutput((event) => {
+          const payload = event.payload;
+          const sessionId = payload.sessionId;
+          const scriptId = scriptIdBySessionIdRef.current.get(sessionId);
+          if (!scriptId) {
+            return;
+          }
+
+          const bufferMap = quickCommandOutputBufferBySessionIdRef.current;
+          const prev = bufferMap.get(sessionId) ?? "";
+          const next = `${prev}${payload.data}`.slice(-QUICK_COMMAND_OUTPUT_BUFFER_LIMIT);
+          bufferMap.set(sessionId, next);
+
+          const match = QUICK_COMMAND_EXIT_MARKER_REGEX.exec(next);
+          if (!match) {
+            return;
+          }
+          const token = match[1];
+          const code = match[2];
+          if (token !== sessionId) {
+            return;
+          }
+          cleanupRuntimeBySessionIds([sessionId]);
+          showPanelMessage(code === "0" ? "命令已完成" : `命令已结束（退出码 ${code}）`);
+        });
+      } catch (error) {
+        console.error("监听终端输出事件失败。", error);
+      }
+    };
+
+    void registerListener();
+
+    return () => {
+      unlisten?.();
+    };
+  }, [cleanupRuntimeBySessionIds, showPanelMessage]);
 
   useEffect(() => {
     if (!workspace) {
@@ -764,7 +840,8 @@ export default function TerminalWorkspaceView({
       return;
     }
     pendingStartBySessionIdRef.current.delete(sessionId);
-    void writeTerminal(ptyId, `${command}\r`).catch((error) => {
+    const payload = command.endsWith("\r") ? command : `${command}\r`;
+    void writeTerminal(ptyId, payload).catch((error) => {
       console.error("快捷命令下发失败。", error);
     });
   }, []);
@@ -803,7 +880,7 @@ export default function TerminalWorkspaceView({
       const sessionId = createId();
       const tabId = createId();
       scriptIdBySessionIdRef.current.set(sessionId, script.id);
-      pendingStartBySessionIdRef.current.set(sessionId, script.start.trim());
+      pendingStartBySessionIdRef.current.set(sessionId, wrapQuickCommandForShell(script.start.trim(), sessionId));
 
       setScriptRuntimeById((prev) => ({
         ...prev,
