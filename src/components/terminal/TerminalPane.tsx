@@ -254,14 +254,33 @@ export default function TerminalPane({
         console.warn("终端尺寸自适配失败，稍后将重试。", error);
       }
     };
+    const syncPtySize = () => {
+      safeFit();
+      const ptyId = ptyIdRef.current;
+      if (ptyId) {
+        void resizeTerminal(ptyId, term.cols, term.rows).catch(() => undefined);
+      }
+    };
 
     term.open(container);
+    const renderOnce = term.onRender(() => {
+      renderOnce.dispose();
+      syncPtySize();
+    });
     requestAnimationFrame(() => {
       if (disposed) {
         return;
       }
-      safeFit();
+      syncPtySize();
     });
+    if (document.fonts?.ready) {
+      void document.fonts.ready.then(() => {
+        if (disposed) {
+          return;
+        }
+        syncPtySize();
+      });
+    }
     const stateToRestore = registryEntry.cachedState ?? savedState;
     if (stateToRestore && !restoredRef.current) {
       restoredRef.current = true;
@@ -274,11 +293,7 @@ export default function TerminalPane({
     webglAddonRef.current = null;
 
     const resizeObserver = new ResizeObserver(() => {
-      safeFit();
-      const ptyId = ptyIdRef.current;
-      if (ptyId) {
-        void resizeTerminal(ptyId, term.cols, term.rows).catch(() => undefined);
-      }
+      syncPtySize();
     });
     resizeObserver.observe(container);
 
@@ -314,7 +329,7 @@ export default function TerminalPane({
       }
 
       ptyIdRef.current = ptyId;
-      void resizeTerminal(ptyId, term.cols, term.rows).catch(() => undefined);
+      syncPtySize();
 
       try {
         const outputUnlisten = await listenTerminalOutput((event) => {
@@ -400,6 +415,7 @@ export default function TerminalPane({
       }
       unregisterSnapshot();
       cursorStyleHandler.dispose();
+      renderOnce.dispose();
       disposable.dispose();
       resizeObserver.disconnect();
       unlistenOutput?.();
