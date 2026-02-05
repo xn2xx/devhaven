@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ITheme } from "xterm";
 
 import type { SplitDirection, TerminalWorkspace } from "../../models/terminal";
+import type { ProjectScript } from "../../models/types";
 import { useDevHavenContext } from "../../state/DevHavenContext";
 import { saveTerminalWorkspace, loadTerminalWorkspace } from "../../services/terminalWorkspace";
 import {
@@ -14,6 +15,7 @@ import {
   splitPane,
   updateSplitRatios,
 } from "../../utils/terminalLayout";
+import { IconSidebarRight, IconX } from "../Icons";
 import SplitLayout from "./SplitLayout";
 import TerminalPane from "./TerminalPane";
 import TerminalTabs from "./TerminalTabs";
@@ -26,6 +28,7 @@ export type TerminalWorkspaceViewProps = {
   windowLabel: string;
   xtermTheme: ITheme;
   codexRunningCount?: number;
+  scripts?: ProjectScript[];
 };
 
 export default function TerminalWorkspaceView({
@@ -36,6 +39,7 @@ export default function TerminalWorkspaceView({
   windowLabel,
   xtermTheme,
   codexRunningCount = 0,
+  scripts = [],
 }: TerminalWorkspaceViewProps) {
   const { appState } = useDevHavenContext();
 
@@ -43,6 +47,17 @@ export default function TerminalWorkspaceView({
   const [error, setError] = useState<string | null>(null);
   const workspaceRef = useRef<TerminalWorkspace | null>(null);
   const snapshotProviders = useRef(new Map<string, () => string | null>());
+
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [panelDraft, setPanelDraft] = useState<{ x: number; y: number } | null>(null);
+  const panelDraftRef = useRef<{ x: number; y: number } | null>(null);
+  const dragStateRef = useRef<{
+    startClientX: number;
+    startClientY: number;
+    baseX: number;
+    baseY: number;
+  } | null>(null);
 
   useEffect(() => {
     workspaceRef.current = workspace;
@@ -136,6 +151,40 @@ export default function TerminalWorkspaceView({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!workspace) {
+      return;
+    }
+    const panel = workspace.ui?.quickCommandsPanel;
+    if (!panel || !panel.open) {
+      return;
+    }
+    if (panel.x !== null && panel.y !== null) {
+      return;
+    }
+    const stage = stageRef.current;
+    if (!stage) {
+      return;
+    }
+    const margin = 12;
+    const defaultWidth = 260;
+    const rect = stage.getBoundingClientRect();
+    const resolvedX =
+      panel.x !== null ? panel.x : Math.max(margin, Math.round(rect.width - defaultWidth - margin));
+    const resolvedY = panel.y !== null ? panel.y : margin;
+    updateWorkspace((current) => ({
+      ...current,
+      ui: {
+        ...current.ui,
+        quickCommandsPanel: {
+          ...(current.ui?.quickCommandsPanel ?? { open: true, x: null, y: null }),
+          x: resolvedX,
+          y: resolvedY,
+        },
+      },
+    }));
+  }, [updateWorkspace, workspace]);
 
   const handleSelectTab = useCallback(
     (tabId: string) => {
@@ -300,6 +349,100 @@ export default function TerminalWorkspaceView({
     [updateWorkspace],
   );
 
+  const setQuickCommandsPanelOpen = useCallback(
+    (open: boolean) => {
+      updateWorkspace((current) => ({
+        ...current,
+        ui: {
+          ...current.ui,
+          quickCommandsPanel: {
+            ...(current.ui?.quickCommandsPanel ?? { open: true, x: null, y: null }),
+            open,
+          },
+        },
+      }));
+    },
+    [updateWorkspace],
+  );
+
+  const commitQuickCommandsPanelPosition = useCallback(
+    (x: number, y: number) => {
+      updateWorkspace((current) => ({
+        ...current,
+        ui: {
+          ...current.ui,
+          quickCommandsPanel: {
+            ...(current.ui?.quickCommandsPanel ?? { open: true, x: null, y: null }),
+            x,
+            y,
+          },
+        },
+      }));
+    },
+    [updateWorkspace],
+  );
+
+  const beginDragQuickCommandsPanel = useCallback(
+    (event: ReactPointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+
+      const current = workspaceRef.current;
+      const panel = current?.ui?.quickCommandsPanel ?? { open: true, x: null, y: null };
+      const base = panelDraftRef.current ?? { x: panel.x ?? 12, y: panel.y ?? 12 };
+      dragStateRef.current = {
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        baseX: base.x,
+        baseY: base.y,
+      };
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const state = dragStateRef.current;
+        if (!state) {
+          return;
+        }
+        const stage = stageRef.current;
+        if (!stage) {
+          return;
+        }
+        const stageRect = stage.getBoundingClientRect();
+        const panelRect = panelRef.current?.getBoundingClientRect() ?? null;
+        const panelWidth = panelRect ? panelRect.width : 260;
+        const panelHeight = panelRect ? panelRect.height : 240;
+        const margin = 8;
+        const maxX = Math.max(margin, Math.round(stageRect.width - panelWidth - margin));
+        const maxY = Math.max(margin, Math.round(stageRect.height - panelHeight - margin));
+
+        const dx = moveEvent.clientX - state.startClientX;
+        const dy = moveEvent.clientY - state.startClientY;
+        const nextX = Math.min(maxX, Math.max(margin, Math.round(state.baseX + dx)));
+        const nextY = Math.min(maxY, Math.max(margin, Math.round(state.baseY + dy)));
+        panelDraftRef.current = { x: nextX, y: nextY };
+        setPanelDraft({ x: nextX, y: nextY });
+      };
+
+      const handleUp = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+        const latest = panelDraftRef.current;
+        panelDraftRef.current = null;
+        dragStateRef.current = null;
+        if (latest) {
+          commitQuickCommandsPanelPosition(latest.x, latest.y);
+        }
+        setPanelDraft(null);
+      };
+
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    },
+    [commitQuickCommandsPanelPosition],
+  );
+
   useEffect(() => {
     if (!isActive) {
       return;
@@ -451,6 +594,10 @@ export default function TerminalWorkspaceView({
     );
   }
 
+  const panelState = workspace.ui?.quickCommandsPanel ?? { open: true, x: null, y: null };
+  const panelOpen = Boolean(panelState.open);
+  const panelPosition = panelDraft ?? { x: panelState.x ?? 12, y: panelState.y ?? 12 };
+
   return (
     <div className="flex h-full flex-col bg-[var(--terminal-bg)] text-[var(--terminal-fg)]">
       <header className="flex items-center gap-3 border-b border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)] px-3 py-2">
@@ -466,6 +613,16 @@ export default function TerminalWorkspaceView({
             <span className="whitespace-nowrap">Codex 运行中</span>
           </div>
         ) : null}
+        <button
+          className={`inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--terminal-divider)] text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] ${
+            panelOpen ? "bg-[var(--terminal-hover-bg)]" : ""
+          }`}
+          type="button"
+          title={panelOpen ? "隐藏快捷命令" : "显示快捷命令"}
+          onClick={() => setQuickCommandsPanelOpen(!panelOpen)}
+        >
+          <IconSidebarRight size={16} />
+        </button>
         <TerminalTabs
           tabs={workspace.tabs}
           activeTabId={workspace.activeTabId}
@@ -474,7 +631,61 @@ export default function TerminalWorkspaceView({
           onCloseTab={handleCloseTab}
         />
       </header>
-      <div className="relative flex min-h-0 flex-1">
+      <div ref={stageRef} className="relative flex min-h-0 flex-1">
+        {panelOpen ? (
+          <div
+            ref={panelRef}
+            className="absolute z-20 w-[260px] select-none rounded-lg border border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)] shadow-lg"
+            style={{ transform: `translate3d(${panelPosition.x}px, ${panelPosition.y}px, 0)` }}
+          >
+            <div
+              className="flex items-center justify-between gap-2 border-b border-[var(--terminal-divider)] px-3 py-2 text-[12px] font-semibold text-[var(--terminal-muted-fg)] cursor-move"
+              onPointerDown={beginDragQuickCommandsPanel}
+            >
+              <span className="truncate">快捷命令</span>
+              <button
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+                type="button"
+                title="关闭"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setQuickCommandsPanelOpen(false);
+                }}
+              >
+                <IconX size={12} />
+              </button>
+            </div>
+            <div className="max-h-[360px] overflow-y-auto p-2">
+              {scripts.length === 0 ? (
+                <div className="px-2 py-2 text-[12px] text-[var(--terminal-muted-fg)]">
+                  暂无快捷命令，请在项目详情面板中配置
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {scripts.map((script) => {
+                    return (
+                      <div
+                        key={script.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-[var(--terminal-divider)] bg-[var(--terminal-bg)] px-2.5 py-2"
+                        title={script.start}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[12px] font-semibold text-[var(--terminal-fg)]">
+                            {script.name}
+                          </div>
+                          <div className="truncate text-[11px] text-[var(--terminal-muted-fg)]">
+                            {script.start}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
         {workspace.tabs.map((tab) => (
           <div
             key={tab.id}
@@ -493,7 +704,8 @@ export default function TerminalWorkspaceView({
                   cwd={workspace.sessions[sessionId]?.cwd ?? workspace.projectPath}
                   savedState={workspace.sessions[sessionId]?.savedState ?? null}
                   windowLabel={windowLabel}
-                  useWebgl={appState.settings.terminalUseWebglRenderer}
+                  // 仅对当前激活 Tab 启用 WebGL 渲染，避免创建过多 WebGL contexts（浏览器有上限）。
+                  useWebgl={appState.settings.terminalUseWebglRenderer && tab.id === workspace.activeTabId}
                   theme={xtermTheme}
                   isActive={tab.id === workspace.activeTabId && isActive}
                   onActivate={(nextSessionId) => handleActivateSession(tab.id, nextSessionId)}

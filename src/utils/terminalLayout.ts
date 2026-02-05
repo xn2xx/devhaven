@@ -1,15 +1,19 @@
 import type {
+  QuickCommandsPanelState,
   SplitDirection,
   SplitNode,
   SplitOrientation,
   TerminalSessionSnapshot,
+  TerminalWorkspaceUi,
   TerminalWorkspace,
 } from "../models/terminal";
 
 const FALLBACK_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+const DEFAULT_PANEL_OPEN = true;
 
 export function createId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  // 部分 WebView/旧版本环境里 `crypto.randomUUID` 可能不存在或不是函数；用更严格的判断避免运行时崩溃。
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   let value = "";
@@ -43,6 +47,7 @@ export function createDefaultWorkspace(projectPath: string, projectId: string | 
         savedState: null,
       },
     },
+    ui: normalizeWorkspaceUi(undefined),
     updatedAt: now,
   };
 }
@@ -100,8 +105,26 @@ export function normalizeWorkspace(
     tabs,
     activeTabId,
     sessions,
+    ui: normalizeWorkspaceUi(workspace.ui),
     updatedAt: workspace.updatedAt ?? Date.now(),
   };
+}
+
+export function normalizeWorkspaceUi(value: TerminalWorkspace["ui"]): TerminalWorkspaceUi {
+  const resolved: TerminalWorkspaceUi = value && typeof value === "object" ? { ...value } : {};
+  const panel = normalizeQuickCommandsPanel(resolved.quickCommandsPanel);
+  return { ...resolved, quickCommandsPanel: panel };
+}
+
+function normalizeQuickCommandsPanel(value: unknown): QuickCommandsPanelState {
+  if (!value || typeof value !== "object") {
+    return { open: DEFAULT_PANEL_OPEN, x: null, y: null };
+  }
+  const asRecord = value as Record<string, unknown>;
+  const open = typeof asRecord.open === "boolean" ? asRecord.open : DEFAULT_PANEL_OPEN;
+  const x = typeof asRecord.x === "number" ? asRecord.x : null;
+  const y = typeof asRecord.y === "number" ? asRecord.y : null;
+  return { open, x, y };
 }
 
 export function collectSessionIds(node: SplitNode): string[] {

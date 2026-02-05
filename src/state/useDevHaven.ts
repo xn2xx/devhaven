@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { AppStateFile, Project, TagData } from "../models/types";
+import type { AppStateFile, Project, ProjectScript, TagData } from "../models/types";
 import {
   buildProjects,
   discoverProjects,
@@ -52,6 +52,12 @@ export type DevHavenActions = {
   addProjects: (paths: string[]) => Promise<void>;
   refreshProject: (path: string) => Promise<void>;
   updateGitDaily: (paths?: string[]) => Promise<void>;
+  addProjectScript: (
+    projectId: string,
+    script: { name: string; start: string; stop?: string | null },
+  ) => Promise<void>;
+  updateProjectScript: (projectId: string, script: ProjectScript) => Promise<void>;
+  removeProjectScript: (projectId: string, scriptId: string) => Promise<void>;
   addDirectory: (path: string) => Promise<void>;
   removeDirectory: (path: string) => Promise<void>;
   moveProjectToRecycleBin: (path: string) => Promise<void>;
@@ -232,6 +238,85 @@ export function useDevHaven(): DevHavenStore {
       }
     },
     [appState.recycleBin, appState.settings.gitIdentities, commitProjects, handleError, projects],
+  );
+
+  const createScriptId = () => {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  };
+
+  /** 为项目新增快捷命令并持久化。 */
+  const addProjectScript = useCallback(
+    async (projectId: string, script: { name: string; start: string; stop?: string | null }) => {
+      const name = script.name.trim();
+      const start = script.start.trim();
+      const stop = (script.stop ?? "").trim();
+      if (!projectId || !name || !start) {
+        return;
+      }
+
+      const nextScript: ProjectScript = {
+        id: createScriptId(),
+        name,
+        start,
+        stop: stop ? stop : null,
+      };
+      const nextProjects = projects.map((project) =>
+        project.id === projectId ? { ...project, scripts: [...(project.scripts ?? []), nextScript] } : project,
+      );
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
+  );
+
+  /** 更新项目快捷命令并持久化。 */
+  const updateProjectScript = useCallback(
+    async (projectId: string, script: ProjectScript) => {
+      const name = script.name.trim();
+      const start = script.start.trim();
+      const stop = (script.stop ?? "").trim();
+      if (!projectId || !script.id || !name || !start) {
+        return;
+      }
+
+      const nextScript: ProjectScript = {
+        ...script,
+        name,
+        start,
+        stop: stop ? stop : null,
+      };
+
+      const nextProjects = projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+        const scripts = project.scripts ?? [];
+        return {
+          ...project,
+          scripts: scripts.map((item) => (item.id === script.id ? nextScript : item)),
+        };
+      });
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
+  );
+
+  /** 删除项目快捷命令并持久化。 */
+  const removeProjectScript = useCallback(
+    async (projectId: string, scriptId: string) => {
+      if (!projectId || !scriptId) {
+        return;
+      }
+      const nextProjects = projects.map((project) =>
+        project.id === projectId
+          ? { ...project, scripts: (project.scripts ?? []).filter((item) => item.id !== scriptId) }
+          : project,
+      );
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
   );
 
   /** 添加需要扫描的工作目录并持久化。 */
@@ -427,6 +512,9 @@ export function useDevHaven(): DevHavenStore {
     addProjects,
     refreshProject,
     updateGitDaily,
+    addProjectScript,
+    updateProjectScript,
+    removeProjectScript,
     addDirectory,
     removeDirectory,
     moveProjectToRecycleBin,

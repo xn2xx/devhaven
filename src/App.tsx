@@ -98,6 +98,9 @@ function AppLayout() {
     setTagColor,
     addTagToProject,
     removeTagFromProject,
+    addProjectScript,
+    updateProjectScript,
+    removeProjectScript,
     refreshProject,
     updateGitDaily,
     updateSettings,
@@ -791,6 +794,9 @@ function AppLayout() {
             onClose={() => setShowDetailPanel(false)}
             onAddTagToProject={addTagToProject}
             onRemoveTagFromProject={removeTagFromProject}
+            onAddProjectScript={addProjectScript}
+            onUpdateProjectScript={updateProjectScript}
+            onRemoveProjectScript={removeProjectScript}
             getTagColor={getTagColor}
           />
         ) : null}

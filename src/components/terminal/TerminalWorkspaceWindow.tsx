@@ -158,6 +158,7 @@ export default function TerminalWorkspaceWindow({
                 windowLabel={windowLabel}
                 xtermTheme={terminalThemePreset.xterm}
                 codexRunningCount={codexProjectStatusById[project.id]?.runningCount ?? 0}
+                scripts={project.scripts ?? []}
               />
             </div>
           );

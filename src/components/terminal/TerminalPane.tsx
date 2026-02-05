@@ -144,6 +144,7 @@ export type TerminalPaneProps = {
   isActive: boolean;
   onActivate: (sessionId: string) => void;
   onExit: (sessionId: string, code?: number | null) => void;
+  onPtyReady?: (sessionId: string, ptyId: string) => void;
   onRegisterSnapshotProvider: (sessionId: string, provider: () => string | null) => () => void;
 };
 
@@ -157,6 +158,7 @@ export default function TerminalPane({
   isActive,
   onActivate,
   onExit,
+  onPtyReady,
   onRegisterSnapshotProvider,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -237,22 +239,6 @@ export default function TerminalPane({
     const serializeAddon = new SerializeAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(serializeAddon);
-    let webglAddon: WebglAddon | null = null;
-    if (useWebgl) {
-      try {
-        webglAddon = new WebglAddon();
-        term.loadAddon(webglAddon);
-      } catch (error) {
-        // WebGL 不可用时降级为默认渲染器即可，不应阻塞终端。
-        console.warn("WebGL 终端渲染初始化失败，将回退到默认渲染。", error);
-        try {
-          webglAddon?.dispose();
-        } catch {
-          // ignore
-        }
-        webglAddon = null;
-      }
-    }
     const safeFit = () => {
       if (disposed) {
         return;
@@ -285,13 +271,13 @@ export default function TerminalPane({
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     serializeAddonRef.current = serializeAddon;
-    webglAddonRef.current = webglAddon;
+    webglAddonRef.current = null;
 
     const resizeObserver = new ResizeObserver(() => {
       safeFit();
       const ptyId = ptyIdRef.current;
       if (ptyId) {
-        void resizeTerminal(ptyId, term.cols, term.rows);
+        void resizeTerminal(ptyId, term.cols, term.rows).catch(() => undefined);
       }
     });
     resizeObserver.observe(container);
@@ -301,7 +287,7 @@ export default function TerminalPane({
       if (!ptyId) {
         return;
       }
-      void writeTerminal(ptyId, data);
+      void writeTerminal(ptyId, data).catch(() => undefined);
     });
 
     let unlistenOutput: (() => void) | null = null;
@@ -328,7 +314,8 @@ export default function TerminalPane({
       }
 
       ptyIdRef.current = ptyId;
-      void resizeTerminal(ptyId, term.cols, term.rows);
+      onPtyReady?.(sessionId, ptyId);
+      void resizeTerminal(ptyId, term.cols, term.rows).catch(() => undefined);
 
       try {
         const outputUnlisten = await listenTerminalOutput((event) => {
@@ -438,7 +425,7 @@ export default function TerminalPane({
         }
       }, 0);
     };
-  }, [cwd, savedState, sessionId, useWebgl, windowLabel, onExit, onRegisterSnapshotProvider]);
+  }, [cwd, savedState, sessionId, windowLabel, onExit, onPtyReady, onRegisterSnapshotProvider]);
 
   useEffect(() => {
     const term = termRef.current;
@@ -452,6 +439,44 @@ export default function TerminalPane({
       console.warn("更新终端主题失败。", error);
     }
   }, [theme]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) {
+      return;
+    }
+
+    if (!useWebgl) {
+      if (!webglAddonRef.current) {
+        return;
+      }
+      try {
+        webglAddonRef.current.dispose();
+      } catch (error) {
+        console.warn("释放 WebGL 终端渲染器失败。", error);
+      } finally {
+        webglAddonRef.current = null;
+      }
+      return;
+    }
+
+    if (webglAddonRef.current) {
+      return;
+    }
+    try {
+      const addon = new WebglAddon();
+      term.loadAddon(addon);
+      webglAddonRef.current = addon;
+    } catch (error) {
+      console.warn("WebGL 终端渲染初始化失败，将回退到默认渲染。", error);
+      try {
+        webglAddonRef.current?.dispose();
+      } catch {
+        // ignore
+      }
+      webglAddonRef.current = null;
+    }
+  }, [useWebgl]);
 
   useEffect(() => {
     if (!isActive) {

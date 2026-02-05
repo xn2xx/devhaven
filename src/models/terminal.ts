@@ -26,6 +26,16 @@ export type TerminalSessionSnapshot = {
   savedState?: string | null;
 };
 
+export type QuickCommandsPanelState = {
+  open: boolean;
+  x: number | null;
+  y: number | null;
+};
+
+export type TerminalWorkspaceUi = {
+  quickCommandsPanel?: QuickCommandsPanelState;
+};
+
 export type TerminalWorkspace = {
   version: number;
   projectId: string | null;
@@ -33,5 +43,6 @@ export type TerminalWorkspace = {
   tabs: TerminalTab[];
   activeTabId: string;
   sessions: Record<string, TerminalSessionSnapshot>;
+  ui?: TerminalWorkspaceUi;
   updatedAt: number;
 };

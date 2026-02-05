@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Project, TagData } from "../models/types";
+import type { Project, ProjectScript, TagData } from "../models/types";
 import type { BranchListItem } from "../models/branch";
 import { swiftDateToJsDate } from "../models/types";
 import { readProjectNotes, writeProjectNotes } from "../services/notes";
@@ -14,6 +14,12 @@ export type DetailPanelProps = {
   onClose: () => void;
   onAddTagToProject: (projectId: string, tag: string) => Promise<void>;
   onRemoveTagFromProject: (projectId: string, tag: string) => Promise<void>;
+  onAddProjectScript: (
+    projectId: string,
+    script: { name: string; start: string; stop?: string | null },
+  ) => Promise<void>;
+  onUpdateProjectScript: (projectId: string, script: ProjectScript) => Promise<void>;
+  onRemoveProjectScript: (projectId: string, scriptId: string) => Promise<void>;
   getTagColor: (tag: string) => string;
 };
 
@@ -35,6 +41,9 @@ export default function DetailPanel({
   onClose,
   onAddTagToProject,
   onRemoveTagFromProject,
+  onAddProjectScript,
+  onUpdateProjectScript,
+  onRemoveProjectScript,
   getTagColor,
 }: DetailPanelProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
@@ -42,6 +51,14 @@ export default function DetailPanel({
   const [notesSnapshot, setNotesSnapshot] = useState("");
   const [branches, setBranches] = useState<BranchListItem[]>([]);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
+  const [scriptDialog, setScriptDialog] = useState<{
+    mode: "new" | "edit";
+    scriptId: string | null;
+    name: string;
+    start: string;
+    stop: string;
+    error: string;
+  } | null>(null);
 
   const saveTimer = useRef<number | null>(null);
 
@@ -77,6 +94,10 @@ export default function DetailPanel({
     return () => {
       cancelled = true;
     };
+  }, [project?.id]);
+
+  useEffect(() => {
+    setScriptDialog(null);
   }, [project?.id]);
 
   useEffect(() => {
@@ -129,6 +150,8 @@ export default function DetailPanel({
     }
     await onRemoveTagFromProject(project.id, tagName);
   };
+
+  const scripts = useMemo(() => project?.scripts ?? [], [project]);
 
   if (!project) {
     return (
@@ -237,6 +260,60 @@ export default function DetailPanel({
           </section>
 
           <section className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[14px] font-semibold">快捷命令</div>
+              <button
+                className="btn"
+                onClick={() =>
+                  setScriptDialog({ mode: "new", scriptId: null, name: "", start: "", stop: "", error: "" })
+                }
+              >
+                新增
+              </button>
+            </div>
+            {scripts.length === 0 ? (
+              <div className="text-fs-caption text-secondary-text">暂无快捷命令</div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {scripts.map((script) => {
+                  return (
+                    <div
+                      key={script.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card-bg p-3"
+                      title={script.start}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-semibold text-text">{script.name}</div>
+                        <div className="truncate text-fs-caption text-secondary-text">{script.start}</div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn"
+                          onClick={() =>
+                            setScriptDialog({
+                              mode: "edit",
+                              scriptId: script.id,
+                              name: script.name,
+                              start: script.start,
+                              stop: script.stop ?? "",
+                              error: "",
+                            })
+                          }
+                        >
+                          编辑
+                        </button>
+                        <button className="btn" onClick={() => void onRemoveProjectScript(project.id, script.id)}>
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-2.5">
             <div className="text-[14px] font-semibold">Markdown</div>
             <ProjectMarkdownSection project={project} />
           </section>
@@ -271,6 +348,88 @@ export default function DetailPanel({
           </section>
         </div>
       )}
+
+      {scriptDialog ? (
+        <div className="modal-overlay" role="dialog" aria-modal>
+          <div className="modal-panel">
+            <div className="text-[16px] font-semibold">{scriptDialog.mode === "new" ? "新增快捷命令" : "编辑快捷命令"}</div>
+            <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
+              <span>名称</span>
+              <input
+                className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
+                value={scriptDialog.name}
+                onChange={(event) =>
+                  setScriptDialog((prev) => (prev ? { ...prev, name: event.target.value, error: "" } : prev))
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
+              <span>启动命令</span>
+              <textarea
+                className="min-h-[90px] resize-y rounded-md border border-border bg-card-bg px-2 py-2 text-text"
+                value={scriptDialog.start}
+                onChange={(event) =>
+                  setScriptDialog((prev) => (prev ? { ...prev, start: event.target.value, error: "" } : prev))
+                }
+                placeholder="例如：pnpm dev"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] text-secondary-text">
+              <span>停止命令（可选）</span>
+              <input
+                className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
+                value={scriptDialog.stop}
+                onChange={(event) =>
+                  setScriptDialog((prev) => (prev ? { ...prev, stop: event.target.value, error: "" } : prev))
+                }
+                placeholder="例如：pnpm stop"
+              />
+            </label>
+            {scriptDialog.error ? <div className="text-fs-caption text-error">{scriptDialog.error}</div> : null}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn" onClick={() => setScriptDialog(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  if (!project) {
+                    return;
+                  }
+                  const name = scriptDialog.name.trim();
+                  const start = scriptDialog.start.trim();
+                  const stop = scriptDialog.stop.trim();
+                  if (!name) {
+                    setScriptDialog((prev) => (prev ? { ...prev, error: "名称不能为空" } : prev));
+                    return;
+                  }
+                  if (!start) {
+                    setScriptDialog((prev) => (prev ? { ...prev, error: "启动命令不能为空" } : prev));
+                    return;
+                  }
+                  if (scriptDialog.mode === "new") {
+                    void onAddProjectScript(project.id, { name, start, stop: stop ? stop : null }).then(() =>
+                      setScriptDialog(null),
+                    );
+                    return;
+                  }
+                  const target = scripts.find((item) => item.id === scriptDialog.scriptId);
+                  if (!target) {
+                    setScriptDialog((prev) => (prev ? { ...prev, error: "命令不存在或已被删除" } : prev));
+                    return;
+                  }
+                  void onUpdateProjectScript(project.id, { ...target, name, start, stop: stop ? stop : null }).then(
+                    () => setScriptDialog(null),
+                  );
+                }}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
