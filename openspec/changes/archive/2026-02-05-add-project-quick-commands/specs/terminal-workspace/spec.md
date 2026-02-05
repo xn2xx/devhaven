@@ -1,6 +1,6 @@
 # terminal-workspace (Delta Spec)
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Terminal Workspace Should Support Quick Commands Panel
 系统 SHALL 在终端工作区提供一个右侧快捷命令悬浮窗，展示当前项目的快捷命令列表，并支持运行/停止。
@@ -14,4 +14,3 @@
 - **GIVEN** 终端工作区右侧快捷命令悬浮窗已显示
 - **WHEN** 用户拖拽悬浮窗到新位置并关闭/切换项目
 - **THEN** 系统记住该项目的悬浮窗位置与开关状态
-
