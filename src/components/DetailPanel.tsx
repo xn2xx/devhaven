@@ -14,6 +14,8 @@ export type DetailPanelProps = {
   onClose: () => void;
   onAddTagToProject: (projectId: string, tag: string) => Promise<void>;
   onRemoveTagFromProject: (projectId: string, tag: string) => Promise<void>;
+  onRunProjectScript: (projectId: string, scriptId: string) => Promise<void>;
+  onStopProjectScript: (projectId: string, scriptId: string) => Promise<void>;
   onAddProjectScript: (
     projectId: string,
     script: { name: string; start: string; stop?: string | null },
@@ -41,6 +43,8 @@ export default function DetailPanel({
   onClose,
   onAddTagToProject,
   onRemoveTagFromProject,
+  onRunProjectScript,
+  onStopProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onRemoveProjectScript,
@@ -287,6 +291,15 @@ export default function DetailPanel({
                         <div className="truncate text-fs-caption text-secondary-text">{script.start}</div>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => void onRunProjectScript(project.id, script.id)}
+                        >
+                          运行
+                        </button>
+                        <button className="btn btn-outline" onClick={() => void onStopProjectScript(project.id, script.id)}>
+                          停止
+                        </button>
                         <button
                           className="btn"
                           onClick={() =>

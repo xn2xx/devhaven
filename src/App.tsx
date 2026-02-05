@@ -29,6 +29,12 @@ import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
 import { deleteTerminalWorkspace } from "./services/terminalWorkspace";
+import {
+  createQuickCommandRequestId,
+  enqueueTerminalQuickCommandAction,
+  emitTerminalQuickCommandRun,
+  emitTerminalQuickCommandStop,
+} from "./services/terminalQuickCommands";
 
 const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
 const MAIN_WINDOW_LABEL = "main";
@@ -500,6 +506,76 @@ function AppLayout() {
     setTerminalActiveProjectId(project.id);
   }, []);
 
+  const handleRunProjectScript = useCallback(
+    async (projectId: string, scriptId: string) => {
+      const project = projectMap.get(projectId);
+      if (!project) {
+        showToast("项目不存在或已移除", "error");
+        return;
+      }
+      const script = (project.scripts ?? []).find((item) => item.id === scriptId);
+      if (!script) {
+        showToast("命令不存在或已被删除", "error");
+        return;
+      }
+
+      const payload = {
+        requestId: createQuickCommandRequestId(),
+        projectId: project.id,
+        projectPath: project.path,
+        scriptId,
+      };
+
+      const alreadyOpen = terminalOpenProjectsRef.current.some((item) => item.id === project.id);
+      if (!alreadyOpen) {
+        enqueueTerminalQuickCommandAction({ type: "run", payload });
+      }
+
+      openTerminalWorkspace(project);
+      window.setTimeout(() => {
+        void emitTerminalQuickCommandRun(MAIN_WINDOW_LABEL, payload).catch((error) => {
+          console.error("发送快捷命令运行事件失败。", error);
+        });
+      }, 0);
+    },
+    [projectMap, openTerminalWorkspace, showToast],
+  );
+
+  const handleStopProjectScript = useCallback(
+    async (projectId: string, scriptId: string) => {
+      const project = projectMap.get(projectId);
+      if (!project) {
+        showToast("项目不存在或已移除", "error");
+        return;
+      }
+      const script = (project.scripts ?? []).find((item) => item.id === scriptId);
+      if (!script) {
+        showToast("命令不存在或已被删除", "error");
+        return;
+      }
+
+      const payload = {
+        requestId: createQuickCommandRequestId(),
+        projectId: project.id,
+        projectPath: project.path,
+        scriptId,
+      };
+
+      const alreadyOpen = terminalOpenProjectsRef.current.some((item) => item.id === project.id);
+      if (!alreadyOpen) {
+        enqueueTerminalQuickCommandAction({ type: "stop", payload });
+      }
+
+      openTerminalWorkspace(project);
+      window.setTimeout(() => {
+        void emitTerminalQuickCommandStop(MAIN_WINDOW_LABEL, payload).catch((error) => {
+          console.error("发送快捷命令停止事件失败。", error);
+        });
+      }, 0);
+    },
+    [projectMap, openTerminalWorkspace, showToast],
+  );
+
   const handleOpenTerminal = useCallback(
     (project: Project) => {
       openTerminalWorkspace(project);
@@ -794,6 +870,8 @@ function AppLayout() {
             onClose={() => setShowDetailPanel(false)}
             onAddTagToProject={addTagToProject}
             onRemoveTagFromProject={removeTagFromProject}
+            onRunProjectScript={handleRunProjectScript}
+            onStopProjectScript={handleStopProjectScript}
             onAddProjectScript={addProjectScript}
             onUpdateProjectScript={updateProjectScript}
             onRemoveProjectScript={removeProjectScript}

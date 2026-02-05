@@ -314,7 +314,6 @@ export default function TerminalPane({
       }
 
       ptyIdRef.current = ptyId;
-      onPtyReady?.(sessionId, ptyId);
       void resizeTerminal(ptyId, term.cols, term.rows).catch(() => undefined);
 
       try {
@@ -365,6 +364,9 @@ export default function TerminalPane({
         console.error("订阅终端退出事件失败。", error);
         term.write("\r\n[订阅终端退出事件失败：请检查 Tauri capabilities 是否允许 terminal-* 窗口使用 core:event.listen]\r\n");
       }
+
+      // 当输出/退出事件监听建立后再通知外部：避免外部过早下发命令导致丢失起始输出。
+      onPtyReady?.(sessionId, ptyId);
     };
 
     void connect();
