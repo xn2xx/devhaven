@@ -1,4 +1,5 @@
 import type {
+  FileExplorerPanelState,
   QuickCommandsPanelState,
   SplitDirection,
   SplitNode,
@@ -10,9 +11,13 @@ import type {
 
 const FALLBACK_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const DEFAULT_PANEL_OPEN = true;
+const DEFAULT_FILE_PANEL_OPEN = false;
+const DEFAULT_FILE_PANEL_SHOW_HIDDEN = false;
 
 export type TerminalWorkspaceDefaults = {
   defaultQuickCommandsPanelOpen?: boolean;
+  defaultFileExplorerPanelOpen?: boolean;
+  defaultFileExplorerShowHidden?: boolean;
 };
 
 export function createId() {
@@ -128,7 +133,12 @@ export function normalizeWorkspaceUi(
     resolved.quickCommandsPanel,
     defaults?.defaultQuickCommandsPanelOpen ?? DEFAULT_PANEL_OPEN,
   );
-  return { ...resolved, quickCommandsPanel: panel };
+  const filePanel = normalizeFileExplorerPanel(
+    resolved.fileExplorerPanel,
+    defaults?.defaultFileExplorerPanelOpen ?? DEFAULT_FILE_PANEL_OPEN,
+    defaults?.defaultFileExplorerShowHidden ?? DEFAULT_FILE_PANEL_SHOW_HIDDEN,
+  );
+  return { ...resolved, quickCommandsPanel: panel, fileExplorerPanel: filePanel };
 }
 
 function normalizeQuickCommandsPanel(value: unknown, defaultOpen: boolean): QuickCommandsPanelState {
@@ -140,6 +150,21 @@ function normalizeQuickCommandsPanel(value: unknown, defaultOpen: boolean): Quic
   const x = typeof asRecord.x === "number" ? asRecord.x : null;
   const y = typeof asRecord.y === "number" ? asRecord.y : null;
   return { open, x, y };
+}
+
+function normalizeFileExplorerPanel(
+  value: unknown,
+  defaultOpen: boolean,
+  defaultShowHidden: boolean,
+): FileExplorerPanelState {
+  if (!value || typeof value !== "object") {
+    return { open: defaultOpen, showHidden: defaultShowHidden };
+  }
+  const asRecord = value as Record<string, unknown>;
+  const open = typeof asRecord.open === "boolean" ? asRecord.open : defaultOpen;
+  const showHidden =
+    typeof asRecord.showHidden === "boolean" ? asRecord.showHidden : defaultShowHidden;
+  return { open, showHidden };
 }
 
 export function collectSessionIds(node: SplitNode): string[] {

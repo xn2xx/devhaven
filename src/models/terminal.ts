@@ -32,8 +32,14 @@ export type QuickCommandsPanelState = {
   y: number | null;
 };
 
+export type FileExplorerPanelState = {
+  open: boolean;
+  showHidden: boolean;
+};
+
 export type TerminalWorkspaceUi = {
   quickCommandsPanel?: QuickCommandsPanelState;
+  fileExplorerPanel?: FileExplorerPanelState;
 };
 
 export type TerminalWorkspace = {

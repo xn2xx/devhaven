@@ -32,8 +32,10 @@ import {
   splitPane,
   updateSplitRatios,
 } from "../../utils/terminalLayout";
-import { IconSidebarRight, IconX } from "../Icons";
+import { IconFolder, IconSidebarRight, IconX } from "../Icons";
 import SplitLayout from "./SplitLayout";
+import TerminalFileExplorerPanel from "./TerminalFileExplorerPanel";
+import TerminalFilePreviewPanel from "./TerminalFilePreviewPanel";
 import TerminalPane from "./TerminalPane";
 import TerminalTabs from "./TerminalTabs";
 
@@ -117,8 +119,14 @@ export default function TerminalWorkspaceView({
   scripts = [],
 }: TerminalWorkspaceViewProps) {
   const { appState } = useDevHavenContext();
-  const workspaceDefaultsRef = useRef<{ defaultQuickCommandsPanelOpen: boolean }>({
+  const workspaceDefaultsRef = useRef<{
+    defaultQuickCommandsPanelOpen: boolean;
+    defaultFileExplorerPanelOpen: boolean;
+    defaultFileExplorerShowHidden: boolean;
+  }>({
     defaultQuickCommandsPanelOpen: scripts.length > 0,
+    defaultFileExplorerPanelOpen: false,
+    defaultFileExplorerShowHidden: false,
   });
   workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen = scripts.length > 0;
 
@@ -144,6 +152,8 @@ export default function TerminalWorkspaceView({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [panelDraft, setPanelDraft] = useState<{ x: number; y: number } | null>(null);
   const panelDraftRef = useRef<{ x: number; y: number } | null>(null);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
+  const [previewDirty, setPreviewDirty] = useState(false);
   const dragStateRef = useRef<{
     startClientX: number;
     startClientY: number;
@@ -186,6 +196,8 @@ export default function TerminalWorkspaceView({
     quickCommandOutputBufferBySessionIdRef.current.clear();
     pendingExternalActionsRef.current = [];
     handledRequestIdsRef.current.clear();
+    setPreviewFilePath(null);
+    setPreviewDirty(false);
     loadTerminalWorkspace(projectPath)
       .then((data) => {
         if (cancelled) {
@@ -586,6 +598,44 @@ export default function TerminalWorkspaceView({
               y: null,
             }),
             open,
+          },
+        },
+      }));
+    },
+    [updateWorkspace],
+  );
+
+  const setFileExplorerPanelOpen = useCallback(
+    (open: boolean) => {
+      updateWorkspace((current) => ({
+        ...current,
+        ui: {
+          ...current.ui,
+          fileExplorerPanel: {
+            ...(current.ui?.fileExplorerPanel ?? {
+              open: workspaceDefaultsRef.current.defaultFileExplorerPanelOpen,
+              showHidden: workspaceDefaultsRef.current.defaultFileExplorerShowHidden,
+            }),
+            open,
+          },
+        },
+      }));
+    },
+    [updateWorkspace],
+  );
+
+  const setFileExplorerShowHidden = useCallback(
+    (showHidden: boolean) => {
+      updateWorkspace((current) => ({
+        ...current,
+        ui: {
+          ...current.ui,
+          fileExplorerPanel: {
+            ...(current.ui?.fileExplorerPanel ?? {
+              open: workspaceDefaultsRef.current.defaultFileExplorerPanelOpen,
+              showHidden: workspaceDefaultsRef.current.defaultFileExplorerShowHidden,
+            }),
+            showHidden,
           },
         },
       }));
@@ -1055,6 +1105,12 @@ export default function TerminalWorkspaceView({
   const panelOpen = Boolean(panelState.open);
   const panelPosition = panelDraft ?? { x: panelState.x ?? 12, y: panelState.y ?? 12 };
 
+  const filePanelState = workspace.ui?.fileExplorerPanel ?? {
+    open: workspaceDefaultsRef.current.defaultFileExplorerPanelOpen,
+    showHidden: workspaceDefaultsRef.current.defaultFileExplorerShowHidden,
+  };
+  const filePanelOpen = Boolean(filePanelState.open);
+
   return (
     <div className="flex h-full flex-col bg-[var(--terminal-bg)] text-[var(--terminal-fg)]">
       <header className="flex items-center gap-3 border-b border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)] px-3 py-2">
@@ -1079,6 +1135,30 @@ export default function TerminalWorkspaceView({
           onClick={() => setQuickCommandsPanelOpen(!panelOpen)}
         >
           <IconSidebarRight size={16} />
+        </button>
+        <button
+          className={`inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--terminal-divider)] px-2 text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] ${
+            filePanelOpen ? "bg-[var(--terminal-hover-bg)]" : ""
+          }`}
+          type="button"
+          title={filePanelOpen ? "隐藏文件" : "显示文件"}
+          onClick={() => {
+            const nextOpen = !filePanelOpen;
+            if (!nextOpen && previewDirty) {
+              const ok = window.confirm("当前文件有未保存修改，确定关闭文件面板？");
+              if (!ok) {
+                return;
+              }
+            }
+            setFileExplorerPanelOpen(nextOpen);
+            if (!nextOpen) {
+              setPreviewFilePath(null);
+              setPreviewDirty(false);
+            }
+          }}
+        >
+          <IconFolder size={16} />
+          <span className="text-[12px] font-semibold">文件</span>
         </button>
         <TerminalTabs
           tabs={workspace.tabs}
@@ -1176,37 +1256,82 @@ export default function TerminalWorkspaceView({
             </div>
           </div>
         ) : null}
-        {workspace.tabs.map((tab) => (
-          <div
-            key={tab.id}
-            className={`absolute inset-0 flex min-h-0 flex-1 ${
-              tab.id === workspace.activeTabId ? "opacity-100" : "opacity-0 pointer-events-none"
-            }`}
-          >
-            <SplitLayout
-              root={tab.root}
-              activeSessionId={tab.activeSessionId}
-              onActivate={(sessionId) => handleActivateSession(tab.id, sessionId)}
-              onResize={handleResize}
-              renderPane={(sessionId, isActive) => (
-                <TerminalPane
-                  sessionId={sessionId}
-                  cwd={workspace.sessions[sessionId]?.cwd ?? workspace.projectPath}
-                  savedState={workspace.sessions[sessionId]?.savedState ?? null}
-                  windowLabel={windowLabel}
-                  // 仅对当前激活 Tab 启用 WebGL 渲染，避免创建过多 WebGL contexts（浏览器有上限）。
-                  useWebgl={appState.settings.terminalUseWebglRenderer && tab.id === workspace.activeTabId}
-                  theme={xtermTheme}
-                  isActive={tab.id === workspace.activeTabId && isActive}
-                  onActivate={(nextSessionId) => handleActivateSession(tab.id, nextSessionId)}
-                  onPtyReady={handlePtyReady}
-                  onExit={handleSessionExit}
-                  onRegisterSnapshotProvider={registerSnapshotProvider}
+        <div className="flex min-h-0 min-w-0 flex-1">
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            {workspace.tabs.map((tab) => (
+              <div
+                key={tab.id}
+                className={`absolute inset-0 flex min-h-0 flex-1 ${
+                  tab.id === workspace.activeTabId ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              >
+                <SplitLayout
+                  root={tab.root}
+                  activeSessionId={tab.activeSessionId}
+                  onActivate={(sessionId) => handleActivateSession(tab.id, sessionId)}
+                  onResize={handleResize}
+                  renderPane={(sessionId, isActive) => (
+                    <TerminalPane
+                      sessionId={sessionId}
+                      cwd={workspace.sessions[sessionId]?.cwd ?? workspace.projectPath}
+                      savedState={workspace.sessions[sessionId]?.savedState ?? null}
+                      windowLabel={windowLabel}
+                      // 仅对当前激活 Tab 启用 WebGL 渲染，避免创建过多 WebGL contexts（浏览器有上限）。
+                      useWebgl={appState.settings.terminalUseWebglRenderer && tab.id === workspace.activeTabId}
+                      theme={xtermTheme}
+                      isActive={tab.id === workspace.activeTabId && isActive}
+                      onActivate={(nextSessionId) => handleActivateSession(tab.id, nextSessionId)}
+                      onPtyReady={handlePtyReady}
+                      onExit={handleSessionExit}
+                      onRegisterSnapshotProvider={registerSnapshotProvider}
+                    />
+                  )}
                 />
-              )}
-            />
+              </div>
+            ))}
           </div>
-        ))}
+          {filePanelOpen ? (
+            <>
+              {previewFilePath ? (
+                <TerminalFilePreviewPanel
+                  projectPath={projectPath}
+                  relativePath={previewFilePath}
+                  onDirtyChange={setPreviewDirty}
+                  onClose={() => {
+                    setPreviewFilePath(null);
+                    setPreviewDirty(false);
+                  }}
+                />
+              ) : null}
+              <TerminalFileExplorerPanel
+                projectPath={projectPath}
+                showHidden={Boolean(filePanelState.showHidden)}
+                onToggleShowHidden={setFileExplorerShowHidden}
+                onSelectFile={(relativePath) => {
+                  if (previewDirty && relativePath !== previewFilePath) {
+                    const ok = window.confirm("当前文件有未保存修改，确定切换文件？");
+                    if (!ok) {
+                      return;
+                    }
+                  }
+                  setPreviewFilePath(relativePath);
+                  setPreviewDirty(false);
+                }}
+                onClose={() => {
+                  if (previewDirty) {
+                    const ok = window.confirm("当前文件有未保存修改，确定关闭文件面板？");
+                    if (!ok) {
+                      return;
+                    }
+                  }
+                  setFileExplorerPanelOpen(false);
+                  setPreviewFilePath(null);
+                  setPreviewDirty(false);
+                }}
+              />
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );

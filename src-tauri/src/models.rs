@@ -158,6 +158,79 @@ pub struct MarkdownFileEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FsEntryKind {
+    File,
+    Dir,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FsFailureReason {
+    TooLarge,
+    Binary,
+    OutsideProject,
+    SymlinkEscape,
+    NotFound,
+    NotADirectory,
+    NotAFile,
+    IoError,
+    InvalidPath,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsEntry {
+    pub name: String,
+    pub relative_path: String,
+    pub kind: FsEntryKind,
+    #[serde(default)]
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsListResponse {
+    pub ok: bool,
+    pub relative_path: String,
+    pub entries: Vec<FsEntry>,
+    #[serde(default)]
+    pub reason: Option<FsFailureReason>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsReadResponse {
+    pub ok: bool,
+    pub relative_path: String,
+    #[serde(default)]
+    pub content: Option<String>,
+    pub size: u64,
+    #[serde(rename = "maxSize")]
+    pub max_size: u64,
+    #[serde(default)]
+    pub reason: Option<FsFailureReason>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsWriteResponse {
+    pub ok: bool,
+    pub relative_path: String,
+    pub size: u64,
+    #[serde(rename = "maxSize")]
+    pub max_size: u64,
+    #[serde(default)]
+    pub reason: Option<FsFailureReason>,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitDailyResult {
     pub path: String,
     #[serde(rename = "gitDaily")]

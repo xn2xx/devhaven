@@ -4,6 +4,7 @@ mod git_ops;
 mod markdown;
 mod notes;
 mod project_loader;
+mod filesystem;
 mod storage;
 mod system;
 mod time_utils;
@@ -17,7 +18,7 @@ use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
     AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitIdentity, HeatmapCacheFile,
-    MarkdownFileEntry, Project, TerminalWorkspace,
+    MarkdownFileEntry, Project, TerminalWorkspace, FsListResponse, FsReadResponse, FsWriteResponse,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
@@ -169,6 +170,43 @@ fn read_project_markdown_file(path: String, relative_path: String) -> Result<Str
 }
 
 #[tauri::command]
+/// 列出项目内指定目录的直接子项（文件/文件夹）。
+fn list_project_dir_entries(path: String, relative_path: String, show_hidden: bool) -> FsListResponse {
+    log_command("list_project_dir_entries", || {
+        log::info!(
+            "list_project_dir_entries path={} dir={} show_hidden={}",
+            path,
+            relative_path,
+            show_hidden
+        );
+        filesystem::list_dir_entries(&path, &relative_path, show_hidden)
+    })
+}
+
+#[tauri::command]
+/// 读取项目内指定文件内容（只读预览）。
+fn read_project_file(path: String, relative_path: String) -> FsReadResponse {
+    log_command("read_project_file", || {
+        log::info!("read_project_file path={} file={}", path, relative_path);
+        filesystem::read_file(&path, &relative_path)
+    })
+}
+
+#[tauri::command]
+/// 写入项目内指定文件内容（文本编辑保存）。
+fn write_project_file(path: String, relative_path: String, content: String) -> FsWriteResponse {
+    log_command("write_project_file", || {
+        log::info!(
+            "write_project_file path={} file={} size={}",
+            path,
+            relative_path,
+            content.len()
+        );
+        filesystem::write_file(&path, &relative_path, &content)
+    })
+}
+
+#[tauri::command]
 fn collect_git_daily(paths: Vec<String>, identities: Vec<GitIdentity>) -> Vec<GitDailyResult> {
     log_command("collect_git_daily", || {
         log::info!("collect_git_daily paths={}", paths.len());
@@ -275,6 +313,9 @@ pub fn run() {
             write_project_notes,
             list_project_markdown_files,
             read_project_markdown_file,
+            list_project_dir_entries,
+            read_project_file,
+            write_project_file,
             collect_git_daily,
             load_heatmap_cache,
             save_heatmap_cache,
