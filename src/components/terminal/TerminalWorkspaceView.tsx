@@ -65,6 +65,10 @@ export default function TerminalWorkspaceView({
   scripts = [],
 }: TerminalWorkspaceViewProps) {
   const { appState } = useDevHavenContext();
+  const workspaceDefaultsRef = useRef<{ defaultQuickCommandsPanelOpen: boolean }>({
+    defaultQuickCommandsPanelOpen: scripts.length > 0,
+  });
+  workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen = scripts.length > 0;
 
   const [workspace, setWorkspace] = useState<TerminalWorkspace | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,9 +137,10 @@ export default function TerminalWorkspaceView({
         if (cancelled) {
           return;
         }
+        const defaults = workspaceDefaultsRef.current;
         const next = data
-          ? normalizeWorkspace(data, projectPath, projectId)
-          : createDefaultWorkspace(projectPath, projectId);
+          ? normalizeWorkspace(data, projectPath, projectId, defaults)
+          : createDefaultWorkspace(projectPath, projectId, defaults);
         setWorkspace(next);
       })
       .catch((err) => {
@@ -143,7 +148,7 @@ export default function TerminalWorkspaceView({
           return;
         }
         setError(err instanceof Error ? err.message : String(err));
-        setWorkspace(createDefaultWorkspace(projectPath, projectId));
+        setWorkspace(createDefaultWorkspace(projectPath, projectId, workspaceDefaultsRef.current));
       });
     return () => {
       cancelled = true;
@@ -274,7 +279,11 @@ export default function TerminalWorkspaceView({
       ui: {
         ...current.ui,
         quickCommandsPanel: {
-          ...(current.ui?.quickCommandsPanel ?? { open: true, x: null, y: null }),
+          ...(current.ui?.quickCommandsPanel ?? {
+            open: workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen,
+            x: null,
+            y: null,
+          }),
           x: resolvedX,
           y: resolvedY,
         },
@@ -326,7 +335,7 @@ export default function TerminalWorkspaceView({
         const closedTab = current.tabs.find((tab) => tab.id === tabId);
         const removedSessions = closedTab ? collectSessionIds(closedTab.root) : [];
         if (remainingTabs.length === 0) {
-          return createDefaultWorkspace(current.projectPath, current.projectId);
+          return createDefaultWorkspace(current.projectPath, current.projectId, workspaceDefaultsRef.current);
         }
         const nextSessions = { ...current.sessions };
         removedSessions.forEach((sessionId) => {
@@ -441,7 +450,7 @@ export default function TerminalWorkspaceView({
         if (!nextRoot) {
           const remainingTabs = current.tabs.filter((tab) => tab.id !== targetTab.id);
           if (remainingTabs.length === 0) {
-            return createDefaultWorkspace(current.projectPath, current.projectId);
+            return createDefaultWorkspace(current.projectPath, current.projectId, workspaceDefaultsRef.current);
           }
           const nextActiveTabId =
             current.activeTabId === targetTab.id ? remainingTabs[0].id : current.activeTabId;
@@ -474,7 +483,11 @@ export default function TerminalWorkspaceView({
         ui: {
           ...current.ui,
           quickCommandsPanel: {
-            ...(current.ui?.quickCommandsPanel ?? { open: true, x: null, y: null }),
+            ...(current.ui?.quickCommandsPanel ?? {
+              open: workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen,
+              x: null,
+              y: null,
+            }),
             open,
           },
         },
@@ -490,7 +503,11 @@ export default function TerminalWorkspaceView({
         ui: {
           ...current.ui,
           quickCommandsPanel: {
-            ...(current.ui?.quickCommandsPanel ?? { open: true, x: null, y: null }),
+            ...(current.ui?.quickCommandsPanel ?? {
+              open: workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen,
+              x: null,
+              y: null,
+            }),
             x,
             y,
           },
@@ -509,7 +526,11 @@ export default function TerminalWorkspaceView({
       event.stopPropagation();
 
       const current = workspaceRef.current;
-      const panel = current?.ui?.quickCommandsPanel ?? { open: true, x: null, y: null };
+      const panel = current?.ui?.quickCommandsPanel ?? {
+        open: workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen,
+        x: null,
+        y: null,
+      };
       const base = panelDraftRef.current ?? { x: panel.x ?? 12, y: panel.y ?? 12 };
       dragStateRef.current = {
         startClientX: event.clientX,
@@ -928,7 +949,11 @@ export default function TerminalWorkspaceView({
     );
   }
 
-  const panelState = workspace.ui?.quickCommandsPanel ?? { open: true, x: null, y: null };
+  const panelState = workspace.ui?.quickCommandsPanel ?? {
+    open: workspaceDefaultsRef.current.defaultQuickCommandsPanelOpen,
+    x: null,
+    y: null,
+  };
   const panelOpen = Boolean(panelState.open);
   const panelPosition = panelDraft ?? { x: panelState.x ?? 12, y: panelState.y ?? 12 };
 

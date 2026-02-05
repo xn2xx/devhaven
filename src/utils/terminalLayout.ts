@@ -11,6 +11,10 @@ import type {
 const FALLBACK_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const DEFAULT_PANEL_OPEN = true;
 
+export type TerminalWorkspaceDefaults = {
+  defaultQuickCommandsPanelOpen?: boolean;
+};
+
 export function createId() {
   // 部分 WebView/旧版本环境里 `crypto.randomUUID` 可能不存在或不是函数；用更严格的判断避免运行时崩溃。
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -23,7 +27,11 @@ export function createId() {
   return value;
 }
 
-export function createDefaultWorkspace(projectPath: string, projectId: string | null): TerminalWorkspace {
+export function createDefaultWorkspace(
+  projectPath: string,
+  projectId: string | null,
+  defaults?: TerminalWorkspaceDefaults,
+): TerminalWorkspace {
   const sessionId = createId();
   const tabId = createId();
   const now = Date.now();
@@ -47,7 +55,7 @@ export function createDefaultWorkspace(projectPath: string, projectId: string | 
         savedState: null,
       },
     },
-    ui: normalizeWorkspaceUi(undefined),
+    ui: normalizeWorkspaceUi(undefined, defaults),
     updatedAt: now,
   };
 }
@@ -56,9 +64,10 @@ export function normalizeWorkspace(
   workspace: TerminalWorkspace,
   projectPath: string,
   projectId: string | null,
+  defaults?: TerminalWorkspaceDefaults,
 ): TerminalWorkspace {
   if (!workspace || !Array.isArray(workspace.tabs) || workspace.tabs.length === 0) {
-    return createDefaultWorkspace(projectPath, projectId);
+    return createDefaultWorkspace(projectPath, projectId, defaults);
   }
   const sessions = { ...(workspace.sessions ?? {}) } as Record<string, TerminalSessionSnapshot>;
   const tabs = workspace.tabs.map((tab, index) => {
@@ -105,23 +114,29 @@ export function normalizeWorkspace(
     tabs,
     activeTabId,
     sessions,
-    ui: normalizeWorkspaceUi(workspace.ui),
+    ui: normalizeWorkspaceUi(workspace.ui, defaults),
     updatedAt: workspace.updatedAt ?? Date.now(),
   };
 }
 
-export function normalizeWorkspaceUi(value: TerminalWorkspace["ui"]): TerminalWorkspaceUi {
+export function normalizeWorkspaceUi(
+  value: TerminalWorkspace["ui"],
+  defaults?: TerminalWorkspaceDefaults,
+): TerminalWorkspaceUi {
   const resolved: TerminalWorkspaceUi = value && typeof value === "object" ? { ...value } : {};
-  const panel = normalizeQuickCommandsPanel(resolved.quickCommandsPanel);
+  const panel = normalizeQuickCommandsPanel(
+    resolved.quickCommandsPanel,
+    defaults?.defaultQuickCommandsPanelOpen ?? DEFAULT_PANEL_OPEN,
+  );
   return { ...resolved, quickCommandsPanel: panel };
 }
 
-function normalizeQuickCommandsPanel(value: unknown): QuickCommandsPanelState {
+function normalizeQuickCommandsPanel(value: unknown, defaultOpen: boolean): QuickCommandsPanelState {
   if (!value || typeof value !== "object") {
-    return { open: DEFAULT_PANEL_OPEN, x: null, y: null };
+    return { open: defaultOpen, x: null, y: null };
   }
   const asRecord = value as Record<string, unknown>;
-  const open = typeof asRecord.open === "boolean" ? asRecord.open : DEFAULT_PANEL_OPEN;
+  const open = typeof asRecord.open === "boolean" ? asRecord.open : defaultOpen;
   const x = typeof asRecord.x === "number" ? asRecord.x : null;
   const y = typeof asRecord.y === "number" ? asRecord.y : null;
   return { open, x, y };
