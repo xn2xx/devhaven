@@ -15,7 +15,6 @@ import WorktreeCreateDialog, {
   type WorktreeCreateSubmitPayload,
   type WorktreeCreateSubmitResult,
 } from "./components/terminal/WorktreeCreateDialog";
-import TerminalWorkspaceWindow from "./components/terminal/TerminalWorkspaceWindow";
 import { useCodexMonitor } from "./hooks/useCodexMonitor";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";

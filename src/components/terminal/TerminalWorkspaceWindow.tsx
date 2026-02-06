@@ -215,11 +215,11 @@ export default function TerminalWorkspaceWindow({
                   </button>
                   {codexRunningCount > 0 ? (
                     <span
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--terminal-divider)] bg-[var(--terminal-hover-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--terminal-muted-fg)]"
+                      className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--terminal-accent)]"
                       title={`Codex 运行中（${codexRunningCount} 个会话）`}
+                      aria-label={`Codex 运行中（${codexRunningCount} 个会话）`}
                     >
-                      <span className="h-2 w-2 rounded-full bg-[var(--terminal-accent)]" aria-hidden="true" />
-                      <span className="whitespace-nowrap">Codex</span>
+                      <span className="sr-only">Codex 运行中</span>
                     </span>
                   ) : null}
                   <button
