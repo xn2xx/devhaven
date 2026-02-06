@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::models::Project;
@@ -39,7 +39,7 @@ fn scan_directory_with_git(path: &str) -> Vec<String> {
         return results;
     }
 
-    if is_git_repo(root) {
+    if is_git_repo(root) && !is_git_worktree(root) {
         if let Some(as_str) = root.to_str() {
             results.push(as_str.to_string());
         }
@@ -66,7 +66,9 @@ fn scan_directory_with_git(path: &str) -> Vec<String> {
         }
 
         if let Some(as_str) = entry_path.to_str() {
-            results.push(as_str.to_string());
+            if !is_git_worktree(&entry_path) {
+                results.push(as_str.to_string());
+            }
         }
 
         collect_git_repos(&entry_path, &mut results);
@@ -77,8 +79,10 @@ fn scan_directory_with_git(path: &str) -> Vec<String> {
 
 fn collect_git_repos(path: &Path, results: &mut Vec<String>) {
     if is_git_repo(path) {
-        if let Some(as_str) = path.to_str() {
-            results.push(as_str.to_string());
+        if !is_git_worktree(path) {
+            if let Some(as_str) = path.to_str() {
+                results.push(as_str.to_string());
+            }
         }
         return;
     }
@@ -124,7 +128,7 @@ fn should_skip_recursive_dir(name: &std::ffi::OsStr) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::scan_directory_with_git;
+    use super::{build_projects, scan_directory_with_git};
     use std::fs;
     use std::path::PathBuf;
 
@@ -138,6 +142,7 @@ mod tests {
         let nested_repo = sub_a.join("project-x").join(".git");
         let nested_hidden_repo = hidden.join("project-y").join(".git");
         let nested_in_git = sub_b.join("ignored").join(".git");
+        let worktree_dir = root.join("worktree-alpha");
 
         fs::create_dir_all(root.join(".git")).expect("create root git");
         fs::create_dir_all(&sub_a).expect("create alpha dir");
@@ -147,6 +152,15 @@ mod tests {
         fs::create_dir_all(&nested_repo).expect("create nested git");
         fs::create_dir_all(&nested_hidden_repo).expect("create hidden nested git");
         fs::create_dir_all(&nested_in_git).expect("create nested in git");
+        fs::create_dir_all(&worktree_dir).expect("create worktree dir");
+        fs::write(
+            worktree_dir.join(".git"),
+            format!(
+                "gitdir: {}/.git/worktrees/worktree-alpha\n",
+                root.to_string_lossy()
+            ),
+        )
+        .expect("write worktree git file");
 
         let root_str = root.to_string_lossy().to_string();
         let results = scan_directory_with_git(&root_str);
@@ -157,9 +171,33 @@ mod tests {
         assert!(result_paths.contains(&sub_b));
         assert!(result_paths.contains(&sub_c));
         assert!(result_paths.contains(&sub_a.join("project-x")));
+        assert!(!result_paths.contains(&worktree_dir));
         assert!(!result_paths.contains(&hidden));
         assert!(!result_paths.contains(&hidden.join("project-y")));
         assert!(!result_paths.contains(&sub_b.join("ignored")));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn build_projects_skips_git_worktree_path() {
+        let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
+        let worktree = root.join("worktree-demo");
+
+        fs::create_dir_all(root.join(".git")).expect("create root git");
+        fs::create_dir_all(&worktree).expect("create worktree dir");
+        fs::write(
+            worktree.join(".git"),
+            format!(
+                "gitdir: {}/.git/worktrees/worktree-demo\n",
+                root.to_string_lossy()
+            ),
+        )
+        .expect("write worktree git file");
+
+        let paths = vec![worktree.to_string_lossy().to_string()];
+        let projects = build_projects(&paths, &[]);
+        assert!(projects.is_empty());
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -167,6 +205,10 @@ mod tests {
 
 // 创建单个项目模型，必要时复用已存在的配置。
 fn create_project(path: &str, existing_by_path: &HashMap<&str, &Project>) -> Option<Project> {
+    if is_git_worktree(Path::new(path)) {
+        return None;
+    }
+
     let metadata = fs::metadata(path).ok()?;
     if !metadata.is_dir() {
         return None;
@@ -199,6 +241,7 @@ fn create_project(path: &str, existing_by_path: &HashMap<&str, &Project>) -> Opt
             path: path.to_string(),
             tags: existing.tags.clone(),
             scripts: existing.scripts.clone(),
+            worktrees: existing.worktrees.clone(),
             mtime,
             size,
             checksum,
@@ -216,6 +259,7 @@ fn create_project(path: &str, existing_by_path: &HashMap<&str, &Project>) -> Opt
         path: path.to_string(),
         tags: Vec::new(),
         scripts: Vec::new(),
+        worktrees: Vec::new(),
         mtime,
         size,
         checksum,
@@ -258,6 +302,46 @@ fn load_git_info(path: &str) -> GitInfo {
 
 fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
+}
+
+fn is_git_worktree(path: &Path) -> bool {
+    let git_path = path.join(".git");
+    if !git_path.exists() || !git_path.is_file() {
+        return false;
+    }
+
+    let gitdir_path = match resolve_gitdir_from_file(&git_path) {
+        Some(value) => value,
+        None => return false,
+    };
+
+    gitdir_path
+        .components()
+        .any(|component| component.as_os_str() == "worktrees")
+}
+
+fn resolve_gitdir_from_file(git_file_path: &Path) -> Option<PathBuf> {
+    let content = fs::read_to_string(git_file_path).ok()?;
+    let line = content.lines().next()?.trim();
+
+    let raw_path = if let Some(value) = line.strip_prefix("gitdir:") {
+        value.trim()
+    } else if let Some(value) = line.strip_prefix("gitdir: ") {
+        value.trim()
+    } else {
+        return None;
+    };
+
+    if raw_path.is_empty() {
+        return None;
+    }
+
+    let parsed = PathBuf::from(raw_path);
+    if parsed.is_absolute() {
+        Some(parsed)
+    } else {
+        git_file_path.parent().map(|parent| parent.join(parsed))
+    }
 }
 
 // 执行 Git 命令并返回输出内容。

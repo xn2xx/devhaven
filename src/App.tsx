@@ -10,14 +10,17 @@ import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import RecycleBinModal from "./components/RecycleBinModal";
 import MonitorWindow from "./components/MonitorWindow";
+import WorktreeCreateDialog, {
+  type WorktreeCreateSubmitPayload,
+} from "./components/terminal/WorktreeCreateDialog";
 import { useCodexSessions } from "./hooks/useCodexSessions";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
 import type { CodexSessionSummary, CodexSessionView } from "./models/codex";
-import type { ColorData, Project, TagData } from "./models/types";
-import { swiftDateToJsDate } from "./models/types";
+import type { ColorData, Project, ProjectWorktree, TagData } from "./models/types";
+import { jsDateToSwiftDate, swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
 import { buildGitIdentitySignature } from "./utils/gitIdentity";
@@ -28,6 +31,8 @@ import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
 import { deleteTerminalWorkspace } from "./services/terminalWorkspace";
+import { gitWorktreeAdd } from "./services/gitWorktree";
+import { gitIsRepo } from "./services/gitManagement";
 import {
   createQuickCommandRequestId,
   enqueueTerminalQuickCommandAction,
@@ -46,6 +51,40 @@ type MonitorOpenSessionPayload = {
   projectName: string | null;
   cwd: string;
 };
+
+function createWorktreeProjectId(path: string): string {
+  return `worktree:${path}`;
+}
+
+function isWorktreeProject(project: Project): boolean {
+  return project.id.startsWith("worktree:");
+}
+
+function resolveNameFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const last = normalized.split("/").filter(Boolean).pop();
+  return last || normalized || path;
+}
+
+function buildWorktreeVirtualProject(sourceProject: Project, worktree: ProjectWorktree): Project {
+  const now = jsDateToSwiftDate(new Date());
+  return {
+    id: createWorktreeProjectId(worktree.path),
+    name: worktree.name || resolveNameFromPath(worktree.path),
+    path: worktree.path,
+    tags: [...(sourceProject.tags ?? [])],
+    scripts: [...(sourceProject.scripts ?? [])],
+    worktrees: [],
+    mtime: sourceProject.mtime,
+    size: sourceProject.size,
+    checksum: `worktree:${worktree.path}`,
+    git_commits: sourceProject.git_commits,
+    git_last_commit: sourceProject.git_last_commit,
+    git_daily: sourceProject.git_daily ?? null,
+    created: worktree.created || now,
+    checked: now,
+  };
+}
 
 function matchProjectByCwd(cwd: string, projects: Project[]): Project | null {
   if (!cwd) {
@@ -107,6 +146,7 @@ function AppLayout() {
     addProjectScript,
     updateProjectScript,
     removeProjectScript,
+    addProjectWorktree,
     refreshProject,
     updateGitDaily,
     updateSettings,
@@ -134,6 +174,7 @@ function AppLayout() {
   const [showTerminalWorkspace, setShowTerminalWorkspace] = useState(false);
   const [terminalOpenProjects, setTerminalOpenProjects] = useState<Project[]>([]);
   const [terminalActiveProjectId, setTerminalActiveProjectId] = useState<string | null>(null);
+  const [worktreeDialogProjectId, setWorktreeDialogProjectId] = useState<string | null>(null);
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
 
@@ -195,11 +236,26 @@ function AppLayout() {
     () => codexSessionViews.filter((session) => session.isRunning),
     [codexSessionViews],
   );
+  const worktreeDialogSourceProject = useMemo(() => {
+    if (!worktreeDialogProjectId) {
+      return null;
+    }
+    return projectMap.get(worktreeDialogProjectId) ?? null;
+  }, [projectMap, worktreeDialogProjectId]);
 
   const hiddenTags = useMemo(
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
     [appState.tags],
   );
+
+  useEffect(() => {
+    if (!worktreeDialogProjectId) {
+      return;
+    }
+    if (!projectMap.has(worktreeDialogProjectId)) {
+      setWorktreeDialogProjectId(null);
+    }
+  }, [projectMap, worktreeDialogProjectId]);
 
   const filteredProjects = useMemo(() => {
     let result = [...visibleProjects];
@@ -583,6 +639,101 @@ function AppLayout() {
     [openTerminalWorkspace],
   );
 
+  const handleRequestCreateWorktree = useCallback(
+    async (projectId: string) => {
+      const sourceProject = projectMap.get(projectId);
+      if (!sourceProject) {
+        showToast("项目不存在或已移除", "error");
+        return;
+      }
+      try {
+        const isRepo = await gitIsRepo(sourceProject.path);
+        if (!isRepo) {
+          showToast("该项目不是 Git 仓库，无法创建 worktree", "error");
+          return;
+        }
+        setWorktreeDialogProjectId(projectId);
+      } catch (error) {
+        console.error("校验 Git 仓库失败。", error);
+        showToast("无法校验项目 Git 状态，请重试", "error");
+      }
+    },
+    [projectMap, showToast],
+  );
+
+  const handleOpenWorktreeFromProject = useCallback(
+    (projectId: string, worktreePath: string) => {
+      const sourceProject = projectMap.get(projectId);
+      if (!sourceProject) {
+        showToast("项目不存在或已移除", "error");
+        return;
+      }
+      const worktree = (sourceProject.worktrees ?? []).find((item) => item.path === worktreePath);
+      if (!worktree) {
+        showToast("worktree 不存在或已移除", "error");
+        return;
+      }
+      openTerminalWorkspace(buildWorktreeVirtualProject(sourceProject, worktree));
+    },
+    [openTerminalWorkspace, projectMap, showToast],
+  );
+
+  const handleCreateWorktree = useCallback(
+    async (payload: WorktreeCreateSubmitPayload) => {
+      const sourceProject = projectMap.get(payload.sourceProjectId);
+      if (!sourceProject) {
+        throw new Error("项目不存在或已移除");
+      }
+
+      try {
+        const result =
+          payload.mode === "create"
+            ? await gitWorktreeAdd({
+                path: payload.sourceProjectPath,
+                branch: payload.branch,
+                createBranch: payload.createBranch,
+              })
+            : {
+                path: payload.worktreePath,
+                branch: payload.branch,
+              };
+
+        const nextWorktree: ProjectWorktree = {
+          id: createWorktreeProjectId(result.path),
+          name: resolveNameFromPath(result.path),
+          path: result.path,
+          branch: result.branch,
+          inheritConfig: true,
+          created: jsDateToSwiftDate(new Date()),
+        };
+
+        await addProjectWorktree(sourceProject.id, nextWorktree);
+        setWorktreeDialogProjectId(null);
+        showToast(payload.mode === "create" ? "worktree 创建成功" : "已有 worktree 已添加");
+
+        if (payload.autoOpen) {
+          openTerminalWorkspace(buildWorktreeVirtualProject(sourceProject, nextWorktree));
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showToast(message || "创建 worktree 失败", "error");
+        throw error;
+      }
+    },
+    [addProjectWorktree, openTerminalWorkspace, projectMap, showToast],
+  );
+
+  useEffect(() => {
+    setTerminalOpenProjects((prev) =>
+      prev.map((project) => {
+        if (isWorktreeProject(project)) {
+          return project;
+        }
+        return projectMap.get(project.id) ?? project;
+      }),
+    );
+  }, [projectMap]);
+
   const handleCloseTerminalProject = useCallback(
     (projectId: string) => {
       const currentProjects = terminalOpenProjectsRef.current;
@@ -591,7 +742,14 @@ function AppLayout() {
         return;
       }
 
-      const nextProjects = currentProjects.filter((item) => item.id !== projectId);
+      const closingPaths = new Set<string>([closingProject.path]);
+      if (!isWorktreeProject(closingProject)) {
+        for (const item of closingProject.worktrees ?? []) {
+          closingPaths.add(item.path);
+        }
+      }
+
+      const nextProjects = currentProjects.filter((item) => !closingPaths.has(item.path));
       setTerminalOpenProjects(nextProjects);
 
       if (nextProjects.length === 0) {
@@ -608,7 +766,7 @@ function AppLayout() {
 
       // 先卸载终端 pane（清理 PTY/定时保存），再异步删除持久化工作区，避免竞态把 workspace 又写回去。
       window.setTimeout(() => {
-        void deleteTerminalWorkspace(closingProject.path).catch((error) => {
+        void Promise.all(Array.from(closingPaths).map((path) => deleteTerminalWorkspace(path))).catch((error) => {
           console.error("删除终端工作区失败。", error);
           showToast("关闭项目失败，请重试", "error");
         });
@@ -898,9 +1056,17 @@ function AppLayout() {
           onSaveSettings={handleSaveSettings}
         />
       ) : null}
+
+      <WorktreeCreateDialog
+        isOpen={Boolean(worktreeDialogProjectId)}
+        sourceProject={worktreeDialogSourceProject}
+        onClose={() => setWorktreeDialogProjectId(null)}
+        onSubmit={handleCreateWorktree}
+      />
+
       {toast ? (
         <div
-          className={`fixed left-1/2 bottom-7 -translate-x-1/2 rounded-full px-4 py-2 text-fs-caption border text-text z-60 backdrop-blur-[6px] ${
+          className={`fixed left-1/2 bottom-7 -translate-x-1/2 rounded-full px-4 py-2 text-fs-caption border text-text z-[95] backdrop-blur-[6px] ${
             toast.variant === "error"
               ? "bg-[rgba(239,68,68,0.15)] border-[rgba(239,68,68,0.4)]"
               : "bg-[rgba(16,185,129,0.15)] border-[rgba(16,185,129,0.4)]"
@@ -922,6 +1088,8 @@ function AppLayout() {
               activeProjectId={terminalActiveProjectId}
               onSelectProject={setTerminalActiveProjectId}
               onCloseProject={handleCloseTerminalProject}
+              onCreateWorktree={(projectId) => void handleRequestCreateWorktree(projectId)}
+              onOpenWorktree={handleOpenWorktreeFromProject}
               onExit={() => setShowTerminalWorkspace(false)}
               windowLabel={MAIN_WINDOW_LABEL}
               isVisible={showTerminalWorkspace}
