@@ -130,6 +130,8 @@ pub struct Project {
     pub tags: Vec<String>,
     #[serde(default)]
     pub scripts: Vec<ProjectScript>,
+    #[serde(default)]
+    pub worktrees: Vec<ProjectWorktree>,
     pub mtime: SwiftDate,
     pub size: i64,
     pub checksum: String,
@@ -138,6 +140,18 @@ pub struct Project {
     pub git_daily: Option<String>,
     pub created: SwiftDate,
     pub checked: SwiftDate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorktree {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub branch: String,
+    #[serde(default)]
+    pub inherit_config: bool,
+    pub created: SwiftDate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -278,6 +292,20 @@ pub struct BranchListItem {
     pub name: String,
     #[serde(rename = "isMain")]
     pub is_main: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeAddResult {
+    pub path: String,
+    pub branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeListItem {
+    pub path: String,
+    pub branch: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

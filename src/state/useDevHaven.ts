@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { AppStateFile, Project, ProjectScript, TagData } from "../models/types";
+import type { AppStateFile, Project, ProjectScript, ProjectWorktree, TagData } from "../models/types";
+import { jsDateToSwiftDate } from "../models/types";
 import {
   buildProjects,
   discoverProjects,
@@ -58,6 +59,9 @@ export type DevHavenActions = {
   ) => Promise<void>;
   updateProjectScript: (projectId: string, script: ProjectScript) => Promise<void>;
   removeProjectScript: (projectId: string, scriptId: string) => Promise<void>;
+  addProjectWorktree: (projectId: string, worktree: ProjectWorktree) => Promise<void>;
+  removeProjectWorktree: (projectId: string, worktreePath: string) => Promise<void>;
+  syncProjectWorktrees: (projectId: string, worktrees: Array<{ path: string; branch: string }>) => Promise<void>;
   addDirectory: (path: string) => Promise<void>;
   removeDirectory: (path: string) => Promise<void>;
   moveProjectToRecycleBin: (path: string) => Promise<void>;
@@ -148,7 +152,7 @@ export function useDevHaven(): DevHavenStore {
     try {
       const [state, cachedProjects] = await Promise.all([loadAppState(), loadProjects()]);
       const resolvedState = normalizeAppState(state ?? emptyState);
-      const resolvedProjects = cachedProjects ?? [];
+      const resolvedProjects = (cachedProjects ?? []).map(normalizeProject);
       setAppState(resolvedState);
       if (resolvedState.directories.length === 0) {
         setProjects(resolvedProjects);
@@ -157,9 +161,10 @@ export function useDevHaven(): DevHavenStore {
       }
       const paths = await discoverProjects(resolvedState.directories);
       const updatedProjects = await buildProjects(paths, resolvedProjects);
-      setProjects(updatedProjects);
-      await saveProjects(updatedProjects);
-      await syncTagsFromProjects(resolvedState, updatedProjects);
+      const normalizedProjects = updatedProjects.map(normalizeProject);
+      setProjects(normalizedProjects);
+      await saveProjects(normalizedProjects);
+      await syncTagsFromProjects(resolvedState, normalizedProjects);
     } catch (err) {
       handleError(err);
     } finally {
@@ -314,6 +319,153 @@ export function useDevHaven(): DevHavenStore {
           ? { ...project, scripts: (project.scripts ?? []).filter((item) => item.id !== scriptId) }
           : project,
       );
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
+  );
+
+  /** 为项目新增/更新 worktree 子项并持久化（按 path 幂等）。 */
+  const addProjectWorktree = useCallback(
+    async (projectId: string, worktree: ProjectWorktree) => {
+      if (!projectId) {
+        return;
+      }
+      const normalizedPath = worktree.path.trim();
+      const normalizedBranch = worktree.branch.trim();
+      if (!normalizedPath || !normalizedBranch) {
+        return;
+      }
+
+      const nextWorktree: ProjectWorktree = {
+        id: worktree.id?.trim() || createScriptId(),
+        name: worktree.name?.trim() || normalizedPath.split("/").pop() || normalizedPath,
+        path: normalizedPath,
+        branch: normalizedBranch,
+        inheritConfig: worktree.inheritConfig,
+        created: Number.isFinite(worktree.created) ? worktree.created : jsDateToSwiftDate(new Date()),
+      };
+
+      const nextProjects = projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+        const current = project.worktrees ?? [];
+        const existingIndex = current.findIndex((item) => item.path === normalizedPath);
+        if (existingIndex >= 0) {
+          const worktrees = [...current];
+          worktrees[existingIndex] = {
+            ...worktrees[existingIndex],
+            ...nextWorktree,
+          };
+          return { ...project, worktrees };
+        }
+        return { ...project, worktrees: [...current, nextWorktree] };
+      });
+
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
+  );
+
+  /** 删除项目 worktree 子项并持久化。 */
+  const removeProjectWorktree = useCallback(
+    async (projectId: string, worktreePath: string) => {
+      const normalizedPath = worktreePath.trim();
+      if (!projectId || !normalizedPath) {
+        return;
+      }
+
+      const nextProjects = projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+        return {
+          ...project,
+          worktrees: (project.worktrees ?? []).filter((item) => item.path !== normalizedPath),
+        };
+      });
+
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
+  );
+
+  /** 根据 Git worktree 列表同步指定项目的 worktrees（一次性写盘，按 path 幂等）。 */
+  const syncProjectWorktrees = useCallback(
+    async (projectId: string, worktrees: Array<{ path: string; branch: string }>) => {
+      if (!projectId) {
+        return;
+      }
+
+      const normalizedGitWorktrees = worktrees
+        .map((item) => ({ path: item.path.trim(), branch: item.branch.trim() }))
+        .filter((item) => item.path && item.branch)
+        .sort((left, right) => left.path.localeCompare(right.path));
+
+      const now = jsDateToSwiftDate(new Date());
+      let changed = false;
+
+      const nextProjects = projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const existingWorktrees = project.worktrees ?? [];
+        const existingByPath = new Map(existingWorktrees.map((item) => [item.path, item]));
+
+        const nextWorktrees: ProjectWorktree[] = normalizedGitWorktrees.map((item) => {
+          const existing = existingByPath.get(item.path);
+          const name =
+            existing?.name?.trim() ||
+            item.path
+              .replace(/\\/g, "/")
+              .replace(/\/+$/, "")
+              .split("/")
+              .filter(Boolean)
+              .pop() ||
+            item.path;
+          const inheritConfig = existing?.inheritConfig ?? true;
+          const created = Number.isFinite(existing?.created) ? (existing?.created ?? now) : now;
+          const id = existing?.id?.trim() || `worktree:${item.path}`;
+          return {
+            id,
+            name,
+            path: item.path,
+            branch: item.branch,
+            inheritConfig,
+            created,
+          };
+        });
+
+        if (existingWorktrees.length !== nextWorktrees.length) {
+          changed = true;
+        } else {
+          for (let index = 0; index < nextWorktrees.length; index += 1) {
+            const prev = existingWorktrees[index];
+            const next = nextWorktrees[index];
+            if (
+              prev?.id !== next.id ||
+              prev?.name !== next.name ||
+              prev?.path !== next.path ||
+              prev?.branch !== next.branch ||
+              prev?.inheritConfig !== next.inheritConfig ||
+              prev?.created !== next.created
+            ) {
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        if (!changed) {
+          return project;
+        }
+        return { ...project, worktrees: nextWorktrees };
+      });
+
+      if (!changed) {
+        return;
+      }
       await commitProjects(nextProjects);
     },
     [commitProjects, projects],
@@ -515,6 +667,9 @@ export function useDevHaven(): DevHavenStore {
     addProjectScript,
     updateProjectScript,
     removeProjectScript,
+    addProjectWorktree,
+    removeProjectWorktree,
+    syncProjectWorktrees,
     addDirectory,
     removeDirectory,
     moveProjectToRecycleBin,
@@ -554,4 +709,12 @@ function mergeProjectsByPath(existing: Project[], updates: Project[]) {
     }
   }
   return nextProjects;
+}
+
+function normalizeProject(project: Project): Project {
+  return {
+    ...project,
+    scripts: project.scripts ?? [],
+    worktrees: project.worktrees ?? [],
+  };
 }

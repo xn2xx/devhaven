@@ -18,8 +18,9 @@ use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
     AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
-    FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus, HeatmapCacheFile,
-    MarkdownFileEntry, Project, TerminalWorkspace,
+    FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
+    GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, MarkdownFileEntry, Project,
+    TerminalWorkspace,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
@@ -172,6 +173,49 @@ fn git_checkout_branch(path: String, branch: String) -> Result<(), String> {
     log_command_result("git_checkout_branch", || {
         log::info!("git_checkout_branch path={} branch={}", path, branch);
         git_ops::checkout_branch(&path, &branch)
+    })
+}
+
+#[tauri::command]
+/// 创建 Git worktree。
+fn git_worktree_add(
+    path: String,
+    branch: String,
+    create_branch: bool,
+    target_path: Option<String>,
+) -> Result<GitWorktreeAddResult, String> {
+    log_command_result("git_worktree_add", || {
+        log::info!(
+            "git_worktree_add path={} target_path={} branch={} create_branch={}",
+            path,
+            target_path.as_deref().unwrap_or("<auto>"),
+            branch,
+            create_branch
+        );
+        git_ops::add_worktree(&path, target_path.as_deref(), &branch, create_branch)
+    })
+}
+
+#[tauri::command]
+/// 列出仓库下已有 worktree（不包含主仓库目录）。
+fn git_worktree_list(path: String) -> Result<Vec<GitWorktreeListItem>, String> {
+    log_command_result("git_worktree_list", || {
+        log::info!("git_worktree_list path={}", path);
+        git_ops::list_worktrees(&path)
+    })
+}
+
+#[tauri::command]
+/// 删除 Git worktree（git worktree remove）。
+fn git_worktree_remove(path: String, worktree_path: String, force: bool) -> Result<(), String> {
+    log_command_result("git_worktree_remove", || {
+        log::info!(
+            "git_worktree_remove path={} worktree_path={} force={}",
+            path,
+            worktree_path,
+            force
+        );
+        git_ops::remove_worktree(&path, &worktree_path, force)
     })
 }
 
@@ -414,6 +458,9 @@ pub fn run() {
             git_discard_files,
             git_commit,
             git_checkout_branch,
+            git_worktree_add,
+            git_worktree_list,
+            git_worktree_remove,
             open_in_finder,
             open_in_editor,
             set_window_fullscreen_auxiliary,
