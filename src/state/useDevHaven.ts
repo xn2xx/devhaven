@@ -61,6 +61,7 @@ export type DevHavenActions = {
   removeProjectScript: (projectId: string, scriptId: string) => Promise<void>;
   addProjectWorktree: (projectId: string, worktree: ProjectWorktree) => Promise<void>;
   removeProjectWorktree: (projectId: string, worktreePath: string) => Promise<void>;
+  syncProjectWorktrees: (projectId: string, worktrees: Array<{ path: string; branch: string }>) => Promise<void>;
   addDirectory: (path: string) => Promise<void>;
   removeDirectory: (path: string) => Promise<void>;
   moveProjectToRecycleBin: (path: string) => Promise<void>;
@@ -389,6 +390,87 @@ export function useDevHaven(): DevHavenStore {
     [commitProjects, projects],
   );
 
+  /** 根据 Git worktree 列表同步指定项目的 worktrees（一次性写盘，按 path 幂等）。 */
+  const syncProjectWorktrees = useCallback(
+    async (projectId: string, worktrees: Array<{ path: string; branch: string }>) => {
+      if (!projectId) {
+        return;
+      }
+
+      const normalizedGitWorktrees = worktrees
+        .map((item) => ({ path: item.path.trim(), branch: item.branch.trim() }))
+        .filter((item) => item.path && item.branch)
+        .sort((left, right) => left.path.localeCompare(right.path));
+
+      const now = jsDateToSwiftDate(new Date());
+      let changed = false;
+
+      const nextProjects = projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const existingWorktrees = project.worktrees ?? [];
+        const existingByPath = new Map(existingWorktrees.map((item) => [item.path, item]));
+
+        const nextWorktrees: ProjectWorktree[] = normalizedGitWorktrees.map((item) => {
+          const existing = existingByPath.get(item.path);
+          const name =
+            existing?.name?.trim() ||
+            item.path
+              .replace(/\\/g, "/")
+              .replace(/\/+$/, "")
+              .split("/")
+              .filter(Boolean)
+              .pop() ||
+            item.path;
+          const inheritConfig = existing?.inheritConfig ?? true;
+          const created = Number.isFinite(existing?.created) ? (existing?.created ?? now) : now;
+          const id = existing?.id?.trim() || `worktree:${item.path}`;
+          return {
+            id,
+            name,
+            path: item.path,
+            branch: item.branch,
+            inheritConfig,
+            created,
+          };
+        });
+
+        if (existingWorktrees.length !== nextWorktrees.length) {
+          changed = true;
+        } else {
+          for (let index = 0; index < nextWorktrees.length; index += 1) {
+            const prev = existingWorktrees[index];
+            const next = nextWorktrees[index];
+            if (
+              prev?.id !== next.id ||
+              prev?.name !== next.name ||
+              prev?.path !== next.path ||
+              prev?.branch !== next.branch ||
+              prev?.inheritConfig !== next.inheritConfig ||
+              prev?.created !== next.created
+            ) {
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        if (!changed) {
+          return project;
+        }
+        return { ...project, worktrees: nextWorktrees };
+      });
+
+      if (!changed) {
+        return;
+      }
+      await commitProjects(nextProjects);
+    },
+    [commitProjects, projects],
+  );
+
   /** 添加需要扫描的工作目录并持久化。 */
   const addDirectory = useCallback(
     async (path: string) => {
@@ -587,6 +669,7 @@ export function useDevHaven(): DevHavenStore {
     removeProjectScript,
     addProjectWorktree,
     removeProjectWorktree,
+    syncProjectWorktrees,
     addDirectory,
     removeDirectory,
     moveProjectToRecycleBin,

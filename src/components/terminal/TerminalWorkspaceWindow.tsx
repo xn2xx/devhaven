@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { Project } from "../../models/types";
+import type { GitWorktreeListItem } from "../../services/gitWorktree";
 import { useSystemColorScheme } from "../../hooks/useSystemColorScheme";
 import { useDevHavenContext } from "../../state/DevHavenContext";
 import {
@@ -19,10 +20,13 @@ export type TerminalWorkspaceWindowProps = {
   onCloseProject: (projectId: string) => void;
   onCreateWorktree: (projectId: string) => void;
   onOpenWorktree: (projectId: string, worktreePath: string) => void;
+  onDeleteWorktree: (projectId: string, worktreePath: string) => void;
+  onRefreshWorktrees: (projectId: string) => void;
   onExit?: () => void;
   windowLabel: string;
   isVisible: boolean;
   codexProjectStatusById: Record<string, CodexProjectStatus>;
+  gitWorktreesByProjectId: Record<string, GitWorktreeListItem[] | undefined>;
 };
 
 export default function TerminalWorkspaceWindow({
@@ -32,10 +36,13 @@ export default function TerminalWorkspaceWindow({
   onCloseProject,
   onCreateWorktree,
   onOpenWorktree,
+  onDeleteWorktree,
+  onRefreshWorktrees,
   onExit,
   windowLabel,
   isVisible,
   codexProjectStatusById,
+  gitWorktreesByProjectId,
 }: TerminalWorkspaceWindowProps) {
   const { appState } = useDevHavenContext();
   const systemScheme = useSystemColorScheme();
@@ -69,6 +76,23 @@ export default function TerminalWorkspaceWindow({
   const openProjectsByPath = useMemo(() => {
     return new Map(openProjects.map((project) => [project.path, project]));
   }, [openProjects]);
+
+  const trackedWorktreesByProjectId = useMemo(() => {
+    return new Map(rootProjects.map((project) => [project.id, project.worktrees ?? []]));
+  }, [rootProjects]);
+
+  const resolveWorktreeName = useMemo(() => {
+    return (sourceProjectId: string, worktreePath: string) => {
+      const tracked = trackedWorktreesByProjectId.get(sourceProjectId) ?? [];
+      const match = tracked.find((item) => item.path === worktreePath);
+      if (match?.name) {
+        return match.name;
+      }
+      const normalized = worktreePath.replace(/\\/g, "/").replace(/\/+$/, "");
+      const last = normalized.split("/").filter(Boolean).pop();
+      return last || worktreePath;
+    };
+  }, [trackedWorktreesByProjectId]);
 
   useEffect(() => {
     // 仅在终端可见时更新窗口标题；隐藏时恢复默认标题，避免主界面停留在“xx - 终端”。
@@ -113,6 +137,22 @@ export default function TerminalWorkspaceWindow({
             const isActive = (activeProject?.id ?? "") === project.id;
             const codexStatus = codexProjectStatusById[project.id] ?? null;
             const codexRunningCount = codexStatus?.runningCount ?? 0;
+            const trackedWorktrees = project.worktrees ?? [];
+            const gitWorktrees = gitWorktreesByProjectId[project.id];
+
+            const worktreesToRender = (gitWorktrees !== undefined
+              ? gitWorktrees.map((item) => ({
+                  path: item.path,
+                  branch: item.branch,
+                  name: resolveWorktreeName(project.id, item.path),
+                }))
+              : trackedWorktrees.map((item) => ({
+                  path: item.path,
+                  branch: item.branch,
+                  name: item.name,
+                }))) as Array<{ path: string; branch: string; name: string }>;
+
+            const hasWorktrees = worktreesToRender.length > 0;
             return (
               <div key={project.id} className="flex flex-col gap-1" title={project.path}>
                 <div
@@ -134,6 +174,19 @@ export default function TerminalWorkspaceWindow({
                       <span className="whitespace-nowrap">Codex</span>
                     </span>
                   ) : null}
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onRefreshWorktrees(project.id);
+                    }}
+                    aria-label={`刷新 ${project.name} worktree`}
+                    title="刷新 worktree"
+                    type="button"
+                  >
+                    ↻
+                  </button>
                   <button
                     className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
                     onClick={(event) => {
@@ -162,9 +215,9 @@ export default function TerminalWorkspaceWindow({
                   </button>
                 </div>
 
-                {(project.worktrees ?? []).length > 0 ? (
+                {hasWorktrees ? (
                   <div className="flex flex-col gap-1 pl-3">
-                    {(project.worktrees ?? []).map((worktree) => {
+                    {worktreesToRender.map((worktree) => {
                       const openedProject = openProjectsByPath.get(worktree.path);
                       const isWorktreeActive = activeProject?.path === worktree.path;
                       return (
@@ -192,6 +245,18 @@ export default function TerminalWorkspaceWindow({
                           <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
                             {worktree.branch}
                           </span>
+                          <button
+                            className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[rgba(239,68,68,0.35)] hover:bg-[rgba(239,68,68,0.15)] hover:text-[rgba(239,68,68,0.9)] group-hover:opacity-100"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onDeleteWorktree(project.id, worktree.path);
+                            }}
+                            title="删除 worktree"
+                            type="button"
+                          >
+                            删除
+                          </button>
                           <button
                             className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
                             onClick={(event) => {

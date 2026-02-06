@@ -81,3 +81,34 @@
 - **GIVEN** 用户本地 `projects.json` 为旧版本且项目对象没有 `worktrees` 字段
 - **WHEN** 系统读取并构建项目列表
 - **THEN** 系统按空列表处理并继续正常运行
+
+### Requirement: Terminal Workspace Should Support Deleting Worktree Child
+系统 SHALL 允许用户在终端工作区中删除某个 worktree 子项，并在删除成功后移除持久化记录。
+
+#### Scenario: 删除 worktree 成功
+- **GIVEN** 父项目存在某个 worktree 子项
+- **WHEN** 用户在终端工作区对该子项执行“删除”
+- **THEN** 系统执行 `git worktree remove` 删除该 worktree
+- **AND** 系统将该 worktree 从父项目 `worktrees` 记录中移除并持久化
+
+#### Scenario: 删除已打开的 worktree
+- **GIVEN** 该 worktree 当前已在终端工作区打开
+- **WHEN** 用户删除该 worktree
+- **THEN** 系统先关闭该 worktree 终端工作区（清理 PTY 与布局持久化）
+- **AND** 再执行删除操作
+
+### Requirement: Worktree List Record Should Sync With Git Worktree List
+系统 SHALL 在终端工作区展示时（或用户主动刷新时）从 Git 读取 worktree 列表，并同步到父项目 `worktrees` 持久化记录，确保外部 `git worktree` 操作可被正确反映。
+
+#### Scenario: 外部创建的 worktree 自动补录
+- **GIVEN** 用户在外部终端对某已打开的父项目执行 `git worktree add` 创建了新 worktree
+- **WHEN** 用户打开终端工作区或执行刷新
+- **THEN** 系统从 `git worktree list` 读取到该 worktree
+- **AND** 系统将其补录到父项目 `worktrees` 子项并持久化
+
+#### Scenario: 外部删除的 worktree 自动移除记录
+- **GIVEN** 父项目 `worktrees` 中存在某条 worktree 记录
+- **AND** 用户在外部终端执行 `git worktree remove` 删除了该 worktree
+- **WHEN** 用户打开终端工作区或执行刷新
+- **THEN** 系统不再从 `git worktree list` 读取到该 worktree
+- **AND** 系统将其从父项目 `worktrees` 记录中移除并持久化

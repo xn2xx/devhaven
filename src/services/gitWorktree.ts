@@ -17,6 +17,12 @@ export type GitWorktreeListItem = {
   branch: string;
 };
 
+export type GitWorktreeRemovePayload = {
+  path: string;
+  worktreePath: string;
+  force?: boolean;
+};
+
 export async function gitWorktreeAdd(payload: GitWorktreeAddPayload): Promise<GitWorktreeAddResult> {
   const params: Record<string, unknown> = {
     path: payload.path,
@@ -32,4 +38,12 @@ export async function gitWorktreeAdd(payload: GitWorktreeAddPayload): Promise<Gi
 
 export async function gitWorktreeList(path: string): Promise<GitWorktreeListItem[]> {
   return invoke<GitWorktreeListItem[]>("git_worktree_list", { path });
+}
+
+export async function gitWorktreeRemove(payload: GitWorktreeRemovePayload): Promise<void> {
+  await invoke("git_worktree_remove", {
+    path: payload.path,
+    worktreePath: payload.worktreePath,
+    force: payload.force ?? false,
+  });
 }

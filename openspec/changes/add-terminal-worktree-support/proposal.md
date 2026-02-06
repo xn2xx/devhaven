@@ -14,13 +14,18 @@
   - 支持读取并打开该仓库下已存在的 worktree（无需再次创建）。
   - 新建分支默认以当前 `HEAD` 为起点。
   - 支持可选项：创建后自动在终端打开。
+- 支持删除 worktree 子项：在子项上提供「删除」入口，二次确认后执行 `git worktree remove`，并同步移除本地持久化记录。
+- worktree 列表记录与 Git 同步：
+  - 终端工作区展示时（以及手动刷新时），系统从 `git worktree list` 读取最新 worktree 列表；
+  - 自动补录 Git 已存在但未被 DevHaven 记录的 worktree；
+  - 自动移除 Git 已不存在的 worktree 记录，避免列表陈旧。
 - 创建成功后：
   - 调用 `git worktree add` 在本地创建 worktree 目录；
   - 将新 worktree 记录为源项目的子项（持久化到 `projects.json` 的源项目字段中）；
   - （若勾选）自动在终端工作区打开该 worktree 并设为激活。
 
 ## Out of Scope
-- worktree 的完整管理（列出/移除/锁定/解锁/prune/强制覆盖等）。
+- worktree 的高级管理（锁定/解锁、手动 prune、切换/移动 worktree 目录等）。
 - 高风险 Git 操作（merge/rebase/cherry-pick/stash/push/pull 等）。
 - 自动端口隔离（例如自动为 `pnpm dev` 分配端口）——仍由用户通过命令参数或脚本自行控制。
 
@@ -29,6 +34,7 @@
 - New Tauri commands:
   - `git_worktree_add`
   - `git_worktree_list`
+  - `git_worktree_remove`
 - New frontend services:
   - `src/services/gitWorktree.ts`
 - New UI:

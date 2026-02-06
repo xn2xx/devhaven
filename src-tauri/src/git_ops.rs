@@ -234,6 +234,62 @@ pub fn list_worktrees(base_path: &str) -> Result<Vec<GitWorktreeListItem>, Strin
     Ok(parse_worktree_list_output(base_path, &result.output))
 }
 
+/// 删除 Git worktree（git worktree remove）。
+pub fn remove_worktree(base_path: &str, worktree_path: &str, force: bool) -> Result<(), String> {
+    if !is_git_repo(base_path) {
+        return Err("不是 Git 仓库".to_string());
+    }
+
+    let worktree_path = worktree_path.trim();
+    if worktree_path.is_empty() {
+        return Err("worktree 路径不能为空".to_string());
+    }
+
+    let base_normalized = normalize_path_for_compare(base_path);
+    let worktree_normalized = normalize_path_for_compare(worktree_path);
+    if base_normalized == worktree_normalized {
+        return Err("不能删除主仓库目录".to_string());
+    }
+
+    // 先校验 worktree 是否存在于该仓库，避免误删任意目录。
+    let listed = list_worktrees(base_path)?
+        .into_iter()
+        .any(|item| normalize_path_for_compare(&item.path) == worktree_normalized);
+    if !listed {
+        return Err("worktree 不存在或已移除".to_string());
+    }
+
+    let mut args: Vec<&str> = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.push(worktree_path);
+
+    let result = execute_git_command(base_path, &args);
+    if result.success {
+        return Ok(());
+    }
+
+    // 若用户手动删除了目录，git 可能会提示 not a working tree；这时尝试 prune 清理残留记录。
+    let lower = result.output.to_ascii_lowercase();
+    if lower.contains("not a working tree")
+        || lower.contains("is missing")
+        || lower.contains("no such file or directory")
+    {
+        let prune = execute_git_command(base_path, &["worktree", "prune"]);
+        if prune.success {
+            let remaining = list_worktrees(base_path)?
+                .into_iter()
+                .any(|item| normalize_path_for_compare(&item.path) == worktree_normalized);
+            if !remaining {
+                return Ok(());
+            }
+        }
+    }
+
+    Err(normalize_worktree_remove_error(&result.output, force))
+}
+
 fn resolve_default_worktree_path(base_path: &str, branch: &str) -> Result<String, String> {
     let home = resolve_home_dir().ok_or_else(|| "无法解析用户主目录".to_string())?;
     let repo_name = resolve_repo_name(base_path);
@@ -392,7 +448,16 @@ fn normalize_path_for_compare(path: &str) -> String {
     if trimmed.is_empty() {
         return String::new();
     }
-    let normalized = trimmed.replace('\\', "/").trim_end_matches('/').to_string();
+
+    // 优先用 canonicalize 消除软链接/大小写差异（例如 macOS 的 /var -> /private/var），避免比较失败。
+    let mut normalized = trimmed.replace('\\', "/").trim_end_matches('/').to_string();
+    if let Ok(canonical) = std::fs::canonicalize(&normalized) {
+        normalized = canonical
+            .to_string_lossy()
+            .replace('\\', "/")
+            .trim_end_matches('/')
+            .to_string();
+    }
     if cfg!(windows) {
         normalized.to_ascii_lowercase()
     } else {
@@ -425,6 +490,34 @@ fn normalize_worktree_add_error(raw: &str, create_branch: bool) -> String {
         || lower.contains("pathspec")
     {
         return "分支不存在或不可用，请检查分支名称".to_string();
+    }
+
+    raw.to_string()
+}
+
+fn normalize_worktree_remove_error(raw: &str, force: bool) -> String {
+    let lower = raw.to_ascii_lowercase();
+
+    if lower.contains("not a git repository") {
+        return "不是 Git 仓库".to_string();
+    }
+
+    if lower.contains("not a working tree") {
+        return "worktree 不存在或已移除".to_string();
+    }
+
+    if lower.contains("contains modified or untracked files")
+        || lower.contains("cannot remove a dirty worktree")
+        || (lower.contains("dirty") && lower.contains("worktree"))
+    {
+        if force {
+            return "强制删除失败：worktree 可能被进程占用或被锁定，请先关闭相关终端/编辑器后重试".to_string();
+        }
+        return "该 worktree 存在未提交修改，无法删除。请先提交/清理，或使用“强制删除”".to_string();
+    }
+
+    if lower.contains("locked") && lower.contains("worktree") {
+        return "worktree 已锁定，无法删除。可先执行 git worktree unlock 后重试".to_string();
     }
 
     raw.to_string()
@@ -772,7 +865,10 @@ struct GitCommandResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{add_worktree, is_git_repo, parse_worktree_list_output, resolve_git_executable};
+    use super::{
+        add_worktree, is_git_repo, list_worktrees, parse_worktree_list_output, remove_worktree,
+        resolve_git_executable,
+    };
     use std::fs;
     use std::path::Path;
     use std::process::Command;
@@ -838,6 +934,45 @@ mod tests {
             git(&worktree, &["branch", "--show-current"]).expect("read current branch"),
             "feature/worktree"
         );
+
+        let _ = fs::remove_dir_all(&worktree);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn remove_worktree_removes_directory_and_unregisters() {
+        let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
+        let worktree = root.with_file_name(format!(
+            "{}-wt",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+
+        fs::create_dir_all(&root).expect("create root");
+        git(&root, &["init"]).expect("git init");
+        fs::write(root.join("README.md"), "init\n").expect("write readme");
+        git(&root, &["add", "."]).expect("git add");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "init",
+            ],
+        )
+        .expect("git commit");
+
+        let root_str = root.to_string_lossy().to_string();
+        let worktree_str = worktree.to_string_lossy().to_string();
+        add_worktree(&root_str, Some(&worktree_str), "feature/remove", true).expect("create worktree");
+
+        remove_worktree(&root_str, &worktree_str, false).expect("remove worktree");
+
+        assert!(!worktree.exists());
+        assert!(list_worktrees(&root_str).expect("list worktrees").is_empty());
 
         let _ = fs::remove_dir_all(&worktree);
         let _ = fs::remove_dir_all(&root);

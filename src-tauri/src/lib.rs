@@ -206,6 +206,20 @@ fn git_worktree_list(path: String) -> Result<Vec<GitWorktreeListItem>, String> {
 }
 
 #[tauri::command]
+/// 删除 Git worktree（git worktree remove）。
+fn git_worktree_remove(path: String, worktree_path: String, force: bool) -> Result<(), String> {
+    log_command_result("git_worktree_remove", || {
+        log::info!(
+            "git_worktree_remove path={} worktree_path={} force={}",
+            path,
+            worktree_path,
+            force
+        );
+        git_ops::remove_worktree(&path, &worktree_path, force)
+    })
+}
+
+#[tauri::command]
 /// 在文件管理器中定位路径。
 fn open_in_finder(path: String) -> Result<(), String> {
     log_command_result("open_in_finder", || {
@@ -446,6 +460,7 @@ pub fn run() {
             git_checkout_branch,
             git_worktree_add,
             git_worktree_list,
+            git_worktree_remove,
             open_in_finder,
             open_in_editor,
             set_window_fullscreen_auxiliary,

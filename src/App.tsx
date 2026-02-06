@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { confirm } from "@tauri-apps/plugin-dialog";
 
 import Sidebar from "./components/Sidebar";
 import MainContent from "./components/MainContent";
@@ -31,7 +32,8 @@ import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
 import { deleteTerminalWorkspace } from "./services/terminalWorkspace";
-import { gitWorktreeAdd } from "./services/gitWorktree";
+import { gitWorktreeAdd, gitWorktreeList, gitWorktreeRemove } from "./services/gitWorktree";
+import type { GitWorktreeListItem } from "./services/gitWorktree";
 import { gitIsRepo } from "./services/gitManagement";
 import {
   createQuickCommandRequestId,
@@ -64,6 +66,10 @@ function resolveNameFromPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
   return last || normalized || path;
+}
+
+function normalizePathForCompare(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
 function buildWorktreeVirtualProject(sourceProject: Project, worktree: ProjectWorktree): Project {
@@ -147,6 +153,8 @@ function AppLayout() {
     updateProjectScript,
     removeProjectScript,
     addProjectWorktree,
+    removeProjectWorktree,
+    syncProjectWorktrees,
     refreshProject,
     updateGitDaily,
     updateSettings,
@@ -174,6 +182,9 @@ function AppLayout() {
   const [showTerminalWorkspace, setShowTerminalWorkspace] = useState(false);
   const [terminalOpenProjects, setTerminalOpenProjects] = useState<Project[]>([]);
   const [terminalActiveProjectId, setTerminalActiveProjectId] = useState<string | null>(null);
+  const [terminalGitWorktreesByProjectId, setTerminalGitWorktreesByProjectId] = useState<
+    Record<string, GitWorktreeListItem[]>
+  >({});
   const [worktreeDialogProjectId, setWorktreeDialogProjectId] = useState<string | null>(null);
   const appView = useMemo(() => resolveAppView(), []);
   const isMonitorView = appView === "monitor";
@@ -194,6 +205,9 @@ function AppLayout() {
   const lastTerminalVisibleRef = useRef(showTerminalWorkspace);
   const terminalOpenProjectsRef = useRef<Project[]>(terminalOpenProjects);
   const terminalActiveProjectIdRef = useRef<string | null>(terminalActiveProjectId);
+  const terminalGitWorktreesByProjectIdRef = useRef<Record<string, GitWorktreeListItem[]>>(terminalGitWorktreesByProjectId);
+  const worktreeAutoSyncedProjectIdsRef = useRef<Set<string>>(new Set());
+  const worktreeSyncingProjectIdsRef = useRef<Set<string>>(new Set());
   const toastTimerRef = useRef<number | null>(null);
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
@@ -662,20 +676,54 @@ function AppLayout() {
   );
 
   const handleOpenWorktreeFromProject = useCallback(
-    (projectId: string, worktreePath: string) => {
+    async (projectId: string, worktreePath: string) => {
       const sourceProject = projectMap.get(projectId);
       if (!sourceProject) {
         showToast("项目不存在或已移除", "error");
         return;
       }
-      const worktree = (sourceProject.worktrees ?? []).find((item) => item.path === worktreePath);
+      const normalizedPath = worktreePath.trim();
+      const worktree = (sourceProject.worktrees ?? []).find((item) => item.path === normalizedPath);
       if (!worktree) {
-        showToast("worktree 不存在或已移除", "error");
-        return;
+        // worktree 列表以 Git 为准：当记录未同步时，尝试从缓存/仓库读取并补录。
+        const cached = terminalGitWorktreesByProjectIdRef.current[projectId];
+        const cachedMatch = cached?.find(
+          (item) => normalizePathForCompare(item.path) === normalizePathForCompare(normalizedPath),
+        );
+        try {
+          const gitItems = cached ?? (await gitWorktreeList(sourceProject.path));
+          setTerminalGitWorktreesByProjectId((prev) => ({ ...prev, [projectId]: gitItems }));
+          await syncProjectWorktrees(projectId, gitItems);
+
+          const match =
+            cachedMatch ??
+            gitItems.find((item) => normalizePathForCompare(item.path) === normalizePathForCompare(normalizedPath));
+          if (!match) {
+            showToast("worktree 不存在或已移除", "error");
+            return;
+          }
+
+          openTerminalWorkspace(
+            buildWorktreeVirtualProject(sourceProject, {
+              id: createWorktreeProjectId(match.path),
+              name: resolveNameFromPath(match.path),
+              path: match.path,
+              branch: match.branch,
+              inheritConfig: true,
+              created: jsDateToSwiftDate(new Date()),
+            }),
+          );
+          return;
+        } catch (error) {
+          console.error("打开 worktree 失败。", error);
+          const message = error instanceof Error ? error.message : String(error);
+          showToast(message || "打开 worktree 失败", "error");
+          return;
+        }
       }
       openTerminalWorkspace(buildWorktreeVirtualProject(sourceProject, worktree));
     },
-    [openTerminalWorkspace, projectMap, showToast],
+    [openTerminalWorkspace, projectMap, showToast, syncProjectWorktrees],
   );
 
   const handleCreateWorktree = useCallback(
@@ -708,6 +756,21 @@ function AppLayout() {
         };
 
         await addProjectWorktree(sourceProject.id, nextWorktree);
+        // 若当前已加载 Git worktree 列表，则同步更新缓存，避免列表显示旧数据。
+        setTerminalGitWorktreesByProjectId((prev) => {
+          if (!(sourceProject.id in prev)) {
+            return prev;
+          }
+          const current = prev[sourceProject.id] ?? [];
+          const normalizedTarget = normalizePathForCompare(result.path);
+          if (current.some((item) => normalizePathForCompare(item.path) === normalizedTarget)) {
+            return prev;
+          }
+          const next = [...current, { path: result.path, branch: result.branch }].sort((left, right) =>
+            left.path.localeCompare(right.path),
+          );
+          return { ...prev, [sourceProject.id]: next };
+        });
         setWorktreeDialogProjectId(null);
         showToast(payload.mode === "create" ? "worktree 创建成功" : "已有 worktree 已添加");
 
@@ -773,6 +836,237 @@ function AppLayout() {
       }, 0);
     },
     [showToast],
+  );
+
+  const syncTerminalProjectWorktrees = useCallback(
+    async (projectId: string, options?: { showToast?: boolean }) => {
+      const sourceProject = projectMap.get(projectId);
+      if (!sourceProject) {
+        if (options?.showToast) {
+          showToast("项目不存在或已移除", "error");
+        }
+        return;
+      }
+
+      if (worktreeSyncingProjectIdsRef.current.has(projectId)) {
+        return;
+      }
+      worktreeSyncingProjectIdsRef.current.add(projectId);
+
+      try {
+        let gitItems: GitWorktreeListItem[] | null = null;
+        try {
+          gitItems = await gitWorktreeList(sourceProject.path);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          // 非 Git 项目：同步为空列表，避免保留过期记录。
+          if (message.includes("不是 Git 仓库")) {
+            gitItems = [];
+          } else {
+            if (options?.showToast) {
+              showToast(message || "同步 worktree 失败", "error");
+            }
+            console.error("同步 worktree 失败。", error);
+            return;
+          }
+        }
+
+        setTerminalGitWorktreesByProjectId((prev) => ({ ...prev, [projectId]: gitItems ?? [] }));
+
+        const trackedWorktrees = sourceProject.worktrees ?? [];
+        const trackedByPath = new Map(trackedWorktrees.map((item) => [normalizePathForCompare(item.path), item]));
+
+        const gitPathSet = new Set((gitItems ?? []).map((item) => normalizePathForCompare(item.path)));
+        const trackedPathSet = new Set(trackedWorktrees.map((item) => normalizePathForCompare(item.path)));
+
+        const removedPaths = trackedWorktrees
+          .map((item) => normalizePathForCompare(item.path))
+          .filter((path) => path && !gitPathSet.has(path));
+
+        // 若 worktree 已在 Git 中移除，但仍在终端里打开，先关闭避免“幽灵项目”无法再从列表操作。
+        for (const removedPath of removedPaths) {
+          const opened = terminalOpenProjectsRef.current.find(
+            (item) => isWorktreeProject(item) && normalizePathForCompare(item.path) === removedPath,
+          );
+          if (opened) {
+            handleCloseTerminalProject(opened.id);
+          }
+        }
+
+        const addedCount = Array.from(gitPathSet).filter((path) => !trackedPathSet.has(path)).length;
+        const removedCount = removedPaths.length;
+        const updatedCount = (gitItems ?? []).reduce((count, item) => {
+          const tracked = trackedByPath.get(normalizePathForCompare(item.path));
+          return tracked && tracked.branch !== item.branch ? count + 1 : count;
+        }, 0);
+
+        await syncProjectWorktrees(projectId, gitItems ?? []);
+
+        if (options?.showToast) {
+          if (addedCount === 0 && removedCount === 0 && updatedCount === 0) {
+            showToast("worktree 已是最新", "success");
+          } else {
+            showToast(`已同步 worktree：新增 ${addedCount} · 移除 ${removedCount} · 更新 ${updatedCount}`, "success");
+          }
+        }
+      } finally {
+        worktreeSyncingProjectIdsRef.current.delete(projectId);
+      }
+    },
+    [handleCloseTerminalProject, projectMap, showToast, syncProjectWorktrees],
+  );
+
+  useEffect(() => {
+    if (!showTerminalWorkspace) {
+      return;
+    }
+
+    const rootProjects = terminalOpenProjects.filter((project) => !isWorktreeProject(project));
+    const rootIds = new Set(rootProjects.map((project) => project.id));
+
+    // 清理已关闭项目的缓存。
+    setTerminalGitWorktreesByProjectId((prev) => {
+      const entries = Object.entries(prev);
+      if (entries.length === 0) {
+        return prev;
+      }
+      let changed = false;
+      const next: Record<string, GitWorktreeListItem[]> = {};
+      for (const [key, value] of entries) {
+        if (rootIds.has(key)) {
+          next[key] = value;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    for (const project of rootProjects) {
+      if (worktreeAutoSyncedProjectIdsRef.current.has(project.id)) {
+        continue;
+      }
+      worktreeAutoSyncedProjectIdsRef.current.add(project.id);
+      void syncTerminalProjectWorktrees(project.id).catch(() => {
+        worktreeAutoSyncedProjectIdsRef.current.delete(project.id);
+      });
+    }
+  }, [showTerminalWorkspace, syncTerminalProjectWorktrees, terminalOpenProjects]);
+
+  const handleDeleteWorktreeFromProject = useCallback(
+    async (projectId: string, worktreePath: string) => {
+      const sourceProject = projectMap.get(projectId);
+      if (!sourceProject) {
+        showToast("项目不存在或已移除", "error");
+        return;
+      }
+
+      const normalizedPath = worktreePath.trim();
+      const trackedWorktree = (sourceProject.worktrees ?? []).find((item) => item.path === normalizedPath);
+      const cached = terminalGitWorktreesByProjectIdRef.current[projectId];
+      const cachedMatch = cached?.find(
+        (item) => normalizePathForCompare(item.path) === normalizePathForCompare(normalizedPath),
+      );
+      const worktree = trackedWorktree ?? (cachedMatch ? {
+        id: createWorktreeProjectId(cachedMatch.path),
+        name: resolveNameFromPath(cachedMatch.path),
+        path: cachedMatch.path,
+        branch: cachedMatch.branch,
+        inheritConfig: true,
+        created: jsDateToSwiftDate(new Date()),
+      } : null);
+      if (!worktree) {
+        showToast("worktree 不存在或已移除", "error");
+        return;
+      }
+
+      const confirmed = await confirm(
+        `确定要删除该 worktree 吗？\n\n分支：${worktree.branch}\n路径：${worktree.path}\n\n将执行 git worktree remove 并删除该目录。`,
+        {
+          title: "删除 worktree",
+          kind: "warning",
+          okLabel: "删除",
+          cancelLabel: "取消",
+        },
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      const openedWorktree = terminalOpenProjectsRef.current.find((item) => item.path === worktree.path);
+      if (openedWorktree) {
+        handleCloseTerminalProject(openedWorktree.id);
+        // 给 unmount / PTY 清理一个 tick，避免 Windows 等平台目录占用导致删除失败。
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 150));
+      }
+
+      try {
+        await gitWorktreeRemove({
+          path: sourceProject.path,
+          worktreePath: worktree.path,
+          force: false,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const forceConfirmed = await confirm(
+          `删除失败：${message || "未知错误"}\n\n是否尝试“强制删除”？（可能丢失未提交修改）`,
+          {
+            title: "删除 worktree",
+            kind: "warning",
+            okLabel: "强制删除",
+            cancelLabel: "取消",
+          },
+        );
+        if (!forceConfirmed) {
+          const removeOnly = await confirm(
+            "是否仅从 DevHaven 列表中移除该 worktree 记录？（不会执行 Git 删除）",
+            {
+              title: "移除 worktree 记录",
+              kind: "warning",
+              okLabel: "移除记录",
+              cancelLabel: "取消",
+            },
+          );
+          if (removeOnly) {
+            await removeProjectWorktree(sourceProject.id, worktree.path);
+            await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
+            showToast("worktree 记录已移除", "success");
+          }
+          return;
+        }
+        try {
+          await gitWorktreeRemove({
+            path: sourceProject.path,
+            worktreePath: worktree.path,
+            force: true,
+          });
+        } catch (forceError) {
+          const forceMessage = forceError instanceof Error ? forceError.message : String(forceError);
+          showToast(forceMessage || "强制删除 worktree 失败", "error");
+          const removeOnly = await confirm(
+            "是否仅从 DevHaven 列表中移除该 worktree 记录？（不会执行 Git 删除）",
+            {
+              title: "移除 worktree 记录",
+              kind: "warning",
+              okLabel: "移除记录",
+              cancelLabel: "取消",
+            },
+          );
+          if (removeOnly) {
+            await removeProjectWorktree(sourceProject.id, worktree.path);
+            await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
+            showToast("worktree 记录已移除", "success");
+          }
+          return;
+        }
+      }
+
+      await removeProjectWorktree(sourceProject.id, worktree.path);
+      await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
+      showToast("worktree 已删除", "success");
+      void syncTerminalProjectWorktrees(projectId).catch(() => undefined);
+    },
+    [handleCloseTerminalProject, projectMap, removeProjectWorktree, showToast, syncTerminalProjectWorktrees],
   );
 
   const handleOpenCodexSession = useCallback(
@@ -919,12 +1213,26 @@ function AppLayout() {
   }, [showTerminalWorkspace]);
 
   useEffect(() => {
+    if (showTerminalWorkspace) {
+      return;
+    }
+    // 终端隐藏后清空 Git worktree 缓存与同步标记，避免下次打开显示旧数据。
+    worktreeAutoSyncedProjectIdsRef.current = new Set();
+    worktreeSyncingProjectIdsRef.current = new Set();
+    setTerminalGitWorktreesByProjectId({});
+  }, [showTerminalWorkspace]);
+
+  useEffect(() => {
     terminalOpenProjectsRef.current = terminalOpenProjects;
   }, [terminalOpenProjects]);
 
   useEffect(() => {
     terminalActiveProjectIdRef.current = terminalActiveProjectId;
   }, [terminalActiveProjectId]);
+
+  useEffect(() => {
+    terminalGitWorktreesByProjectIdRef.current = terminalGitWorktreesByProjectId;
+  }, [terminalGitWorktreesByProjectId]);
 
   if (isMonitorView) {
     return (
@@ -1089,11 +1397,14 @@ function AppLayout() {
               onSelectProject={setTerminalActiveProjectId}
               onCloseProject={handleCloseTerminalProject}
               onCreateWorktree={(projectId) => void handleRequestCreateWorktree(projectId)}
-              onOpenWorktree={handleOpenWorktreeFromProject}
+              onOpenWorktree={(projectId, worktreePath) => void handleOpenWorktreeFromProject(projectId, worktreePath)}
+              onDeleteWorktree={(projectId, worktreePath) => void handleDeleteWorktreeFromProject(projectId, worktreePath)}
+              onRefreshWorktrees={(projectId) => void syncTerminalProjectWorktrees(projectId, { showToast: true })}
               onExit={() => setShowTerminalWorkspace(false)}
               windowLabel={MAIN_WINDOW_LABEL}
               isVisible={showTerminalWorkspace}
               codexProjectStatusById={codexProjectStatusById}
+              gitWorktreesByProjectId={terminalGitWorktreesByProjectId}
             />
           </Suspense>
         </div>
