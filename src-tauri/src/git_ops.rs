@@ -177,11 +177,7 @@ pub fn add_worktree(
         return Err("分支名不能为空".to_string());
     }
 
-    let target_path = target_path
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or(resolve_default_worktree_path(base_path, branch)?);
+    let target_path = resolve_worktree_target_path(base_path, branch, target_path)?;
 
     let target = Path::new(&target_path);
     if target.exists() {
@@ -218,6 +214,23 @@ pub fn add_worktree(
     }
 
     Err(normalize_worktree_add_error(&result.output, create_branch))
+}
+
+pub fn resolve_worktree_target_path(
+    base_path: &str,
+    branch: &str,
+    target_path: Option<&str>,
+) -> Result<String, String> {
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Err("分支名不能为空".to_string());
+    }
+
+    Ok(target_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or(resolve_default_worktree_path(base_path, branch)?))
 }
 
 /// 列出仓库下已有 worktree（不包含主仓库目录）。
@@ -511,7 +524,8 @@ fn normalize_worktree_remove_error(raw: &str, force: bool) -> String {
         || (lower.contains("dirty") && lower.contains("worktree"))
     {
         if force {
-            return "强制删除失败：worktree 可能被进程占用或被锁定，请先关闭相关终端/编辑器后重试".to_string();
+            return "强制删除失败：worktree 可能被进程占用或被锁定，请先关闭相关终端/编辑器后重试"
+                .to_string();
         }
         return "该 worktree 存在未提交修改，无法删除。请先提交/清理，或使用“强制删除”".to_string();
     }
@@ -967,12 +981,17 @@ mod tests {
 
         let root_str = root.to_string_lossy().to_string();
         let worktree_str = worktree.to_string_lossy().to_string();
-        add_worktree(&root_str, Some(&worktree_str), "feature/remove", true).expect("create worktree");
+        add_worktree(&root_str, Some(&worktree_str), "feature/remove", true)
+            .expect("create worktree");
 
         remove_worktree(&root_str, &worktree_str, false).expect("remove worktree");
 
         assert!(!worktree.exists());
-        assert!(list_worktrees(&root_str).expect("list worktrees").is_empty());
+        assert!(
+            list_worktrees(&root_str)
+                .expect("list worktrees")
+                .is_empty()
+        );
 
         let _ = fs::remove_dir_all(&worktree);
         let _ = fs::remove_dir_all(&root);

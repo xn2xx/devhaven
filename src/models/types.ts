@@ -32,6 +32,20 @@ export type ProjectWorktree = {
   branch: string;
   inheritConfig: boolean;
   created: SwiftDate;
+  status?: "creating" | "ready" | "failed";
+  initStep?:
+    | "pending"
+    | "validating"
+    | "checking_branch"
+    | "creating_worktree"
+    | "syncing"
+    | "ready"
+    | "failed"
+    | "cancelled";
+  initMessage?: string;
+  initError?: string | null;
+  initJobId?: string | null;
+  updatedAt?: SwiftDate;
 };
 
 export type GitIdentity = {

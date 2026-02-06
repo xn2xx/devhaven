@@ -21,6 +21,7 @@ export type TerminalWorkspaceWindowProps = {
   onCreateWorktree: (projectId: string) => void;
   onOpenWorktree: (projectId: string, worktreePath: string) => void;
   onDeleteWorktree: (projectId: string, worktreePath: string) => void;
+  onRetryWorktree: (projectId: string, worktreePath: string) => void;
   onRefreshWorktrees: (projectId: string) => void;
   onExit?: () => void;
   windowLabel: string;
@@ -37,6 +38,7 @@ export default function TerminalWorkspaceWindow({
   onCreateWorktree,
   onOpenWorktree,
   onDeleteWorktree,
+  onRetryWorktree,
   onRefreshWorktrees,
   onExit,
   windowLabel,
@@ -94,6 +96,10 @@ export default function TerminalWorkspaceWindow({
     };
   }, [trackedWorktreesByProjectId]);
 
+  const normalizeWorktreePath = useMemo(() => {
+    return (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "");
+  }, []);
+
   useEffect(() => {
     // 仅在终端可见时更新窗口标题；隐藏时恢复默认标题，避免主界面停留在“xx - 终端”。
     if (!isVisible) {
@@ -140,17 +146,59 @@ export default function TerminalWorkspaceWindow({
             const trackedWorktrees = project.worktrees ?? [];
             const gitWorktrees = gitWorktreesByProjectId[project.id];
 
-            const worktreesToRender = (gitWorktrees !== undefined
-              ? gitWorktrees.map((item) => ({
-                  path: item.path,
-                  branch: item.branch,
-                  name: resolveWorktreeName(project.id, item.path),
-                }))
-              : trackedWorktrees.map((item) => ({
-                  path: item.path,
-                  branch: item.branch,
-                  name: item.name,
-                }))) as Array<{ path: string; branch: string; name: string }>;
+            const trackedByPath = new Map(
+              trackedWorktrees.map((item) => [normalizeWorktreePath(item.path), item]),
+            );
+            const worktreesToRender = (
+              gitWorktrees !== undefined
+                ? (() => {
+                    const merged = gitWorktrees.map((item) => {
+                      const tracked = trackedByPath.get(normalizeWorktreePath(item.path));
+                      return {
+                        path: item.path,
+                        branch: item.branch,
+                        name: resolveWorktreeName(project.id, item.path),
+                        status: tracked?.status,
+                        initError: tracked?.initError,
+                      };
+                    });
+
+                    for (const tracked of trackedWorktrees) {
+                      const normalized = normalizeWorktreePath(tracked.path);
+                      const existed = merged.some(
+                        (item) => normalizeWorktreePath(item.path) === normalized,
+                      );
+                      if (existed) {
+                        continue;
+                      }
+                      if (tracked.status !== "creating" && tracked.status !== "failed") {
+                        continue;
+                      }
+                      merged.push({
+                        path: tracked.path,
+                        branch: tracked.branch,
+                        name: tracked.name,
+                        status: tracked.status,
+                        initError: tracked.initError,
+                      });
+                    }
+
+                    return merged.sort((left, right) => left.path.localeCompare(right.path));
+                  })()
+                : trackedWorktrees.map((item) => ({
+                    path: item.path,
+                    branch: item.branch,
+                    name: item.name,
+                    status: item.status,
+                    initError: item.initError,
+                  }))
+            ) as Array<{
+              path: string;
+              branch: string;
+              name: string;
+              status?: "creating" | "ready" | "failed";
+              initError?: string | null;
+            }>;
 
             const hasWorktrees = worktreesToRender.length > 0;
             return (
@@ -220,6 +268,9 @@ export default function TerminalWorkspaceWindow({
                     {worktreesToRender.map((worktree) => {
                       const openedProject = openProjectsByPath.get(worktree.path);
                       const isWorktreeActive = activeProject?.path === worktree.path;
+                      const isCreating = worktree.status === "creating";
+                      const isFailed = worktree.status === "failed";
+                      const canOpen = !isCreating && !isFailed;
                       return (
                         <div
                           key={worktree.path}
@@ -231,8 +282,14 @@ export default function TerminalWorkspaceWindow({
                           title={worktree.path}
                         >
                           <button
-                            className="min-w-0 flex-1 truncate text-left"
+                            className={`min-w-0 flex-1 truncate text-left ${
+                              canOpen ? "" : "opacity-60 cursor-not-allowed"
+                            }`}
+                            disabled={!canOpen}
                             onClick={() => {
+                              if (!canOpen) {
+                                return;
+                              }
                               if (openedProject) {
                                 onSelectProject(openedProject.id);
                                 return;
@@ -245,6 +302,30 @@ export default function TerminalWorkspaceWindow({
                           <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
                             {worktree.branch}
                           </span>
+                          {isCreating ? (
+                            <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
+                              创建中
+                            </span>
+                          ) : null}
+                          {isFailed ? (
+                            <span className="shrink-0 rounded border border-[rgba(239,68,68,0.35)] px-1.5 py-0.5 text-[10px] text-[rgba(239,68,68,0.9)]">
+                              失败
+                            </span>
+                          ) : null}
+                          {isFailed ? (
+                            <button
+                              className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onRetryWorktree(project.id, worktree.path);
+                              }}
+                              title={worktree.initError || "重试创建"}
+                              type="button"
+                            >
+                              重试
+                            </button>
+                          ) : null}
                           <button
                             className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[rgba(239,68,68,0.35)] hover:bg-[rgba(239,68,68,0.15)] hover:text-[rgba(239,68,68,0.9)] group-hover:opacity-100"
                             onClick={(event) => {
@@ -252,23 +333,31 @@ export default function TerminalWorkspaceWindow({
                               event.stopPropagation();
                               onDeleteWorktree(project.id, worktree.path);
                             }}
-                            title="删除 worktree"
+                            title={isCreating ? "取消创建" : "删除 worktree"}
                             type="button"
                           >
-                            删除
+                            {isCreating ? "取消" : "删除"}
                           </button>
                           <button
-                            className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                            className={`inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100 ${
+                              canOpen ? "" : "cursor-not-allowed opacity-30"
+                            }`}
+                            disabled={!canOpen}
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
+                              if (!canOpen) {
+                                return;
+                              }
                               if (openedProject) {
                                 onCloseProject(openedProject.id);
                                 return;
                               }
                               onOpenWorktree(project.id, worktree.path);
                             }}
-                            title={openedProject ? "关闭 worktree" : "打开 worktree"}
+                            title={
+                              !canOpen ? "worktree 尚未就绪" : openedProject ? "关闭 worktree" : "打开 worktree"
+                            }
                             type="button"
                           >
                             {openedProject ? "关闭" : "打开"}

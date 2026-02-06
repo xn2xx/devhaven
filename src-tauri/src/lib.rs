@@ -10,17 +10,20 @@ mod storage;
 mod system;
 mod terminal;
 mod time_utils;
+mod worktree_init;
 
 use std::time::Instant;
 use tauri::AppHandle;
 use tauri::Manager;
+use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
     AppStateFile, BranchListItem, CodexSessionSummary, FsListResponse, FsReadResponse,
     FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
     GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, MarkdownFileEntry, Project,
-    TerminalWorkspace,
+    TerminalWorkspace, WorktreeInitCancelResult, WorktreeInitJobStatus, WorktreeInitRetryRequest,
+    WorktreeInitStartRequest, WorktreeInitStartResult, WorktreeInitStatusQuery,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
@@ -216,6 +219,65 @@ fn git_worktree_remove(path: String, worktree_path: String, force: bool) -> Resu
             force
         );
         git_ops::remove_worktree(&path, &worktree_path, force)
+    })
+}
+
+#[tauri::command]
+/// 启动后台 worktree 初始化任务（快速返回 jobId）。
+fn worktree_init_start(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    request: WorktreeInitStartRequest,
+) -> Result<WorktreeInitStartResult, String> {
+    log_command_result("worktree_init_start", || {
+        log::info!(
+            "worktree_init_start project_id={} path={} branch={} create_branch={}",
+            request.project_id,
+            request.project_path,
+            request.branch,
+            request.create_branch
+        );
+        state.start(&app, request)
+    })
+}
+
+#[tauri::command]
+/// 请求取消后台 worktree 初始化任务。
+fn worktree_init_cancel(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    job_id: String,
+) -> Result<WorktreeInitCancelResult, String> {
+    log_command_result("worktree_init_cancel", || {
+        log::info!("worktree_init_cancel job_id={}", job_id);
+        state.cancel(&app, &job_id)
+    })
+}
+
+#[tauri::command]
+/// 重试失败/取消的 worktree 初始化任务。
+fn worktree_init_retry(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    request: WorktreeInitRetryRequest,
+) -> Result<WorktreeInitStartResult, String> {
+    log_command_result("worktree_init_retry", || {
+        log::info!("worktree_init_retry job_id={}", request.job_id);
+        state.retry(&app, request)
+    })
+}
+
+#[tauri::command]
+/// 查询 worktree 初始化任务状态。
+fn worktree_init_status(
+    state: State<worktree_init::WorktreeInitState>,
+    query: Option<WorktreeInitStatusQuery>,
+) -> Result<Vec<WorktreeInitJobStatus>, String> {
+    log_command_result("worktree_init_status", || {
+        state.query_status(query.unwrap_or(WorktreeInitStatusQuery {
+            project_id: None,
+            project_path: None,
+        }))
     })
 }
 
@@ -427,6 +489,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(TerminalState::default())
+        .manage(worktree_init::WorktreeInitState::default())
         .setup(|app| {
             log::info!(
                 "app start name={} version={}",
@@ -461,6 +524,10 @@ pub fn run() {
             git_worktree_add,
             git_worktree_list,
             git_worktree_remove,
+            worktree_init_start,
+            worktree_init_cancel,
+            worktree_init_retry,
+            worktree_init_status,
             open_in_finder,
             open_in_editor,
             set_window_fullscreen_auxiliary,

@@ -343,6 +343,12 @@ export function useDevHaven(): DevHavenStore {
         branch: normalizedBranch,
         inheritConfig: worktree.inheritConfig,
         created: Number.isFinite(worktree.created) ? worktree.created : jsDateToSwiftDate(new Date()),
+        status: worktree.status,
+        initStep: worktree.initStep,
+        initMessage: worktree.initMessage,
+        initError: worktree.initError,
+        initJobId: worktree.initJobId,
+        updatedAt: worktree.updatedAt,
       };
 
       const nextProjects = projects.map((project) => {
@@ -434,6 +440,12 @@ export function useDevHaven(): DevHavenStore {
             branch: item.branch,
             inheritConfig,
             created,
+            status: existing?.status,
+            initStep: existing?.initStep,
+            initMessage: existing?.initMessage,
+            initError: existing?.initError,
+            initJobId: existing?.initJobId,
+            updatedAt: existing?.updatedAt,
           };
         });
 
@@ -449,7 +461,13 @@ export function useDevHaven(): DevHavenStore {
               prev?.path !== next.path ||
               prev?.branch !== next.branch ||
               prev?.inheritConfig !== next.inheritConfig ||
-              prev?.created !== next.created
+              prev?.created !== next.created ||
+              prev?.status !== next.status ||
+              prev?.initStep !== next.initStep ||
+              prev?.initMessage !== next.initMessage ||
+              prev?.initError !== next.initError ||
+              prev?.initJobId !== next.initJobId ||
+              prev?.updatedAt !== next.updatedAt
             ) {
               changed = true;
               break;

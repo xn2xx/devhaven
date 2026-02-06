@@ -152,6 +152,18 @@ pub struct ProjectWorktree {
     #[serde(default)]
     pub inherit_config: bool,
     pub created: SwiftDate,
+    #[serde(default)]
+    pub status: Option<WorktreeInitVisualStatus>,
+    #[serde(default)]
+    pub init_step: Option<WorktreeInitStep>,
+    #[serde(default)]
+    pub init_message: Option<String>,
+    #[serde(default)]
+    pub init_error: Option<String>,
+    #[serde(default)]
+    pub init_job_id: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<SwiftDate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -306,6 +318,104 @@ pub struct GitWorktreeAddResult {
 pub struct GitWorktreeListItem {
     pub path: String,
     pub branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeInitVisualStatus {
+    Creating,
+    Ready,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorktreeInitStep {
+    Pending,
+    Validating,
+    CheckingBranch,
+    CreatingWorktree,
+    Syncing,
+    Ready,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitStartRequest {
+    pub project_id: String,
+    pub project_path: String,
+    pub branch: String,
+    pub create_branch: bool,
+    #[serde(default)]
+    pub target_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitStartResult {
+    pub job_id: String,
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_path: String,
+    pub branch: String,
+    pub step: WorktreeInitStep,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitProgressPayload {
+    pub job_id: String,
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_path: String,
+    pub branch: String,
+    pub step: WorktreeInitStep,
+    pub message: String,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitCancelResult {
+    pub job_id: String,
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitRetryRequest {
+    pub job_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitStatusQuery {
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub project_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitJobStatus {
+    pub job_id: String,
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_path: String,
+    pub branch: String,
+    pub create_branch: bool,
+    pub step: WorktreeInitStep,
+    pub message: String,
+    #[serde(default)]
+    pub error: Option<String>,
+    pub updated_at: i64,
+    pub is_running: bool,
+    pub cancel_requested: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
