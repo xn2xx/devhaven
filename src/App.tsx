@@ -157,7 +157,7 @@ function AppLayout() {
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
   const gitIdentitySignatureRef = useRef<string | null>(null);
-  const codexSessionSnapshotRef = useRef<Map<string, CodexSessionView>>(new Map());
+  const codexProjectSnapshotRef = useRef<Set<string>>(new Set());
   const codexSessionSnapshotReadyRef = useRef(false);
   const recycleBinPaths = appState.recycleBin ?? [];
   const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
@@ -695,30 +695,14 @@ function AppLayout() {
     if (isMonitorView || codexSessionStore.isLoading) {
       return;
     }
-    const previousSessions = codexSessionSnapshotRef.current;
-    const nextSessions = new Map(codexSessionViews.map((session) => [session.id, session]));
+    const previousProjectIds = codexProjectSnapshotRef.current;
+    const nextProjectIds = new Set(Object.keys(codexProjectStatusById));
     if (codexSessionSnapshotReadyRef.current) {
-      for (const [sessionId, previousSession] of previousSessions) {
-        if (nextSessions.has(sessionId)) {
+      for (const projectId of previousProjectIds) {
+        if (nextProjectIds.has(projectId)) {
           continue;
         }
-        const lastEventType = previousSession.lastEventType;
-        const isAgentCompleted =
-          lastEventType === "agent" ||
-          (!lastEventType &&
-            previousSession.messageCounts.agent > 0 &&
-            previousSession.messageCounts.agent >= previousSession.messageCounts.user &&
-            Boolean(previousSession.lastAgentMessage));
-        if (!isAgentCompleted) {
-          continue;
-        }
-        const project = resolveProjectFromPayload({
-          sessionId: previousSession.id,
-          projectId: previousSession.projectId,
-          projectPath: previousSession.projectPath,
-          projectName: previousSession.projectName,
-          cwd: previousSession.cwd,
-        });
+        const project = projectMap.get(projectId) ?? null;
         if (!project) {
           showToast("Codex 已完成，但未匹配到项目", "error");
           continue;
@@ -727,13 +711,13 @@ function AppLayout() {
         void sendSystemNotification("Codex 已完成", project.name);
       }
     }
-    codexSessionSnapshotRef.current = nextSessions;
+    codexProjectSnapshotRef.current = nextProjectIds;
     codexSessionSnapshotReadyRef.current = true;
   }, [
     codexSessionStore.isLoading,
-    codexSessionViews,
+    codexProjectStatusById,
     isMonitorView,
-    resolveProjectFromPayload,
+    projectMap,
     showToast,
   ]);
 

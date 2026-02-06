@@ -25,7 +25,8 @@ export default function CodexSessionSection({
   headerRightSlot,
   variant = "sidebar",
 }: CodexSessionSectionProps) {
-  const headerStatus = isLoading ? "同步中..." : sessions.length > 0 ? `${sessions.length} 个` : "暂无";
+  const grouped = groupSessionsByProject(sessions);
+  const headerStatus = isLoading ? "同步中..." : grouped.length > 0 ? `${grouped.length} 个` : "暂无";
   const shouldShowHeader = showHeader;
   const resolvedEmptyText = emptyText;
   const isMonitor = variant === "monitor";
@@ -58,13 +59,18 @@ export default function CodexSessionSection({
         ) : null
       ) : (
         <div className={listClassName}>
-          {sessions.map((session) => {
-            const preview = buildPreview(session.lastAgentMessage ?? session.lastUserMessage ?? "");
+          {grouped.map((group) => {
+            const session = group.session;
             const projectName = session.projectName ?? "未匹配项目";
+            const statusText = session.isRunning
+              ? group.runningCount > 1
+                ? `运行中 (${group.runningCount})`
+                : "运行中"
+              : "空闲";
             const disabled = !session.projectId;
             return (
               <button
-                key={session.id}
+                key={group.key}
                 className={rowClassName}
                 type="button"
                 onClick={() => onOpenSession(session)}
@@ -85,18 +91,15 @@ export default function CodexSessionSection({
                         session.isRunning ? "text-success" : "text-sidebar-secondary"
                       }`}
                     >
-                      {session.isRunning ? "运行中" : "空闲"}
+                      {statusText}
                     </span>
                   </div>
                   <div className="truncate text-[11px] text-sidebar-secondary" title={session.cwd}>
                     {session.cwd || "未知路径"}
                   </div>
-                  <div className="truncate text-[11px] text-secondary-text">
-                    {preview.length > 0 ? preview : "暂无消息"}
-                  </div>
                 </div>
                 <div className="mt-0.5 whitespace-nowrap text-[11px] text-sidebar-secondary">
-                  {formatTime(session.lastActivityAt)}
+                  {formatTime(group.lastActivityAt)}
                 </div>
               </button>
             );
@@ -107,14 +110,37 @@ export default function CodexSessionSection({
   );
 }
 
-const PREVIEW_MAX = 80;
+type CodexSessionGroup = {
+  key: string;
+  session: CodexSessionView;
+  runningCount: number;
+  lastActivityAt: number;
+};
 
-function buildPreview(value: string) {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  if (normalized.length <= PREVIEW_MAX) {
-    return normalized;
+function groupSessionsByProject(sessions: CodexSessionView[]): CodexSessionGroup[] {
+  const map = new Map<string, CodexSessionGroup>();
+
+  for (const session of sessions) {
+    const key = session.projectId ?? session.cwd ?? session.id;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, {
+        key,
+        session,
+        runningCount: 1,
+        lastActivityAt: session.lastActivityAt ?? 0,
+      });
+      continue;
+    }
+    existing.runningCount += 1;
+    const activity = session.lastActivityAt ?? 0;
+    if (activity > existing.lastActivityAt) {
+      existing.lastActivityAt = activity;
+      existing.session = session;
+    }
   }
-  return `${normalized.slice(0, PREVIEW_MAX)}...`;
+
+  return Array.from(map.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 }
 
 function formatTime(timestamp: number) {

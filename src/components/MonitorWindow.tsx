@@ -301,6 +301,7 @@ export default function MonitorWindow({
   };
 
   const badgeStatus = isLoading ? "同步" : `${sessions.length}`;
+  const dedupedCount = countUniqueProjects(sessions);
 
   return (
     <div
@@ -361,7 +362,7 @@ export default function MonitorWindow({
                 : "bg-[rgba(255,255,255,0.12)] border-[rgba(255,255,255,0.18)]"
           }`}
         >
-          {badgeStatus}
+          {isLoading ? badgeStatus : `${dedupedCount}`}
         </span>
       </button>
       <div
@@ -372,4 +373,12 @@ export default function MonitorWindow({
       />
     </div>
   );
+}
+
+function countUniqueProjects(sessions: CodexSessionView[]) {
+  const keys = new Set<string>();
+  for (const session of sessions) {
+    keys.add(session.projectId ?? session.cwd ?? session.id);
+  }
+  return keys.size;
 }

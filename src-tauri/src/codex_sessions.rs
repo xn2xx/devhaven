@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     mpsc::{self, Receiver},
@@ -14,16 +15,21 @@ use chrono::{Datelike, Local, Utc};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
+use sysinfo::System;
 
-use crate::models::{CodexLastEventType, CodexMessageCounts, CodexSessionSummary};
+use crate::models::CodexSessionSummary;
 
 const CODEX_SESSIONS_DIR: &str = ".codex/sessions";
-const MAX_TAIL_LINES: usize = 200;
+const MAX_TAIL_LINES: usize = 2000;
 const MAX_TAIL_BYTES: u64 = 256 * 1024;
+const MAX_TAIL_BYTES_CAP: u64 = 8 * 1024 * 1024;
+const MAX_JSON_LINE_BYTES: usize = 2 * 1024 * 1024;
 const ACTIVE_WINDOW_MS: i64 = 10_000;
 const RECENT_FILE_WINDOW_MS: i64 = 5 * 60_000;
 const WATCH_DEBOUNCE_MS: u64 = 350;
 const CODEX_SESSIONS_EVENT: &str = "codex-sessions-update";
+const CANDIDATE_DAYS: usize = 2;
+const FALLBACK_STALE_RUNNING_MS: i64 = 2 * 60 * 60_000;
 
 type SessionCache = HashMap<PathBuf, CachedSession>;
 
@@ -72,10 +78,12 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
             .ok()
             .and_then(system_time_to_millis)
             .unwrap_or(0);
-        if modified > 0 && modified < recent_threshold {
+        let size = metadata.len();
+        let is_cached = cache.contains_key(&path);
+        let is_old = modified > 0 && modified < recent_threshold;
+        if is_old && is_cached {
             continue;
         }
-        let size = metadata.len();
         let should_refresh = match cache.get(&path) {
             Some(cached) => cached.modified != modified || cached.size != size,
             None => true,
@@ -100,12 +108,31 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
     }
 
     cache.retain(|path, _| seen.contains(path));
-    for cached in cache.values() {
-        let mut summary = cached.summary.clone();
-        summary.is_running =
-            summary.last_activity_at > 0 && now_ms.saturating_sub(summary.last_activity_at) <= ACTIVE_WINDOW_MS;
-        if summary.is_running {
-            sessions.push(summary);
+    let mut any_codex_process: Option<bool> = None;
+    for (path, cached) in cache.iter_mut() {
+        if !cached.summary.is_running {
+            continue;
+        }
+        let is_live = match codex_rollout_file_open_by_codex(path) {
+            Some(live) => live,
+            None => {
+                let any = *any_codex_process.get_or_insert_with(any_codex_process_running);
+                if !any {
+                    false
+                } else if cached.summary.last_activity_at > 0
+                    && now_ms.saturating_sub(cached.summary.last_activity_at) > FALLBACK_STALE_RUNNING_MS
+                {
+                    false
+                } else {
+                    true
+                }
+            }
+        };
+        if is_live {
+            sessions.push(cached.summary.clone());
+        } else {
+            // 文件不再被 Codex 进程占用，认为该 turn 已结束（包括进程被杀的情况）。
+            cached.summary.is_running = false;
         }
     }
 
@@ -226,14 +253,14 @@ fn collect_rollout_files(base_dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn collect_candidate_dirs(base_dir: &Path) -> Vec<PathBuf> {
-    let today = Local::now().date_naive();
-    let yesterday = today.pred_opt().unwrap_or(today);
     let mut dirs = Vec::new();
-    for date in [today, yesterday] {
+    let mut date = Local::now().date_naive();
+    for _ in 0..CANDIDATE_DAYS {
         let dir = build_date_dir(base_dir, date);
         if dir.exists() && dir.is_dir() {
             dirs.push(dir);
         }
+        date = date.pred_opt().unwrap_or(date);
     }
     dirs
 }
@@ -288,19 +315,18 @@ fn is_rollout_file(path: &Path) -> bool {
 
 fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
     let meta = read_session_meta(path)?;
-    let tail_lines = read_tail_lines(path, MAX_TAIL_LINES, MAX_TAIL_BYTES)?;
+    let tail_lines = read_tail_lines_resilient(path, MAX_TAIL_LINES, MAX_TAIL_BYTES, MAX_TAIL_BYTES_CAP)?;
 
     let mut last_activity_at = meta.started_at;
-    let mut last_user_message: Option<String> = None;
-    let mut last_agent_message: Option<String> = None;
     let mut last_user_ts: i64 = 0;
     let mut last_agent_ts: i64 = 0;
-    let mut last_event_at: i64 = 0;
-    let mut last_event_type: Option<CodexLastEventType> = None;
-    let mut counts = CodexMessageCounts { user: 0, agent: 0 };
+    let mut last_abort_ts: i64 = 0;
 
     for line in tail_lines {
         if line.trim().is_empty() {
+            continue;
+        }
+        if line.len() > MAX_JSON_LINE_BYTES {
             continue;
         }
         let value: Value = match serde_json::from_str(&line) {
@@ -314,40 +340,56 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
         if timestamp > last_activity_at {
             last_activity_at = timestamp;
         }
-        if value.get("type").and_then(|item| item.as_str()) != Some("event_msg") {
-            continue;
-        }
+
+        let typ = value.get("type").and_then(|item| item.as_str());
         let payload = value.get("payload");
-        let event_type = payload.and_then(|item| item.get("type")).and_then(|item| item.as_str());
-        let message = payload
-            .and_then(|item| item.get("message"))
-            .and_then(|item| item.as_str())
-            .map(|text| text.to_string());
-        match event_type {
-            Some("user_message") => {
-                counts.user += 1;
-                if let Some(text) = message {
-                    if timestamp >= last_user_ts {
-                        last_user_ts = timestamp;
-                        last_user_message = Some(text);
+        match typ {
+            Some("event_msg") => {
+                let event_type = payload
+                    .and_then(|item| item.get("type"))
+                    .and_then(|item| item.as_str());
+                match event_type {
+                    Some("user_message") => {
+                        if timestamp > last_user_ts {
+                            last_user_ts = timestamp;
+                        }
                     }
-                }
-                if timestamp >= last_event_at {
-                    last_event_at = timestamp;
-                    last_event_type = Some(CodexLastEventType::User);
+                    Some("agent_message") => {
+                        if timestamp > last_agent_ts {
+                            last_agent_ts = timestamp;
+                        }
+                    }
+                    Some("turn_aborted") => {
+                        if timestamp > last_abort_ts {
+                            last_abort_ts = timestamp;
+                        }
+                    }
+                    _ => {}
                 }
             }
-            Some("agent_message") => {
-                counts.agent += 1;
-                if let Some(text) = message {
-                    if timestamp >= last_agent_ts {
-                        last_agent_ts = timestamp;
-                        last_agent_message = Some(text);
-                    }
+            Some("response_item") => {
+                // 兜底：部分情况下 event_msg 可能被裁剪/解析失败，使用 response_item 估算 turn 状态。
+                let item_type = payload
+                    .and_then(|item| item.get("type"))
+                    .and_then(|item| item.as_str());
+                if item_type != Some("message") {
+                    continue;
                 }
-                if timestamp >= last_event_at {
-                    last_event_at = timestamp;
-                    last_event_type = Some(CodexLastEventType::Agent);
+                let role = payload
+                    .and_then(|item| item.get("role"))
+                    .and_then(|item| item.as_str());
+                match role {
+                    Some("user") => {
+                        if timestamp > last_user_ts {
+                            last_user_ts = timestamp;
+                        }
+                    }
+                    Some("assistant") => {
+                        if timestamp > last_agent_ts {
+                            last_agent_ts = timestamp;
+                        }
+                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -361,7 +403,17 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
     }
 
     let now_ms = Utc::now().timestamp_millis();
-    let is_running = last_activity_at > 0 && now_ms.saturating_sub(last_activity_at) <= ACTIVE_WINDOW_MS;
+    // “运行中”的更稳判断：最近一次 user turn 是否还没被 assistant turn 响应/中止。
+    // 这样能避免长时间无输出（例如执行长命令）被误判为完成。
+    let pending_turn = last_user_ts > 0
+        && last_user_ts > last_agent_ts
+        && last_user_ts > last_abort_ts;
+    let is_running = if last_user_ts > 0 {
+        pending_turn
+    } else {
+        // 没找到 user/assistant 消息时保留短窗口兜底（例如刚创建会话但还没写入消息）。
+        last_activity_at > 0 && now_ms.saturating_sub(last_activity_at) <= ACTIVE_WINDOW_MS
+    };
 
     Ok(CodexSessionSummary {
         id: meta.id,
@@ -370,10 +422,6 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
         started_at: meta.started_at,
         last_activity_at,
         is_running,
-        last_user_message,
-        last_agent_message,
-        message_counts: counts,
-        last_event_type,
     })
 }
 
@@ -439,14 +487,19 @@ fn read_tail_lines(path: &Path, max_lines: usize, max_bytes: u64) -> Result<Vec<
         .map_err(|err| format!("读取文件元信息失败: {err}"))?
         .len();
     let start = if size > max_bytes { size - max_bytes } else { 0 };
-    file.seek(SeekFrom::Start(start))
+    // 读取 start 前一个字节，用来判断是否处在行中间，避免误删完整首行。
+    let read_start = if start > 0 { start.saturating_sub(1) } else { 0 };
+    file.seek(SeekFrom::Start(read_start))
         .map_err(|err| format!("定位会话文件失败: {err}"))?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)
         .map_err(|err| format!("读取会话文件失败: {err}"))?;
     let text = String::from_utf8_lossy(&buffer);
     let mut lines: Vec<&str> = text.split('\n').collect();
-    if start > 0 && !lines.is_empty() {
+    if read_start > 0 && !lines.is_empty() {
+        // 无论 read_start 的字节是否为 '\n'，这里移除 split 的第一段都正确：
+        // - 若 read_start 命中 '\n'，第一段为空字符串；
+        // - 若 read_start 命中上一行末尾，则第一段是残缺行。
         lines.remove(0);
     }
     let mut trimmed: Vec<String> = lines
@@ -458,6 +511,31 @@ fn read_tail_lines(path: &Path, max_lines: usize, max_bytes: u64) -> Result<Vec<
         trimmed = trimmed.split_off(trimmed.len() - max_lines);
     }
     Ok(trimmed)
+}
+
+fn read_tail_lines_resilient(
+    path: &Path,
+    max_lines: usize,
+    initial_bytes: u64,
+    max_bytes_cap: u64,
+) -> Result<Vec<String>, String> {
+    let size = fs::metadata(path)
+        .map_err(|err| format!("读取文件元信息失败: {err}"))?
+        .len();
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+    let mut bytes = initial_bytes.min(size).max(1024);
+    loop {
+        let lines = read_tail_lines(path, max_lines, bytes)?;
+        if !lines.is_empty() || bytes >= size || bytes >= max_bytes_cap {
+            return Ok(lines);
+        }
+        bytes = bytes
+            .saturating_mul(2)
+            .min(size)
+            .min(max_bytes_cap);
+    }
 }
 
 fn parse_timestamp(value: &Value) -> Option<i64> {
@@ -484,13 +562,95 @@ fn system_time_to_millis(time: SystemTime) -> Option<i64> {
         .map(|duration| duration.as_millis() as i64)
 }
 
+fn codex_rollout_file_open_by_codex(path: &Path) -> Option<bool> {
+    if !(cfg!(target_os = "macos") || cfg!(target_os = "linux")) {
+        return None;
+    }
+
+    // 通过 lsof 判断该 rollout 文件是否仍被 codex 进程打开。
+    //
+    // 注意：lsof 在不同平台/版本下 exit code 的语义并不稳定，且 selection 规则容易踩到 “OR” 逻辑坑：
+    // - 直接用 `-c codex <file>` 可能会匹配 “命令名为 codex 的进程” *或* “打开了该文件的进程”，导致误判。
+    // 因此这里不依赖 exit code，而是用 `-F pc` 输出机器可解析格式，并检查是否存在 command=codex 的条目。
+    //
+    // 这样也能避免 DevHaven 自己短暂读取 session 文件时被误判：只要 command 不是 codex，就不会返回 true。
+    let args = ["-n", "-P", "-F", "pc", "--"];
+    let output = run_lsof_output_with_fallback(&args, path)?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if stdout.trim().is_empty() {
+        // 有些环境下 lsof 失败也可能给空 stdout；此时看一下 stderr，避免把“不可用”误判成“未运行”。
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.trim().is_empty() {
+            let stderr_lower = stderr.to_ascii_lowercase();
+            if stderr_lower.contains("no such file")
+                || stderr_lower.contains("no such file or directory")
+                || stderr_lower.contains("status error")
+            {
+                return Some(false);
+            }
+            return None;
+        }
+        return Some(false);
+    }
+
+    Some(lsof_stdout_indicates_codex_open(&stdout))
+}
+
+fn lsof_stdout_indicates_codex_open(stdout: &str) -> bool {
+    stdout.lines().any(|line| {
+        let Some(command) = line.strip_prefix('c') else {
+            return false;
+        };
+        let name = command.trim().to_ascii_lowercase();
+        name == "codex" || name == "codex.exe"
+    })
+}
+
+fn run_lsof_output_with_fallback(args: &[&str], path: &Path) -> Option<std::process::Output> {
+    match Command::new("lsof").args(args).arg(path).output() {
+        Ok(output) => Some(output),
+        Err(error) => {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                log::debug!("运行 lsof 失败: {}", error);
+                return None;
+            }
+
+            // Tauri 打包后 PATH 可能不包含 sbin，尝试常见绝对路径。
+            for candidate in ["/usr/sbin/lsof", "/usr/bin/lsof"] {
+                match Command::new(candidate).args(args).arg(path).output() {
+                    Ok(output) => return Some(output),
+                    Err(_) => continue,
+                }
+            }
+            None
+        }
+    }
+}
+
+fn any_codex_process_running() -> bool {
+    let mut system = System::new();
+    system.refresh_processes();
+    system.processes().values().any(|process| {
+        let name = process.name().to_ascii_lowercase();
+        name == "codex" || name == "codex.exe"
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use uuid::Uuid;
 
     #[test]
-    fn parse_session_file_extracts_recent_messages() {
+    fn lsof_stdout_indicates_codex_open_detects_codex_entries() {
+        let sample = "p30581\nccodex\nf28\np123\ncdevhaven\nf42\n";
+        assert!(lsof_stdout_indicates_codex_open(sample));
+        assert!(!lsof_stdout_indicates_codex_open("p1\ncdevhaven\nf10\n"));
+        assert!(!lsof_stdout_indicates_codex_open(""));
+    }
+
+    #[test]
+    fn parse_session_file_extracts_metadata_and_activity() {
         let dir = std::env::temp_dir().join(format!("devhaven-codex-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join("rollout-test.jsonl");
@@ -505,10 +665,39 @@ mod tests {
         let summary = parse_session_file(&path).expect("parse session");
         assert_eq!(summary.id, "abc");
         assert_eq!(summary.cwd, "/tmp/project");
-        assert_eq!(summary.last_user_message.as_deref(), Some("hi"));
-        assert_eq!(summary.last_agent_message.as_deref(), Some("hello"));
-        assert_eq!(summary.message_counts.user, 1);
-        assert_eq!(summary.message_counts.agent, 1);
         assert!(summary.last_activity_at >= summary.started_at);
+    }
+
+    #[test]
+    fn parse_session_file_marks_pending_turn_as_running() {
+        let dir = std::env::temp_dir().join(format!("devhaven-codex-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("rollout-test.jsonl");
+        let content = [
+            r#"{"timestamp":"2026-01-28T05:07:13.570Z","type":"session_meta","payload":{"id":"abc","timestamp":"2026-01-28T05:07:13.545Z","cwd":"/tmp/project","cli_version":"0.92.0"}}"#,
+            r#"{"timestamp":"2026-01-28T05:08:13.000Z","type":"event_msg","payload":{"type":"user_message","message":"hi"}}"#,
+        ]
+        .join("\n");
+        fs::write(&path, content).expect("write temp file");
+
+        let summary = parse_session_file(&path).expect("parse session");
+        assert!(summary.is_running, "pending user turn should be running");
+    }
+
+    #[test]
+    fn parse_session_file_marks_aborted_turn_as_not_running() {
+        let dir = std::env::temp_dir().join(format!("devhaven-codex-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("rollout-test.jsonl");
+        let content = [
+            r#"{"timestamp":"2026-01-28T05:07:13.570Z","type":"session_meta","payload":{"id":"abc","timestamp":"2026-01-28T05:07:13.545Z","cwd":"/tmp/project","cli_version":"0.92.0"}}"#,
+            r#"{"timestamp":"2026-01-28T05:08:13.000Z","type":"event_msg","payload":{"type":"user_message","message":"hi"}}"#,
+            r#"{"timestamp":"2026-01-28T05:08:20.000Z","type":"event_msg","payload":{"type":"turn_aborted"}}"#,
+        ]
+        .join("\n");
+        fs::write(&path, content).expect("write temp file");
+
+        let summary = parse_session_file(&path).expect("parse session");
+        assert!(!summary.is_running, "aborted user turn should not be running");
     }
 }

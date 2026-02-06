@@ -5,14 +5,6 @@ import type { CodexSessionSummary } from "../models/codex";
 import { CODEX_SESSIONS_EVENT, listCodexSessions } from "../services/codex";
 
 const REFRESH_INTERVAL_MS = 5000;
-const ACTIVE_WINDOW_MS = 10_000;
-// 与后端 codex_sessions.rs 的 ACTIVE_WINDOW_MS 保持一致。
-const PRUNE_INTERVAL_MS = 1000;
-
-const filterActiveSessions = (items: CodexSessionSummary[]) => {
-  const now = Date.now();
-  return items.filter((session) => session.lastActivityAt > 0 && now - session.lastActivityAt <= ACTIVE_WINDOW_MS);
-};
 
 export type CodexSessionStore = {
   sessions: CodexSessionSummary[];
@@ -36,7 +28,7 @@ export function useCodexSessions(): CodexSessionStore {
         if (canceled) {
           return;
         }
-        setSessions(filterActiveSessions(result));
+        setSessions(result);
         setError(null);
       } catch (err) {
         if (canceled) {
@@ -52,20 +44,11 @@ export function useCodexSessions(): CodexSessionStore {
 
     void load();
     const timer = window.setInterval(() => void load(), REFRESH_INTERVAL_MS);
-    const pruneTimer = window.setInterval(() => {
-      if (canceled) {
-        return;
-      }
-      setSessions((prev) => {
-        const next = filterActiveSessions(prev);
-        return next.length === prev.length ? prev : next;
-      });
-    }, PRUNE_INTERVAL_MS);
     void listen<CodexSessionSummary[]>(CODEX_SESSIONS_EVENT, (event) => {
       if (canceled) {
         return;
       }
-      setSessions(filterActiveSessions(event.payload ?? []));
+      setSessions(event.payload ?? []);
       setError(null);
       setIsLoading(false);
     })
@@ -86,7 +69,6 @@ export function useCodexSessions(): CodexSessionStore {
     return () => {
       canceled = true;
       window.clearInterval(timer);
-      window.clearInterval(pruneTimer);
       unlisten?.();
     };
   }, []);

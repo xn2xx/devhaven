@@ -303,8 +303,4 @@ pub struct CodexSessionSummary {
     pub started_at: i64,
     pub last_activity_at: i64,
     pub is_running: bool,
-    pub last_user_message: Option<String>,
-    pub last_agent_message: Option<String>,
-    pub message_counts: CodexMessageCounts,
-    pub last_event_type: Option<CodexLastEventType>,
 }

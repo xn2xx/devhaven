@@ -1,8 +1,3 @@
-export type CodexMessageCounts = {
-  user: number;
-  agent: number;
-};
-
 export type CodexSessionSummary = {
   id: string;
   cwd: string;
@@ -10,10 +5,6 @@ export type CodexSessionSummary = {
   startedAt: number;
   lastActivityAt: number;
   isRunning: boolean;
-  lastUserMessage: string | null;
-  lastAgentMessage: string | null;
-  messageCounts: CodexMessageCounts;
-  lastEventType?: "user" | "agent" | null;
 };
 
 export type CodexSessionView = CodexSessionSummary & {
