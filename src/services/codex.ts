@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { CodexSessionSummary } from "../models/codex";
+import type { CodexMonitorSnapshot } from "../models/codex";
 
-export const CODEX_SESSIONS_EVENT = "codex-sessions-update";
+export const CODEX_MONITOR_SNAPSHOT_EVENT = "codex-monitor-snapshot";
+export const CODEX_MONITOR_AGENT_EVENT = "codex-monitor-agent-event";
 
-/** 拉取 Codex CLI 会话摘要列表。 */
-export async function listCodexSessions(): Promise<CodexSessionSummary[]> {
-  return invoke<CodexSessionSummary[]>("list_codex_sessions");
+/** 拉取 Codex 监控快照。 */
+export async function getCodexMonitorSnapshot(): Promise<CodexMonitorSnapshot> {
+  return invoke<CodexMonitorSnapshot>("get_codex_monitor_snapshot");
 }

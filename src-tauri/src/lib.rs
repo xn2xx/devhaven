@@ -1,15 +1,15 @@
-mod models;
+mod codex_monitor;
+mod filesystem;
 mod git_daily;
 mod git_ops;
 mod markdown;
+mod models;
 mod notes;
 mod project_loader;
-mod filesystem;
 mod storage;
 mod system;
-mod time_utils;
-mod codex_sessions;
 mod terminal;
+mod time_utils;
 
 use std::time::Instant;
 use tauri::AppHandle;
@@ -17,13 +17,13 @@ use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
-    AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitDiffContents, GitIdentity,
-    GitRepoStatus, HeatmapCacheFile, MarkdownFileEntry, Project, TerminalWorkspace, FsListResponse,
-    FsReadResponse, FsWriteResponse,
+    AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
+    FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus, HeatmapCacheFile,
+    MarkdownFileEntry, Project, TerminalWorkspace,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
-    terminal_create_session, terminal_kill, terminal_resize, terminal_write, TerminalState,
+    TerminalState, terminal_create_session, terminal_kill, terminal_resize, terminal_write,
 };
 
 #[tauri::command]
@@ -122,7 +122,11 @@ fn git_get_diff_contents(
 /// 暂存文件（git add）。
 fn git_stage_files(path: String, relative_paths: Vec<String>) -> Result<(), String> {
     log_command_result("git_stage_files", || {
-        log::info!("git_stage_files path={} files={}", path, relative_paths.len());
+        log::info!(
+            "git_stage_files path={} files={}",
+            path,
+            relative_paths.len()
+        );
         git_ops::stage_files(&path, &relative_paths)
     })
 }
@@ -262,7 +266,11 @@ fn read_project_markdown_file(path: String, relative_path: String) -> Result<Str
 
 #[tauri::command]
 /// 列出项目内指定目录的直接子项（文件/文件夹）。
-fn list_project_dir_entries(path: String, relative_path: String, show_hidden: bool) -> FsListResponse {
+fn list_project_dir_entries(
+    path: String,
+    relative_path: String,
+    show_hidden: bool,
+) -> FsListResponse {
     log_command("list_project_dir_entries", || {
         log::info!(
             "list_project_dir_entries path={} dir={} show_hidden={}",
@@ -312,7 +320,9 @@ fn load_heatmap_cache(app: AppHandle) -> Result<HeatmapCacheFile, String> {
 
 #[tauri::command]
 fn save_heatmap_cache(app: AppHandle, cache: HeatmapCacheFile) -> Result<(), String> {
-    log_command_result("save_heatmap_cache", || storage::save_heatmap_cache(&app, &cache))
+    log_command_result("save_heatmap_cache", || {
+        storage::save_heatmap_cache(&app, &cache)
+    })
 }
 
 #[tauri::command]
@@ -347,12 +357,12 @@ fn delete_terminal_workspace(app: AppHandle, project_path: String) -> Result<(),
 }
 
 #[tauri::command]
-fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
-    log_command_result("list_codex_sessions", || {
-        if let Err(error) = codex_sessions::ensure_session_watcher(&app) {
-            log::warn!("启动 Codex 会话监听失败: {}", error);
+fn get_codex_monitor_snapshot(app: AppHandle) -> Result<CodexMonitorSnapshot, String> {
+    log_command_result("get_codex_monitor_snapshot", || {
+        if let Err(error) = codex_monitor::ensure_monitoring_started(&app) {
+            log::warn!("启动 Codex 监控失败: {}", error);
         }
-        codex_sessions::list_sessions(&app)
+        codex_monitor::get_snapshot(&app)
     })
 }
 
@@ -383,8 +393,8 @@ pub fn run() {
                 log::info!("log dir={}", path.display());
             }
             let app_handle = app.handle();
-            if let Err(error) = codex_sessions::ensure_session_watcher(&app_handle) {
-                log::warn!("启动 Codex 会话监听失败: {}", error);
+            if let Err(error) = codex_monitor::ensure_monitoring_started(&app_handle) {
+                log::warn!("启动 Codex 监控失败: {}", error);
             }
             Ok(())
         })
@@ -421,7 +431,7 @@ pub fn run() {
             load_terminal_workspace,
             save_terminal_workspace,
             delete_terminal_workspace,
-            list_codex_sessions,
+            get_codex_monitor_snapshot,
             terminal_create_session,
             terminal_write,
             terminal_resize,
@@ -432,15 +442,12 @@ pub fn run() {
 }
 
 #[cfg(target_os = "macos")]
-fn apply_fullscreen_auxiliary(
-    window: &tauri::WebviewWindow,
-    enabled: bool,
-) -> Result<(), String> {
+fn apply_fullscreen_auxiliary(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    use objc2::runtime::AnyObject;
     use objc2_app_kit::{
         NSNormalWindowLevel, NSPanel, NSScreenSaverWindowLevel, NSWindow,
         NSWindowCollectionBehavior, NSWindowStyleMask,
     };
-    use objc2::runtime::AnyObject;
 
     let ns_window = window.ns_window().map_err(|error| error.to_string())?;
     if ns_window.is_null() {
@@ -492,16 +499,21 @@ fn apply_fullscreen_auxiliary(
 }
 
 #[cfg(target_os = "macos")]
-fn try_set_window_class(target: &objc2::runtime::AnyObject, class_name: &str) -> Result<(), String> {
+fn try_set_window_class(
+    target: &objc2::runtime::AnyObject,
+    class_name: &str,
+) -> Result<(), String> {
     use std::ffi::CStr;
 
     let class_cstr = match class_name {
         "NSPanel" => CStr::from_bytes_with_nul(b"NSPanel\0").map_err(|_| "类名非法".to_string())?,
-        "NSWindow" => CStr::from_bytes_with_nul(b"NSWindow\0").map_err(|_| "类名非法".to_string())?,
+        "NSWindow" => {
+            CStr::from_bytes_with_nul(b"NSWindow\0").map_err(|_| "类名非法".to_string())?
+        }
         _ => return Err("不支持的类名".to_string()),
     };
-    let target_class = objc2::runtime::AnyClass::get(class_cstr)
-        .ok_or_else(|| "无法获取目标类".to_string())?;
+    let target_class =
+        objc2::runtime::AnyClass::get(class_cstr).ok_or_else(|| "无法获取目标类".to_string())?;
     let current_class = target.class();
     if current_class.name() == target_class.name() {
         return Ok(());

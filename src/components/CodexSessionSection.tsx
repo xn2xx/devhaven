@@ -62,11 +62,8 @@ export default function CodexSessionSection({
           {grouped.map((group) => {
             const session = group.session;
             const projectName = session.projectName ?? "未匹配项目";
-            const statusText = session.isRunning
-              ? group.runningCount > 1
-                ? `运行中 (${group.runningCount})`
-                : "运行中"
-              : "空闲";
+            const statusText = resolveStatusText(session.state, group.runningCount);
+            const statusClassName = resolveStatusClassName(session.state);
             const disabled = !session.projectId;
             return (
               <button
@@ -80,23 +77,20 @@ export default function CodexSessionSection({
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <div className="flex min-w-0 items-center gap-1.5 text-fs-caption">
                     <span
-                      className={`h-2 w-2 rounded-full ${
-                        session.isRunning ? "bg-success" : "bg-sidebar-secondary"
-                      }`}
+                      className={`h-2 w-2 rounded-full ${resolveDotClassName(session.state)}`}
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1 truncate font-semibold">{projectName}</span>
-                    <span
-                      className={`text-[11px] ${
-                        session.isRunning ? "text-success" : "text-sidebar-secondary"
-                      }`}
-                    >
-                      {statusText}
-                    </span>
+                    <span className={`text-[11px] ${statusClassName}`}>{statusText}</span>
                   </div>
                   <div className="truncate text-[11px] text-sidebar-secondary" title={session.cwd}>
                     {session.cwd || "未知路径"}
                   </div>
+                  {session.details ? (
+                    <div className="truncate text-[11px] text-sidebar-secondary" title={session.details}>
+                      {session.details}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="mt-0.5 whitespace-nowrap text-[11px] text-sidebar-secondary">
                   {formatTime(group.lastActivityAt)}
@@ -127,12 +121,14 @@ function groupSessionsByProject(sessions: CodexSessionView[]): CodexSessionGroup
       map.set(key, {
         key,
         session,
-        runningCount: 1,
+        runningCount: session.isRunning ? 1 : 0,
         lastActivityAt: session.lastActivityAt ?? 0,
       });
       continue;
     }
-    existing.runningCount += 1;
+    if (session.isRunning) {
+      existing.runningCount += 1;
+    }
     const activity = session.lastActivityAt ?? 0;
     if (activity > existing.lastActivityAt) {
       existing.lastActivityAt = activity;
@@ -141,6 +137,51 @@ function groupSessionsByProject(sessions: CodexSessionView[]): CodexSessionGroup
   }
 
   return Array.from(map.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+}
+
+function resolveStatusText(state: CodexSessionView["state"], runningCount: number) {
+  if (state === "working") {
+    return runningCount > 1 ? `运行中 (${runningCount})` : "运行中";
+  }
+  if (state === "needs-attention") {
+    return "待处理";
+  }
+  if (state === "error") {
+    return "异常";
+  }
+  if (state === "completed") {
+    return "已完成";
+  }
+  if (state === "offline") {
+    return "离线";
+  }
+  return "空闲";
+}
+
+function resolveStatusClassName(state: CodexSessionView["state"]) {
+  if (state === "working") {
+    return "text-success";
+  }
+  if (state === "needs-attention") {
+    return "text-accent";
+  }
+  if (state === "error") {
+    return "text-warning";
+  }
+  return "text-sidebar-secondary";
+}
+
+function resolveDotClassName(state: CodexSessionView["state"]) {
+  if (state === "working") {
+    return "bg-success";
+  }
+  if (state === "needs-attention") {
+    return "bg-accent";
+  }
+  if (state === "error") {
+    return "bg-warning";
+  }
+  return "bg-sidebar-secondary";
 }
 
 function formatTime(timestamp: number) {
