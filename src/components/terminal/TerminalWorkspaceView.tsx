@@ -1194,9 +1194,6 @@ export default function TerminalWorkspaceView({
   const rightSidebarTab: TerminalRightSidebarTab =
     rightSidebarState.tab === "git" && !isGitRepo ? "files" : rightSidebarState.tab;
 
-  const filePanelOpen = rightSidebarOpen && rightSidebarTab === "files";
-  const gitPanelOpen = rightSidebarOpen && rightSidebarTab === "git";
-
   return (
     <div className="flex h-full flex-col bg-[var(--terminal-bg)] text-[var(--terminal-fg)]">
       <header className="flex items-center gap-3 border-b border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)] px-3 py-2">
