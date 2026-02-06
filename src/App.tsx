@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
@@ -10,7 +10,6 @@ import DashboardModal from "./components/DashboardModal";
 import SettingsModal from "./components/SettingsModal";
 import RecycleBinModal from "./components/RecycleBinModal";
 import MonitorWindow from "./components/MonitorWindow";
-import TerminalWorkspaceWindow from "./components/terminal/TerminalWorkspaceWindow";
 import { useCodexSessions } from "./hooks/useCodexSessions";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
@@ -38,6 +37,7 @@ import {
 
 const MONITOR_OPEN_SESSION_EVENT = "monitor-open-session";
 const MAIN_WINDOW_LABEL = "main";
+const TerminalWorkspaceWindow = lazy(() => import("./components/terminal/TerminalWorkspaceWindow"));
 
 type MonitorOpenSessionPayload = {
   sessionId: string;
@@ -916,16 +916,18 @@ function AppLayout() {
             showTerminalWorkspace ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
-          <TerminalWorkspaceWindow
-            openProjects={terminalOpenProjects}
-            activeProjectId={terminalActiveProjectId}
-            onSelectProject={setTerminalActiveProjectId}
-            onCloseProject={handleCloseTerminalProject}
-            onExit={() => setShowTerminalWorkspace(false)}
-            windowLabel={MAIN_WINDOW_LABEL}
-            isVisible={showTerminalWorkspace}
-            codexProjectStatusById={codexProjectStatusById}
-          />
+          <Suspense fallback={<div className="h-full w-full bg-[var(--bg)]" />}>
+            <TerminalWorkspaceWindow
+              openProjects={terminalOpenProjects}
+              activeProjectId={terminalActiveProjectId}
+              onSelectProject={setTerminalActiveProjectId}
+              onCloseProject={handleCloseTerminalProject}
+              onExit={() => setShowTerminalWorkspace(false)}
+              windowLabel={MAIN_WINDOW_LABEL}
+              isVisible={showTerminalWorkspace}
+              codexProjectStatusById={codexProjectStatusById}
+            />
+          </Suspense>
         </div>
       ) : null}
     </div>

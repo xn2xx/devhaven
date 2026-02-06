@@ -1,29 +1,15 @@
 import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
-import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
-import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
-import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 
 export const TERMINAL_MONACO_THEME = "devhaven-terminal";
 
 // Monaco needs explicit worker wiring in bundlers like Vite.
 // Keep this side-effect module shared between code editor + diff viewer.
 (self as unknown as { MonacoEnvironment?: unknown }).MonacoEnvironment = {
-  getWorker(_: unknown, label: string) {
-    if (label === "json") {
-      return new jsonWorker();
-    }
-    if (label === "css" || label === "scss" || label === "less") {
-      return new cssWorker();
-    }
-    if (label === "html" || label === "handlebars" || label === "razor") {
-      return new htmlWorker();
-    }
-    if (label === "typescript" || label === "javascript") {
-      return new tsWorker();
-    }
+  getWorker() {
+    // Keep a single lightweight worker to avoid bundling language-service workers
+    // (ts/css/html/json), which dramatically increases desktop package size.
     return new editorWorker();
   },
 };
@@ -120,4 +106,3 @@ export function getTerminalMonacoBaseOptions(readOnly: boolean) {
 }
 
 export type MonacoDiffOptions = monaco.editor.IDiffEditorConstructionOptions;
-
