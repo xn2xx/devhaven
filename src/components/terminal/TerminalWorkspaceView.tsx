@@ -1224,40 +1224,21 @@ export default function TerminalWorkspaceView({
         </button>
         <button
           className={`inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--terminal-divider)] px-2 text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] ${
-            filePanelOpen ? "bg-[var(--terminal-hover-bg)]" : ""
+            rightSidebarOpen ? "bg-[var(--terminal-hover-bg)]" : ""
           }`}
           type="button"
-          title={filePanelOpen ? "隐藏文件" : "显示文件"}
+          title={rightSidebarOpen ? "隐藏侧边栏" : "显示侧边栏"}
           onClick={() => {
-            if (filePanelOpen) {
+            if (rightSidebarOpen) {
               requestCloseRightSidebar();
               return;
             }
-            setRightSidebarTab("files");
+            setRightSidebarTab(rightSidebarTab === "files" && isGitRepo ? "git" : "files");
           }}
         >
-          <IconFolder size={16} />
-          <span className="text-[12px] font-semibold">文件</span>
+          {rightSidebarTab === "files" ? <IconFolder size={16} /> : <IconGitBranch size={16} />}
+          <span className="text-[12px] font-semibold">{rightSidebarTab === "files" ? "文件" : "Git"}</span>
         </button>
-        {isGitRepo ? (
-          <button
-            className={`inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--terminal-divider)] px-2 text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] ${
-              gitPanelOpen ? "bg-[var(--terminal-hover-bg)]" : ""
-            }`}
-            type="button"
-            title={gitPanelOpen ? "隐藏 Git" : "显示 Git"}
-            onClick={() => {
-              if (gitPanelOpen) {
-                requestCloseRightSidebar();
-                return;
-              }
-              setRightSidebarTab("git");
-            }}
-          >
-            <IconGitBranch size={16} />
-            <span className="text-[12px] font-semibold">Git</span>
-          </button>
-        ) : null}
         <TerminalTabs
           tabs={workspace.tabs}
           activeTabId={workspace.activeTabId}
