@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   build:
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     strategy:
       fail-fast: false
       matrix:
