@@ -9,11 +9,12 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import type { ITheme } from "xterm";
 
-import type { SplitDirection, TerminalTab, TerminalWorkspace } from "../../models/terminal";
+import type { RightSidebarState, SplitDirection, TerminalRightSidebarTab, TerminalTab, TerminalWorkspace } from "../../models/terminal";
 import type { ProjectScript } from "../../models/types";
 import { useDevHavenContext } from "../../state/DevHavenContext";
 import { killTerminal, listenTerminalOutput, writeTerminal } from "../../services/terminal";
 import { saveTerminalWorkspace, loadTerminalWorkspace } from "../../services/terminalWorkspace";
+import { gitIsRepo } from "../../services/gitManagement";
 import {
   TERMINAL_QUICK_COMMAND_RUN_EVENT,
   TERMINAL_QUICK_COMMAND_STOP_EVENT,
@@ -32,10 +33,10 @@ import {
   splitPane,
   updateSplitRatios,
 } from "../../utils/terminalLayout";
-import { IconFolder, IconSidebarRight, IconX } from "../Icons";
+import { IconFolder, IconGitBranch, IconSidebarRight, IconX } from "../Icons";
+import ResizablePanel from "./ResizablePanel";
 import SplitLayout from "./SplitLayout";
-import TerminalFileExplorerPanel from "./TerminalFileExplorerPanel";
-import TerminalFilePreviewPanel from "./TerminalFilePreviewPanel";
+import TerminalRightSidebar from "./TerminalRightSidebar";
 import TerminalPane from "./TerminalPane";
 import TerminalTabs from "./TerminalTabs";
 
@@ -60,6 +61,14 @@ const TERMINAL_TITLE_PATTERN = /^终端\s*(\d+)$/;
 const QUICK_COMMAND_OUTPUT_BUFFER_LIMIT = 4096;
 const QUICK_COMMAND_EXIT_MARKER_REGEX =
   /\u001b\]633;DevHaven;qc-exit;([^;]+);(-?\d+)\u0007/;
+
+const DEFAULT_RIGHT_SIDEBAR: RightSidebarState = {
+  open: false,
+  width: 520,
+  tab: "files",
+};
+const MIN_RIGHT_SIDEBAR_WIDTH = 360;
+const MAX_RIGHT_SIDEBAR_WIDTH = 960;
 
 function shellQuote(value: string) {
   // POSIX-safe single-quote escaping: 'foo'"'"'bar'
@@ -154,6 +163,7 @@ export default function TerminalWorkspaceView({
   const panelDraftRef = useRef<{ x: number; y: number } | null>(null);
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
+  const [isGitRepo, setIsGitRepo] = useState(false);
   const dragStateRef = useRef<{
     startClientX: number;
     startClientY: number;
@@ -177,6 +187,30 @@ export default function TerminalWorkspaceView({
       }
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsGitRepo(false);
+    if (!projectPath) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    gitIsRepo(projectPath)
+      .then((value) => {
+        if (!cancelled) {
+          setIsGitRepo(Boolean(value));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsGitRepo(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
 
   useEffect(() => {
     if (!projectPath) {
@@ -605,25 +639,6 @@ export default function TerminalWorkspaceView({
     [updateWorkspace],
   );
 
-  const setFileExplorerPanelOpen = useCallback(
-    (open: boolean) => {
-      updateWorkspace((current) => ({
-        ...current,
-        ui: {
-          ...current.ui,
-          fileExplorerPanel: {
-            ...(current.ui?.fileExplorerPanel ?? {
-              open: workspaceDefaultsRef.current.defaultFileExplorerPanelOpen,
-              showHidden: workspaceDefaultsRef.current.defaultFileExplorerShowHidden,
-            }),
-            open,
-          },
-        },
-      }));
-    },
-    [updateWorkspace],
-  );
-
   const setFileExplorerShowHidden = useCallback(
     (showHidden: boolean) => {
       updateWorkspace((current) => ({
@@ -641,6 +656,67 @@ export default function TerminalWorkspaceView({
       }));
     },
     [updateWorkspace],
+  );
+
+  const updateRightSidebar = useCallback(
+    (updater: (current: RightSidebarState) => RightSidebarState) => {
+      updateWorkspace((current) => {
+        const ui = current.ui ?? {};
+        const filePanel = ui.fileExplorerPanel ?? {
+          open: workspaceDefaultsRef.current.defaultFileExplorerPanelOpen,
+          showHidden: workspaceDefaultsRef.current.defaultFileExplorerShowHidden,
+        };
+        const gitPanel = ui.gitPanel ?? { open: false };
+        const rightSidebar = ui.rightSidebar ?? DEFAULT_RIGHT_SIDEBAR;
+        const nextRightSidebar = updater(rightSidebar);
+        return {
+          ...current,
+          ui: {
+            ...ui,
+            rightSidebar: nextRightSidebar,
+            fileExplorerPanel: {
+              ...filePanel,
+              open: nextRightSidebar.open && nextRightSidebar.tab === "files",
+            },
+            gitPanel: {
+              ...gitPanel,
+              open: nextRightSidebar.open && nextRightSidebar.tab === "git",
+            },
+          },
+        };
+      });
+    },
+    [updateWorkspace],
+  );
+
+  const closeRightSidebar = useCallback(() => {
+    updateRightSidebar((current) => ({ ...current, open: false }));
+    setPreviewFilePath(null);
+    setPreviewDirty(false);
+  }, [updateRightSidebar]);
+
+  const requestCloseRightSidebar = useCallback(() => {
+    if (previewDirty) {
+      const ok = window.confirm("当前文件有未保存修改，确定关闭侧边栏？");
+      if (!ok) {
+        return;
+      }
+    }
+    closeRightSidebar();
+  }, [closeRightSidebar, previewDirty]);
+
+  const setRightSidebarTab = useCallback(
+    (tab: TerminalRightSidebarTab) => {
+      updateRightSidebar((current) => ({ ...current, tab, open: true }));
+    },
+    [updateRightSidebar],
+  );
+
+  const setRightSidebarWidth = useCallback(
+    (width: number) => {
+      updateRightSidebar((current) => ({ ...current, width }));
+    },
+    [updateRightSidebar],
   );
 
   const commitQuickCommandsPanelPosition = useCallback(
@@ -1109,7 +1185,17 @@ export default function TerminalWorkspaceView({
     open: workspaceDefaultsRef.current.defaultFileExplorerPanelOpen,
     showHidden: workspaceDefaultsRef.current.defaultFileExplorerShowHidden,
   };
-  const filePanelOpen = Boolean(filePanelState.open);
+  const rightSidebarState = workspace.ui?.rightSidebar ?? DEFAULT_RIGHT_SIDEBAR;
+  const rightSidebarOpen = Boolean(rightSidebarState.open);
+  const rightSidebarWidth = Math.max(
+    MIN_RIGHT_SIDEBAR_WIDTH,
+    Math.min(MAX_RIGHT_SIDEBAR_WIDTH, rightSidebarState.width),
+  );
+  const rightSidebarTab: TerminalRightSidebarTab =
+    rightSidebarState.tab === "git" && !isGitRepo ? "files" : rightSidebarState.tab;
+
+  const filePanelOpen = rightSidebarOpen && rightSidebarTab === "files";
+  const gitPanelOpen = rightSidebarOpen && rightSidebarTab === "git";
 
   return (
     <div className="flex h-full flex-col bg-[var(--terminal-bg)] text-[var(--terminal-fg)]">
@@ -1143,23 +1229,35 @@ export default function TerminalWorkspaceView({
           type="button"
           title={filePanelOpen ? "隐藏文件" : "显示文件"}
           onClick={() => {
-            const nextOpen = !filePanelOpen;
-            if (!nextOpen && previewDirty) {
-              const ok = window.confirm("当前文件有未保存修改，确定关闭文件面板？");
-              if (!ok) {
-                return;
-              }
+            if (filePanelOpen) {
+              requestCloseRightSidebar();
+              return;
             }
-            setFileExplorerPanelOpen(nextOpen);
-            if (!nextOpen) {
-              setPreviewFilePath(null);
-              setPreviewDirty(false);
-            }
+            setRightSidebarTab("files");
           }}
         >
           <IconFolder size={16} />
           <span className="text-[12px] font-semibold">文件</span>
         </button>
+        {isGitRepo ? (
+          <button
+            className={`inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--terminal-divider)] px-2 text-[var(--terminal-muted-fg)] transition-colors duration-150 hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] ${
+              gitPanelOpen ? "bg-[var(--terminal-hover-bg)]" : ""
+            }`}
+            type="button"
+            title={gitPanelOpen ? "隐藏 Git" : "显示 Git"}
+            onClick={() => {
+              if (gitPanelOpen) {
+                requestCloseRightSidebar();
+                return;
+              }
+              setRightSidebarTab("git");
+            }}
+          >
+            <IconGitBranch size={16} />
+            <span className="text-[12px] font-semibold">Git</span>
+          </button>
+        ) : null}
         <TerminalTabs
           tabs={workspace.tabs}
           activeTabId={workspace.activeTabId}
@@ -1256,7 +1354,7 @@ export default function TerminalWorkspaceView({
             </div>
           </div>
         ) : null}
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <div className="relative flex min-h-0 min-w-0 flex-1">
             {workspace.tabs.map((tab) => (
               <div
@@ -1290,21 +1388,21 @@ export default function TerminalWorkspaceView({
               </div>
             ))}
           </div>
-          {filePanelOpen ? (
-            <>
-              {previewFilePath ? (
-                <TerminalFilePreviewPanel
-                  projectPath={projectPath}
-                  relativePath={previewFilePath}
-                  onDirtyChange={setPreviewDirty}
-                  onClose={() => {
-                    setPreviewFilePath(null);
-                    setPreviewDirty(false);
-                  }}
-                />
-              ) : null}
-              <TerminalFileExplorerPanel
+          {rightSidebarOpen ? (
+            <ResizablePanel
+              width={rightSidebarWidth}
+              onWidthChange={setRightSidebarWidth}
+              minWidth={MIN_RIGHT_SIDEBAR_WIDTH}
+              maxWidth={MAX_RIGHT_SIDEBAR_WIDTH}
+              handleSide="left"
+            >
+              <TerminalRightSidebar
                 projectPath={projectPath}
+                isGitRepo={isGitRepo}
+                sidebarWidth={rightSidebarWidth}
+                activeTab={rightSidebarTab}
+                previewDirty={previewDirty}
+                previewFilePath={previewFilePath}
                 showHidden={Boolean(filePanelState.showHidden)}
                 onToggleShowHidden={setFileExplorerShowHidden}
                 onSelectFile={(relativePath) => {
@@ -1317,19 +1415,15 @@ export default function TerminalWorkspaceView({
                   setPreviewFilePath(relativePath);
                   setPreviewDirty(false);
                 }}
-                onClose={() => {
-                  if (previewDirty) {
-                    const ok = window.confirm("当前文件有未保存修改，确定关闭文件面板？");
-                    if (!ok) {
-                      return;
-                    }
-                  }
-                  setFileExplorerPanelOpen(false);
+                onClosePreview={() => {
                   setPreviewFilePath(null);
                   setPreviewDirty(false);
                 }}
+                onPreviewDirtyChange={setPreviewDirty}
+                onChangeTab={setRightSidebarTab}
+                onClose={requestCloseRightSidebar}
               />
-            </>
+            </ResizablePanel>
           ) : null}
         </div>
       </div>

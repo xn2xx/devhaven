@@ -1,9 +1,12 @@
 import type {
   FileExplorerPanelState,
+  GitPanelState,
   QuickCommandsPanelState,
+  RightSidebarState,
   SplitDirection,
   SplitNode,
   SplitOrientation,
+  TerminalRightSidebarTab,
   TerminalSessionSnapshot,
   TerminalWorkspaceUi,
   TerminalWorkspace,
@@ -13,11 +16,19 @@ const FALLBACK_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 const DEFAULT_PANEL_OPEN = true;
 const DEFAULT_FILE_PANEL_OPEN = false;
 const DEFAULT_FILE_PANEL_SHOW_HIDDEN = false;
+const DEFAULT_GIT_PANEL_OPEN = false;
+const DEFAULT_RIGHT_SIDEBAR_OPEN = false;
+const DEFAULT_RIGHT_SIDEBAR_WIDTH = 520;
+const DEFAULT_RIGHT_SIDEBAR_TAB: TerminalRightSidebarTab = "files";
 
 export type TerminalWorkspaceDefaults = {
   defaultQuickCommandsPanelOpen?: boolean;
   defaultFileExplorerPanelOpen?: boolean;
   defaultFileExplorerShowHidden?: boolean;
+  defaultGitPanelOpen?: boolean;
+  defaultRightSidebarOpen?: boolean;
+  defaultRightSidebarWidth?: number;
+  defaultRightSidebarTab?: TerminalRightSidebarTab;
 };
 
 export function createId() {
@@ -138,7 +149,40 @@ export function normalizeWorkspaceUi(
     defaults?.defaultFileExplorerPanelOpen ?? DEFAULT_FILE_PANEL_OPEN,
     defaults?.defaultFileExplorerShowHidden ?? DEFAULT_FILE_PANEL_SHOW_HIDDEN,
   );
-  return { ...resolved, quickCommandsPanel: panel, fileExplorerPanel: filePanel };
+  const gitPanel = normalizeGitPanel(
+    resolved.gitPanel,
+    defaults?.defaultGitPanelOpen ?? DEFAULT_GIT_PANEL_OPEN,
+  );
+  const rightSidebar = normalizeRightSidebar(
+    resolved.rightSidebar,
+    {
+      fileOpen: filePanel.open,
+      gitOpen: gitPanel.open,
+    },
+    {
+      open: defaults?.defaultRightSidebarOpen ?? DEFAULT_RIGHT_SIDEBAR_OPEN,
+      width: defaults?.defaultRightSidebarWidth ?? DEFAULT_RIGHT_SIDEBAR_WIDTH,
+      tab: defaults?.defaultRightSidebarTab ?? DEFAULT_RIGHT_SIDEBAR_TAB,
+    },
+  );
+
+  // Legacy flags are kept in sync so old code paths and persisted data remain consistent.
+  const syncedFilePanel: FileExplorerPanelState = {
+    ...filePanel,
+    open: rightSidebar.open && rightSidebar.tab === "files",
+  };
+  const syncedGitPanel: GitPanelState = {
+    ...gitPanel,
+    open: rightSidebar.open && rightSidebar.tab === "git",
+  };
+
+  return {
+    ...resolved,
+    quickCommandsPanel: panel,
+    fileExplorerPanel: syncedFilePanel,
+    gitPanel: syncedGitPanel,
+    rightSidebar,
+  };
 }
 
 function normalizeQuickCommandsPanel(value: unknown, defaultOpen: boolean): QuickCommandsPanelState {
@@ -165,6 +209,42 @@ function normalizeFileExplorerPanel(
   const showHidden =
     typeof asRecord.showHidden === "boolean" ? asRecord.showHidden : defaultShowHidden;
   return { open, showHidden };
+}
+
+function normalizeGitPanel(value: unknown, defaultOpen: boolean): GitPanelState {
+  if (!value || typeof value !== "object") {
+    return { open: defaultOpen };
+  }
+  const asRecord = value as Record<string, unknown>;
+  const open = typeof asRecord.open === "boolean" ? asRecord.open : defaultOpen;
+  return { open };
+}
+
+function normalizeRightSidebar(
+  value: unknown,
+  legacy: { fileOpen: boolean; gitOpen: boolean },
+  defaults: { open: boolean; width: number; tab: TerminalRightSidebarTab },
+): RightSidebarState {
+  const legacyOpen = Boolean(legacy.fileOpen || legacy.gitOpen);
+
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  const open = record && typeof record.open === "boolean" ? record.open : legacyOpen || defaults.open;
+  const width = record && typeof record.width === "number" && Number.isFinite(record.width)
+    ? record.width
+    : defaults.width;
+  const tabCandidate = record && typeof record.tab === "string" ? record.tab : null;
+  const tab: TerminalRightSidebarTab =
+    tabCandidate === "git" || tabCandidate === "files"
+      ? tabCandidate
+      : legacy.fileOpen
+        ? "files"
+        : legacy.gitOpen
+          ? "git"
+          : defaults.tab;
+
+  // Keep a sane range; actual clamping during resize happens in the UI.
+  const safeWidth = Math.max(220, Math.min(1200, width));
+  return { open, width: safeWidth, tab };
 }
 
 export function collectSessionIds(node: SplitNode): string[] {

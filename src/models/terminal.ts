@@ -37,9 +37,23 @@ export type FileExplorerPanelState = {
   showHidden: boolean;
 };
 
+export type GitPanelState = {
+  open: boolean;
+};
+
+export type TerminalRightSidebarTab = "files" | "git";
+
+export type RightSidebarState = {
+  open: boolean;
+  width: number;
+  tab: TerminalRightSidebarTab;
+};
+
 export type TerminalWorkspaceUi = {
   quickCommandsPanel?: QuickCommandsPanelState;
   fileExplorerPanel?: FileExplorerPanelState;
+  gitPanel?: GitPanelState;
+  rightSidebar?: RightSidebarState;
 };
 
 export type TerminalWorkspace = {

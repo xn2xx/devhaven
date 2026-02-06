@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, type ReactNode, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 
@@ -23,8 +23,10 @@ type FilePreviewState = {
 export type TerminalFilePreviewPanelProps = {
   projectPath: string;
   relativePath: string;
+  embedded?: boolean;
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  headerAddon?: ReactNode;
 };
 
 function formatFailure(reason?: FsFailureReason | null, message?: string | null) {
@@ -64,8 +66,10 @@ function getFileName(relativePath: string): string {
 export default function TerminalFilePreviewPanel({
   projectPath,
   relativePath,
+  embedded = false,
   onClose,
   onDirtyChange,
+  headerAddon,
 }: TerminalFilePreviewPanelProps) {
   const [preview, setPreview] = useState<FilePreviewState>({ loading: false, content: null });
   const requestIdRef = useRef(0);
@@ -271,7 +275,11 @@ export default function TerminalFilePreviewPanel({
   }, [draftContent, saveContent]);
 
   return (
-    <aside className="flex min-h-0 w-[520px] flex-col border-l border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)]">
+    <aside
+      className={`flex min-h-0 min-w-0 flex-col bg-[var(--terminal-panel-bg)] ${
+        embedded ? "flex-1" : "w-[520px] border-l border-[var(--terminal-divider)]"
+      }`}
+    >
       <div className="flex items-center justify-between gap-2 border-b border-[var(--terminal-divider)] px-3 py-2">
         <div
           className="min-w-0 truncate text-[11px] font-semibold text-[var(--terminal-muted-fg)]"
@@ -282,6 +290,7 @@ export default function TerminalFilePreviewPanel({
           {saving ? <span className="ml-2 text-[10px] text-[var(--terminal-muted-fg)]">保存中...</span> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {headerAddon ? <div className="mr-1">{headerAddon}</div> : null}
           {isMarkdown && preview.content !== null ? (
             <div className="mr-1 inline-flex overflow-hidden rounded-md border border-[var(--terminal-divider)] bg-[var(--terminal-bg)]">
               <button

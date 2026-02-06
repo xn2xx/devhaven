@@ -17,8 +17,9 @@ use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
-    AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitIdentity, HeatmapCacheFile,
-    MarkdownFileEntry, Project, TerminalWorkspace, FsListResponse, FsReadResponse, FsWriteResponse,
+    AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitDiffContents, GitIdentity,
+    GitRepoStatus, HeatmapCacheFile, MarkdownFileEntry, Project, TerminalWorkspace, FsListResponse,
+    FsReadResponse, FsWriteResponse,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
@@ -77,6 +78,96 @@ fn list_branches(base_path: String) -> Vec<BranchListItem> {
     log_command("list_branches", || {
         log::info!("list_branches base_path={}", base_path);
         git_ops::list_branches(&base_path)
+    })
+}
+
+#[tauri::command]
+/// 判断路径是否为 Git 仓库（以 `<path>/.git` 是否存在为准）。
+fn git_is_repo(path: String) -> bool {
+    log_command("git_is_repo", || {
+        log::info!("git_is_repo path={}", path);
+        git_ops::is_git_repo(&path)
+    })
+}
+
+#[tauri::command]
+/// 获取 Git 仓库状态（分支 + staged/unstaged/untracked）。
+fn git_get_status(path: String) -> Result<GitRepoStatus, String> {
+    log_command_result("git_get_status", || {
+        log::info!("git_get_status path={}", path);
+        git_ops::get_repo_status(&path)
+    })
+}
+
+#[tauri::command]
+/// 获取单文件对比内容（original/modified），用于 UI 渲染对比视图。
+fn git_get_diff_contents(
+    path: String,
+    relative_path: String,
+    staged: bool,
+    old_relative_path: Option<String>,
+) -> Result<GitDiffContents, String> {
+    log_command_result("git_get_diff_contents", || {
+        log::info!(
+            "git_get_diff_contents path={} file={} staged={}",
+            path,
+            relative_path,
+            staged
+        );
+        git_ops::get_diff_contents(&path, &relative_path, staged, old_relative_path.as_deref())
+    })
+}
+
+#[tauri::command]
+/// 暂存文件（git add）。
+fn git_stage_files(path: String, relative_paths: Vec<String>) -> Result<(), String> {
+    log_command_result("git_stage_files", || {
+        log::info!("git_stage_files path={} files={}", path, relative_paths.len());
+        git_ops::stage_files(&path, &relative_paths)
+    })
+}
+
+#[tauri::command]
+/// 取消暂存（git reset HEAD --）。
+fn git_unstage_files(path: String, relative_paths: Vec<String>) -> Result<(), String> {
+    log_command_result("git_unstage_files", || {
+        log::info!(
+            "git_unstage_files path={} files={}",
+            path,
+            relative_paths.len()
+        );
+        git_ops::unstage_files(&path, &relative_paths)
+    })
+}
+
+#[tauri::command]
+/// 丢弃未暂存修改（git checkout --）。
+fn git_discard_files(path: String, relative_paths: Vec<String>) -> Result<(), String> {
+    log_command_result("git_discard_files", || {
+        log::info!(
+            "git_discard_files path={} files={}",
+            path,
+            relative_paths.len()
+        );
+        git_ops::discard_files(&path, &relative_paths)
+    })
+}
+
+#[tauri::command]
+/// 提交已暂存改动。
+fn git_commit(path: String, message: String) -> Result<(), String> {
+    log_command_result("git_commit", || {
+        log::info!("git_commit path={} message_size={}", path, message.len());
+        git_ops::commit(&path, &message)
+    })
+}
+
+#[tauri::command]
+/// 切换分支（git checkout <branch>）。
+fn git_checkout_branch(path: String, branch: String) -> Result<(), String> {
+    log_command_result("git_checkout_branch", || {
+        log::info!("git_checkout_branch path={} branch={}", path, branch);
+        git_ops::checkout_branch(&path, &branch)
     })
 }
 
@@ -305,6 +396,14 @@ pub fn run() {
             discover_projects,
             build_projects,
             list_branches,
+            git_is_repo,
+            git_get_status,
+            git_get_diff_contents,
+            git_stage_files,
+            git_unstage_files,
+            git_discard_files,
+            git_commit,
+            git_checkout_branch,
             open_in_finder,
             open_in_editor,
             set_window_fullscreen_auxiliary,

@@ -281,17 +281,47 @@ pub struct BranchListItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexMessageCounts {
-    pub user: i32,
-    pub agent: i32,
+#[serde(rename_all = "kebab-case")]
+pub enum GitFileStatus {
+    Added,
+    Modified,
+    Deleted,
+    Renamed,
+    Copied,
+    Untracked,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CodexLastEventType {
-    User,
-    Agent,
+#[serde(rename_all = "camelCase")]
+pub struct GitChangedFile {
+    pub path: String,
+    #[serde(default)]
+    pub old_path: Option<String>,
+    pub status: GitFileStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRepoStatus {
+    pub branch: String,
+    #[serde(default)]
+    pub upstream: Option<String>,
+    pub ahead: i32,
+    pub behind: i32,
+    pub staged: Vec<GitChangedFile>,
+    pub unstaged: Vec<GitChangedFile>,
+    pub untracked: Vec<GitChangedFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitDiffContents {
+    pub original: String,
+    pub modified: String,
+    #[serde(default)]
+    pub original_truncated: bool,
+    #[serde(default)]
+    pub modified_truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

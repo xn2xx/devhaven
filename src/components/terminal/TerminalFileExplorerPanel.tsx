@@ -25,6 +25,7 @@ type DirState = {
 export type TerminalFileExplorerPanelProps = {
   projectPath: string;
   showHidden: boolean;
+  embedded?: boolean;
   onToggleShowHidden: (next: boolean) => void;
   onClose: () => void;
   onSelectFile: (relativePath: string) => void;
@@ -81,6 +82,7 @@ function truncatePathStart(value: string, maxLength: number): string {
 export default function TerminalFileExplorerPanel({
   projectPath,
   showHidden,
+  embedded = false,
   onToggleShowHidden,
   onClose,
   onSelectFile,
@@ -261,29 +263,35 @@ export default function TerminalFileExplorerPanel({
   }, [entriesByDir, isSearching, normalizedSearch]);
 
   return (
-    <aside className="flex min-h-0 w-[320px] flex-col border-l border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)]">
-      <div className="flex items-start justify-between gap-2 border-b border-[var(--terminal-divider)] px-3 py-2">
-        <div className="min-w-0">
-          <div className="text-[12px] font-semibold text-[var(--terminal-muted-fg)]">Files</div>
+    <aside
+      className={`flex min-h-0 min-w-0 flex-col bg-[var(--terminal-panel-bg)] ${
+        embedded ? "flex-1" : "w-[320px] border-l border-[var(--terminal-divider)]"
+      }`}
+    >
+      {!embedded ? (
+        <div className="flex items-start justify-between gap-2 border-b border-[var(--terminal-divider)] px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-[12px] font-semibold text-[var(--terminal-muted-fg)]">Files</div>
+            <button
+              type="button"
+              className="mt-0.5 max-w-[260px] truncate text-left text-[10px] text-[var(--terminal-muted-fg)] transition-colors hover:text-[var(--terminal-fg)]"
+              title="点击复制项目路径"
+              onClick={() => copyToClipboard(projectPath)}
+            >
+              {projectPath}
+            </button>
+          </div>
           <button
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--terminal-accent-outline)] focus-visible:outline-offset-2"
             type="button"
-            className="mt-0.5 max-w-[260px] truncate text-left text-[10px] text-[var(--terminal-muted-fg)] transition-colors hover:text-[var(--terminal-fg)]"
-            title="点击复制项目路径"
-            onClick={() => copyToClipboard(projectPath)}
+            aria-label="关闭文件面板"
+            title="关闭"
+            onClick={onClose}
           >
-            {projectPath}
+            <IconX size={14} />
           </button>
         </div>
-        <button
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--terminal-accent-outline)] focus-visible:outline-offset-2"
-          type="button"
-          aria-label="关闭文件面板"
-          title="关闭"
-          onClick={onClose}
-        >
-          <IconX size={14} />
-        </button>
-      </div>
+      ) : null}
 
       <div className="flex flex-col gap-1.5 border-b border-[var(--terminal-divider)] px-2 py-2">
         <div
