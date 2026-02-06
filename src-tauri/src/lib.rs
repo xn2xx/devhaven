@@ -1,4 +1,4 @@
-mod codex_sessions;
+mod codex_monitor;
 mod filesystem;
 mod git_daily;
 mod git_ops;
@@ -19,7 +19,7 @@ use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
-    AppStateFile, BranchListItem, CodexSessionSummary, FsListResponse, FsReadResponse,
+    AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
     FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
     GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, MarkdownFileEntry, Project,
     TerminalWorkspace, WorktreeInitCancelResult, WorktreeInitJobStatus, WorktreeInitRetryRequest,
@@ -463,12 +463,12 @@ fn delete_terminal_workspace(app: AppHandle, project_path: String) -> Result<(),
 }
 
 #[tauri::command]
-fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
-    log_command_result("list_codex_sessions", || {
-        if let Err(error) = codex_sessions::ensure_session_watcher(&app) {
-            log::warn!("启动 Codex 会话监听失败: {}", error);
+fn get_codex_monitor_snapshot(app: AppHandle) -> Result<CodexMonitorSnapshot, String> {
+    log_command_result("get_codex_monitor_snapshot", || {
+        if let Err(error) = codex_monitor::ensure_monitoring_started(&app) {
+            log::warn!("启动 Codex 监控失败: {}", error);
         }
-        codex_sessions::list_sessions(&app)
+        codex_monitor::get_snapshot(&app)
     })
 }
 
@@ -500,8 +500,8 @@ pub fn run() {
                 log::info!("log dir={}", path.display());
             }
             let app_handle = app.handle();
-            if let Err(error) = codex_sessions::ensure_session_watcher(&app_handle) {
-                log::warn!("启动 Codex 会话监听失败: {}", error);
+            if let Err(error) = codex_monitor::ensure_monitoring_started(&app_handle) {
+                log::warn!("启动 Codex 监控失败: {}", error);
             }
             Ok(())
         })
@@ -545,7 +545,7 @@ pub fn run() {
             load_terminal_workspace,
             save_terminal_workspace,
             delete_terminal_workspace,
-            list_codex_sessions,
+            get_codex_monitor_snapshot,
             terminal_create_session,
             terminal_write,
             terminal_resize,

@@ -15,12 +15,13 @@ import WorktreeCreateDialog, {
   type WorktreeCreateSubmitPayload,
   type WorktreeCreateSubmitResult,
 } from "./components/terminal/WorktreeCreateDialog";
-import { useCodexSessions } from "./hooks/useCodexSessions";
+import TerminalWorkspaceWindow from "./components/terminal/TerminalWorkspaceWindow";
+import { useCodexMonitor } from "./hooks/useCodexMonitor";
 import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
-import type { CodexSessionSummary, CodexSessionView } from "./models/codex";
+import type { CodexAgentEvent, CodexMonitorSession, CodexSessionView } from "./models/codex";
 import type { ColorData, Project, ProjectWorktree, TagData } from "./models/types";
 import { jsDateToSwiftDate, swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
@@ -126,7 +127,7 @@ function resolveAppView(): "main" | "monitor" {
   return "main";
 }
 
-function buildCodexSessionViews(sessions: CodexSessionSummary[], projects: Project[]): CodexSessionView[] {
+function buildCodexSessionViews(sessions: CodexMonitorSession[], projects: Project[]): CodexSessionView[] {
   return sessions.map((session) => {
     const project = matchProjectByCwd(session.cwd, projects);
     return {
@@ -221,11 +222,10 @@ function AppLayout() {
   const gitDailyRefreshRef = useRef<string | null>(null);
   const gitDailyUpdatingRef = useRef(false);
   const gitIdentitySignatureRef = useRef<string | null>(null);
-  const codexProjectSnapshotRef = useRef<Set<string>>(new Set());
-  const codexSessionSnapshotReadyRef = useRef(false);
   const worktreeInitAutoOpenByJobIdRef = useRef<
     Map<string, { projectId: string; worktreePath: string; branch: string; autoOpen: boolean }>
   >(new Map());
+  const codexEventSnapshotRef = useRef<Set<string>>(new Set());
   const recycleBinPaths = appState.recycleBin ?? [];
   const recycleBinSet = useMemo(() => new Set(recycleBinPaths), [recycleBinPaths]);
   const recycleBinCount = recycleBinPaths.length;
@@ -249,10 +249,10 @@ function AppLayout() {
     () => heatmapStore.getHeatmapData(HEATMAP_CONFIG.sidebar.days),
     [heatmapStore],
   );
-  const codexSessionStore = useCodexSessions();
+  const codexMonitorStore = useCodexMonitor();
   const codexSessionViews = useMemo(
-    () => buildCodexSessionViews(codexSessionStore.sessions, projects),
-    [codexSessionStore.sessions, projects],
+    () => buildCodexSessionViews(codexMonitorStore.sessions, projects),
+    [codexMonitorStore.sessions, projects],
   );
   const codexProjectStatusById = useMemo(
     () => buildCodexProjectStatusById(codexSessionViews),
@@ -268,6 +268,28 @@ function AppLayout() {
     }
     return projectMap.get(worktreeDialogProjectId) ?? null;
   }, [projectMap, worktreeDialogProjectId]);
+
+  const resolveProjectFromCodexEvent = useCallback(
+    (event: CodexAgentEvent): Project | null => {
+      const bySession =
+        event.sessionId
+          ? codexSessionViews.find((session) => session.id === event.sessionId && session.projectId)
+          : null;
+      if (bySession?.projectId) {
+        return projectMap.get(bySession.projectId) ?? null;
+      }
+
+      const byWorkingDirectory = event.workingDirectory
+        ? projects.find((project) => event.workingDirectory?.startsWith(project.path)) ?? null
+        : null;
+      if (byWorkingDirectory) {
+        return byWorkingDirectory;
+      }
+
+      return null;
+    },
+    [codexSessionViews, projectMap, projects],
+  );
 
   const hiddenTags = useMemo(
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
@@ -1442,32 +1464,48 @@ function AppLayout() {
   }, [isLoading, isMonitorView, openTerminalWorkspace, resolveProjectFromPayload, showToast]);
 
   useEffect(() => {
-    if (isMonitorView || codexSessionStore.isLoading) {
+    if (isMonitorView || codexMonitorStore.agentEvents.length === 0) {
       return;
     }
-    const previousProjectIds = codexProjectSnapshotRef.current;
-    const nextProjectIds = new Set(Object.keys(codexProjectStatusById));
-    if (codexSessionSnapshotReadyRef.current) {
-      for (const projectId of previousProjectIds) {
-        if (nextProjectIds.has(projectId)) {
-          continue;
+
+    const seen = codexEventSnapshotRef.current;
+    const events = [...codexMonitorStore.agentEvents].reverse();
+    for (const event of events) {
+      const eventKey = [
+        event.type,
+        event.sessionId ?? "",
+        String(event.timestamp),
+        event.details ?? "",
+      ].join("|");
+      if (seen.has(eventKey)) {
+        continue;
+      }
+      seen.add(eventKey);
+      if (seen.size > 300) {
+        const first = seen.values().next().value;
+        if (first) {
+          seen.delete(first);
         }
-        const project = projectMap.get(projectId) ?? null;
-        if (!project) {
-          showToast("Codex 已完成，但未匹配到项目", "error");
-          continue;
-        }
-        showToast(`Codex 已完成：${project.name}`);
-        void sendSystemNotification("Codex 已完成", project.name);
+      }
+
+      const project = resolveProjectFromCodexEvent(event);
+      const projectName = project?.name ?? "未匹配项目";
+
+      if (event.type === "task-complete") {
+        showToast(`Codex 已完成：${projectName}`);
+        void sendSystemNotification("Codex 已完成", projectName);
+      } else if (event.type === "task-error") {
+        showToast(`Codex 执行失败：${projectName}`, "error");
+        void sendSystemNotification("Codex 执行失败", projectName);
+      } else if (event.type === "needs-attention") {
+        showToast(`Codex 需要你处理：${projectName}`, "error");
+        void sendSystemNotification("Codex 需要处理", projectName);
       }
     }
-    codexProjectSnapshotRef.current = nextProjectIds;
-    codexSessionSnapshotReadyRef.current = true;
   }, [
-    codexSessionStore.isLoading,
-    codexProjectStatusById,
+    codexMonitorStore.agentEvents,
     isMonitorView,
-    projectMap,
+    resolveProjectFromCodexEvent,
     showToast,
   ]);
 
@@ -1537,8 +1575,8 @@ function AppLayout() {
       <div className="h-full bg-transparent">
         <MonitorWindow
           sessions={runningCodexSessionViews}
-          isLoading={codexSessionStore.isLoading}
-          error={codexSessionStore.error}
+          isLoading={codexMonitorStore.isLoading}
+          error={codexMonitorStore.error}
           onOpenSession={handleMonitorOpenCodexSession}
         />
       </div>
@@ -1580,8 +1618,8 @@ function AppLayout() {
           onAddProjects={addProjects}
           isHeatmapLoading={heatmapStore.isLoading}
           codexSessions={codexSessionViews}
-          codexSessionsLoading={codexSessionStore.isLoading}
-          codexSessionsError={codexSessionStore.error}
+          codexSessionsLoading={codexMonitorStore.isLoading}
+          codexSessionsError={codexMonitorStore.error}
           onOpenCodexSession={handleOpenCodexSession}
         />
         <MainContent

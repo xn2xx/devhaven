@@ -125,9 +125,11 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - macOS 全屏空间辅助显示：`src-tauri/src/lib.rs`（`set_window_fullscreen_auxiliary/apply_fullscreen_auxiliary`）
 - 悬浮窗 UI：`src/components/MonitorWindow.tsx`
 
-### I. Codex CLI 会话集成（监听 ~/.codex/sessions）
-- 前端：`src/hooks/useCodexSessions.ts`、`src/services/codex.ts`、`src/components/CodexSessionSection.tsx`
-- 后端：`src-tauri/src/codex_sessions.rs`（文件监听 + 事件 `codex-sessions-update`）
+### I. Codex CLI 监控集成（监听 ~/.codex/sessions）
+- 前端：`src/hooks/useCodexMonitor.ts`、`src/services/codex.ts`、`src/components/CodexSessionSection.tsx`、`src/App.tsx`
+- 后端：`src-tauri/src/codex_monitor.rs`（文件监听 + 进程轮询 + 状态机 + 事件流）
+- Tauri Command：`src-tauri/src/lib.rs`（`get_codex_monitor_snapshot`）
+- 事件：`codex-monitor-snapshot`（快照）、`codex-monitor-agent-event`（`agent-active/task-complete/task-error/needs-attention/...`）
 
 ### J. 更新检查
 - GitHub Releases latest 检查：`src/services/update.ts`
