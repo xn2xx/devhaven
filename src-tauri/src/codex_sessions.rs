@@ -14,8 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{Datelike, Local, Utc};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager};
 use sysinfo::System;
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::models::CodexSessionSummary;
 
@@ -69,7 +69,11 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => metadata,
             Err(err) => {
-                log::warn!("读取 Codex 会话文件失败: path={} err={}", path.display(), err);
+                log::warn!(
+                    "读取 Codex 会话文件失败: path={} err={}",
+                    path.display(),
+                    err
+                );
                 continue;
             }
         };
@@ -85,7 +89,12 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
             continue;
         }
         let should_refresh = match cache.get(&path) {
-            Some(cached) => cached.modified != modified || cached.size != size,
+            Some(cached) => {
+                cached.modified != modified
+                    || cached.size != size
+                    // 运行态会话需要按时间窗口持续重算，避免“已空闲但仍显示运行中”。
+                    || cached.summary.is_running
+            }
             None => true,
         };
         if should_refresh {
@@ -120,7 +129,8 @@ pub fn list_sessions(app: &AppHandle) -> Result<Vec<CodexSessionSummary>, String
                 if !any {
                     false
                 } else if cached.summary.last_activity_at > 0
-                    && now_ms.saturating_sub(cached.summary.last_activity_at) > FALLBACK_STALE_RUNNING_MS
+                    && now_ms.saturating_sub(cached.summary.last_activity_at)
+                        > FALLBACK_STALE_RUNNING_MS
                 {
                     false
                 } else {
@@ -216,9 +226,7 @@ fn event_loop(rx: Receiver<Result<notify::Event, notify::Error>>, app: AppHandle
 fn should_refresh_for_event(event: &notify::Event) -> bool {
     let matches_kind = matches!(
         event.kind,
-        EventKind::Create(_)
-            | EventKind::Modify(_)
-            | EventKind::Remove(_)
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
     );
     if !matches_kind {
         return false;
@@ -315,12 +323,14 @@ fn is_rollout_file(path: &Path) -> bool {
 
 fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
     let meta = read_session_meta(path)?;
-    let tail_lines = read_tail_lines_resilient(path, MAX_TAIL_LINES, MAX_TAIL_BYTES, MAX_TAIL_BYTES_CAP)?;
+    let tail_lines =
+        read_tail_lines_resilient(path, MAX_TAIL_LINES, MAX_TAIL_BYTES, MAX_TAIL_BYTES_CAP)?;
 
     let mut last_activity_at = meta.started_at;
     let mut last_user_ts: i64 = 0;
     let mut last_agent_ts: i64 = 0;
     let mut last_abort_ts: i64 = 0;
+    let mut last_agent_activity_ts: i64 = 0;
 
     for line in tail_lines {
         if line.trim().is_empty() {
@@ -358,6 +368,14 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
                         if timestamp > last_agent_ts {
                             last_agent_ts = timestamp;
                         }
+                        if timestamp > last_agent_activity_ts {
+                            last_agent_activity_ts = timestamp;
+                        }
+                    }
+                    Some("agent_reasoning") | Some("token_count") => {
+                        if timestamp > last_agent_activity_ts {
+                            last_agent_activity_ts = timestamp;
+                        }
                     }
                     Some("turn_aborted") => {
                         if timestamp > last_abort_ts {
@@ -372,21 +390,31 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
                 let item_type = payload
                     .and_then(|item| item.get("type"))
                     .and_then(|item| item.as_str());
-                if item_type != Some("message") {
-                    continue;
-                }
-                let role = payload
-                    .and_then(|item| item.get("role"))
-                    .and_then(|item| item.as_str());
-                match role {
-                    Some("user") => {
-                        if timestamp > last_user_ts {
-                            last_user_ts = timestamp;
+                match item_type {
+                    Some("message") => {
+                        let role = payload
+                            .and_then(|item| item.get("role"))
+                            .and_then(|item| item.as_str());
+                        match role {
+                            Some("user") => {
+                                if timestamp > last_user_ts {
+                                    last_user_ts = timestamp;
+                                }
+                            }
+                            Some("assistant") => {
+                                if timestamp > last_agent_ts {
+                                    last_agent_ts = timestamp;
+                                }
+                                if timestamp > last_agent_activity_ts {
+                                    last_agent_activity_ts = timestamp;
+                                }
+                            }
+                            _ => {}
                         }
                     }
-                    Some("assistant") => {
-                        if timestamp > last_agent_ts {
-                            last_agent_ts = timestamp;
+                    Some("reasoning") | Some("function_call") | Some("function_call_output") => {
+                        if timestamp > last_agent_activity_ts {
+                            last_agent_activity_ts = timestamp;
                         }
                     }
                     _ => {}
@@ -403,17 +431,16 @@ fn parse_session_file(path: &Path) -> Result<CodexSessionSummary, String> {
     }
 
     let now_ms = Utc::now().timestamp_millis();
-    // “运行中”的更稳判断：最近一次 user turn 是否还没被 assistant turn 响应/中止。
-    // 这样能避免长时间无输出（例如执行长命令）被误判为完成。
-    let pending_turn = last_user_ts > 0
-        && last_user_ts > last_agent_ts
-        && last_user_ts > last_abort_ts;
-    let is_running = if last_user_ts > 0 {
-        pending_turn
-    } else {
-        // 没找到 user/assistant 消息时保留短窗口兜底（例如刚创建会话但还没写入消息）。
-        last_activity_at > 0 && now_ms.saturating_sub(last_activity_at) <= ACTIVE_WINDOW_MS
-    };
+    // 仅把“正在持续产出（思考/输出/工具调用）”的会话视为运行中：
+    // - 有 pending user turn（尚未收到 assistant_message/turn_aborted）
+    // - 且最近有 agent 活动（限定在短时间窗口内）
+    let pending_turn =
+        last_user_ts > 0 && last_user_ts > last_agent_ts && last_user_ts > last_abort_ts;
+    let has_agent_activity_for_pending_turn =
+        last_agent_activity_ts >= last_user_ts && last_agent_activity_ts > 0;
+    let is_actively_streaming = has_agent_activity_for_pending_turn
+        && now_ms.saturating_sub(last_agent_activity_ts) <= ACTIVE_WINDOW_MS;
+    let is_running = pending_turn && is_actively_streaming;
 
     Ok(CodexSessionSummary {
         id: meta.id,
@@ -442,7 +469,8 @@ fn read_session_meta(path: &Path) -> Result<SessionMeta, String> {
     if line.trim().is_empty() {
         return Err("会话文件为空".to_string());
     }
-    let value: Value = serde_json::from_str(&line).map_err(|err| format!("解析会话首行失败: {err}"))?;
+    let value: Value =
+        serde_json::from_str(&line).map_err(|err| format!("解析会话首行失败: {err}"))?;
     if value.get("type").and_then(|item| item.as_str()) != Some("session_meta") {
         return Err("会话首行不是 session_meta".to_string());
     }
@@ -486,9 +514,17 @@ fn read_tail_lines(path: &Path, max_lines: usize, max_bytes: u64) -> Result<Vec<
         .metadata()
         .map_err(|err| format!("读取文件元信息失败: {err}"))?
         .len();
-    let start = if size > max_bytes { size - max_bytes } else { 0 };
+    let start = if size > max_bytes {
+        size - max_bytes
+    } else {
+        0
+    };
     // 读取 start 前一个字节，用来判断是否处在行中间，避免误删完整首行。
-    let read_start = if start > 0 { start.saturating_sub(1) } else { 0 };
+    let read_start = if start > 0 {
+        start.saturating_sub(1)
+    } else {
+        0
+    };
     file.seek(SeekFrom::Start(read_start))
         .map_err(|err| format!("定位会话文件失败: {err}"))?;
     let mut buffer = Vec::new();
@@ -531,10 +567,7 @@ fn read_tail_lines_resilient(
         if !lines.is_empty() || bytes >= size || bytes >= max_bytes_cap {
             return Ok(lines);
         }
-        bytes = bytes
-            .saturating_mul(2)
-            .min(size)
-            .min(max_bytes_cap);
+        bytes = bytes.saturating_mul(2).min(size).min(max_bytes_cap);
     }
 }
 
@@ -669,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_session_file_marks_pending_turn_as_running() {
+    fn parse_session_file_marks_pending_turn_without_agent_activity_as_not_running() {
         let dir = std::env::temp_dir().join(format!("devhaven-codex-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join("rollout-test.jsonl");
@@ -681,7 +714,30 @@ mod tests {
         fs::write(&path, content).expect("write temp file");
 
         let summary = parse_session_file(&path).expect("parse session");
-        assert!(summary.is_running, "pending user turn should be running");
+        assert!(
+            !summary.is_running,
+            "pending turn without agent activity should be idle"
+        );
+    }
+
+    #[test]
+    fn parse_session_file_marks_active_agent_turn_as_running() {
+        let dir = std::env::temp_dir().join(format!("devhaven-codex-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("rollout-test.jsonl");
+        let content = [
+            r#"{"timestamp":"2026-01-28T05:07:13.570Z","type":"session_meta","payload":{"id":"abc","timestamp":"2026-01-28T05:07:13.545Z","cwd":"/tmp/project","cli_version":"0.92.0"}}"#,
+            r#"{"timestamp":"2036-01-28T05:08:13.000Z","type":"event_msg","payload":{"type":"user_message","message":"hi"}}"#,
+            r#"{"timestamp":"2036-01-28T05:08:14.000Z","type":"event_msg","payload":{"type":"agent_reasoning"}}"#,
+        ]
+        .join("\n");
+        fs::write(&path, content).expect("write temp file");
+
+        let summary = parse_session_file(&path).expect("parse session");
+        assert!(
+            summary.is_running,
+            "pending turn with recent agent activity should be running"
+        );
     }
 
     #[test]
@@ -698,6 +754,9 @@ mod tests {
         fs::write(&path, content).expect("write temp file");
 
         let summary = parse_session_file(&path).expect("parse session");
-        assert!(!summary.is_running, "aborted user turn should not be running");
+        assert!(
+            !summary.is_running,
+            "aborted user turn should not be running"
+        );
     }
 }
