@@ -31,6 +31,7 @@ const emptyState: AppStateFile = {
     terminalTheme: "DevHaven Dark",
     showMonitorWindow: false,
     gitIdentities: [],
+    projectListViewMode: "card",
   },
 };
 

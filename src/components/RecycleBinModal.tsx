@@ -1,4 +1,5 @@
 import { IconX } from "./Icons";
+import { formatPathWithTilde } from "../utils/pathDisplay";
 
 export type RecycleBinItem = {
   path: string;
@@ -39,25 +40,28 @@ export default function RecycleBinModal({ items, onClose, onRestore }: RecycleBi
               <span>状态</span>
               <span>操作</span>
             </div>
-            {items.map((item) => (
-              <div
-                className="grid grid-cols-[minmax(140px,1.2fr)_minmax(220px,2.4fr)_90px_90px] items-center gap-3 border-t border-border px-3 py-2.5 text-[13px]"
-                key={item.path}
-              >
-                <span className="truncate" title={item.name}>
-                  {item.name}
-                </span>
-                <span className="truncate" title={item.path}>
-                  {item.path}
-                </span>
-                <span className={item.missing ? "text-error" : "text-secondary-text"}>
-                  {item.missing ? "已丢失" : "可恢复"}
-                </span>
-                <button className="btn btn-outline" onClick={() => onRestore(item.path)}>
-                  恢复
-                </button>
-              </div>
-            ))}
+            {items.map((item) => {
+              const displayPath = formatPathWithTilde(item.path);
+              return (
+                <div
+                  className="grid grid-cols-[minmax(140px,1.2fr)_minmax(220px,2.4fr)_90px_90px] items-center gap-3 border-t border-border px-3 py-2.5 text-[13px]"
+                  key={item.path}
+                >
+                  <span className="truncate" title={item.name}>
+                    {item.name}
+                  </span>
+                  <span className="truncate" title={item.path}>
+                    {displayPath}
+                  </span>
+                  <span className={item.missing ? "text-error" : "text-secondary-text"}>
+                    {item.missing ? "已丢失" : "可恢复"}
+                  </span>
+                  <button className="btn btn-outline" onClick={() => onRestore(item.path)}>
+                    恢复
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

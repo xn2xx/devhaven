@@ -5,6 +5,7 @@ import type { BranchListItem } from "../models/branch";
 import { swiftDateToJsDate } from "../models/types";
 import { readProjectNotes, writeProjectNotes } from "../services/notes";
 import { listBranches } from "../services/git";
+import { formatPathWithTilde } from "../utils/pathDisplay";
 import { IconX } from "./Icons";
 import ProjectMarkdownSection from "./ProjectMarkdownSection";
 
@@ -156,6 +157,7 @@ export default function DetailPanel({
   };
 
   const scripts = useMemo(() => project?.scripts ?? [], [project]);
+  const displayPath = useMemo(() => formatPathWithTilde(project?.path ?? ""), [project?.path]);
 
   if (!project) {
     return (
@@ -171,7 +173,7 @@ export default function DetailPanel({
         <div>
           <div className="text-[16px] font-semibold">{project.name}</div>
           <div className="max-w-[320px] truncate text-fs-caption text-secondary-text" title={project.path}>
-            {project.path}
+            {displayPath}
           </div>
         </div>
         <button className="icon-btn" onClick={onClose} aria-label="关闭">

@@ -3,6 +3,7 @@ import { memo } from "react";
 import type { Project } from "../models/types";
 import { swiftDateToJsDate } from "../models/types";
 import { openInFinder } from "../services/system";
+import { formatPathWithTilde } from "../utils/pathDisplay";
 import { IconCalendar, IconCopy, IconFolder, IconRefresh, IconTrash, IconX } from "./Icons";
 
 export type ProjectCardProps = {
@@ -42,6 +43,8 @@ function ProjectCard({
   onCopyPath,
   onMoveToRecycleBin,
 }: ProjectCardProps) {
+  const displayPath = formatPathWithTilde(project.path);
+
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     const ids = selectedProjectIds.has(project.id)
       ? Array.from(selectedProjectIds)
@@ -103,7 +106,7 @@ function ProjectCard({
         </div>
       </div>
       <div className="truncate text-fs-caption text-secondary-text" title={project.path}>
-        {project.path}
+        {displayPath}
       </div>
       <div className="flex items-center justify-between text-fs-caption text-secondary-text">
         <span className="inline-flex items-center gap-1">
