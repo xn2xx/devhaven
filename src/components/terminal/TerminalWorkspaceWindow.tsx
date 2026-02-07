@@ -343,16 +343,20 @@ export default function TerminalWorkspaceWindow({
                             </button>
                           ) : null}
                           <button
-                            className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[rgba(239,68,68,0.35)] hover:bg-[rgba(239,68,68,0.15)] hover:text-[rgba(239,68,68,0.9)] group-hover:opacity-100"
+                            className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[rgba(239,68,68,0.35)] hover:bg-[rgba(239,68,68,0.15)] hover:text-[rgba(239,68,68,0.9)] group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
+                              if (isCreating) {
+                                return;
+                              }
                               onDeleteWorktree(project.id, worktree.path);
                             }}
-                            title={isCreating ? "取消创建" : "删除 worktree"}
+                            title={isCreating ? "创建中（不可取消）" : "删除 worktree"}
                             type="button"
+                            disabled={isCreating}
                           >
-                            {isCreating ? "取消" : "删除"}
+                            {isCreating ? "创建中" : "删除"}
                           </button>
                         </div>
                       );

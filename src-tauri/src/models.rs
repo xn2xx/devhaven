@@ -323,6 +323,14 @@ pub struct GitWorktreeListItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InteractionLockPayload {
+    pub locked: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorktreeInitVisualStatus {
     Creating,
@@ -369,6 +377,21 @@ pub struct WorktreeInitStartResult {
     pub base_branch: Option<String>,
     pub step: WorktreeInitStep,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeInitCreateBlockingResult {
+    pub job_id: String,
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_path: String,
+    pub branch: String,
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    pub message: String,
+    #[serde(default)]
+    pub warning: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

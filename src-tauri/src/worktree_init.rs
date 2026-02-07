@@ -326,7 +326,12 @@ impl WorktreeInitState {
         } else {
             "执行中：校验分支可用性..."
         };
-        self.emit_running_step(app, job_id, WorktreeInitStep::CheckingBranch, checking_message);
+        self.emit_running_step(
+            app,
+            job_id,
+            WorktreeInitStep::CheckingBranch,
+            checking_message,
+        );
 
         if let Err(error) = validate_branch(
             &job_snapshot.project_path,
@@ -403,7 +408,13 @@ impl WorktreeInitState {
         JobRunOutcome::Ready(setup_warning)
     }
 
-    fn emit_running_step(&self, app: &AppHandle, job_id: &str, step: WorktreeInitStep, message: &str) {
+    fn emit_running_step(
+        &self,
+        app: &AppHandle,
+        job_id: &str,
+        step: WorktreeInitStep,
+        message: &str,
+    ) {
         self.emit_progress(app, job_id, step, message.to_string(), None);
     }
 
