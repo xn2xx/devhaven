@@ -4,12 +4,6 @@ import type { BranchListItem } from "../../models/branch";
 import type { Project } from "../../models/types";
 import { listBranches } from "../../services/git";
 import { gitWorktreeList, type GitWorktreeListItem } from "../../services/gitWorktree";
-import {
-  worktreeInitCancel,
-  worktreeInitStatus,
-  type WorktreeInitStep,
-} from "../../services/worktreeInit";
-import { copyToClipboard } from "../../services/system";
 
 export type WorktreeCreateSubmitPayload =
   | {
@@ -49,25 +43,6 @@ type WorktreeCreateDialogProps = {
   onSubmit: (payload: WorktreeCreateSubmitPayload) => Promise<WorktreeCreateSubmitResult>;
 };
 
-const INIT_STEP_META: Array<{ step: WorktreeInitStep; label: string; summary: string }> = [
-  { step: "pending", label: "准备任务", summary: "排队中，等待执行" },
-  { step: "validating", label: "校验仓库", summary: "检查路径与仓库状态" },
-  { step: "checking_branch", label: "校验分支", summary: "确认分支可用性" },
-  { step: "creating_worktree", label: "创建目录", summary: "执行 git worktree add" },
-  { step: "preparing_environment", label: "准备环境", summary: "执行 setup 初始化脚本" },
-  { step: "syncing", label: "同步状态", summary: "回写并刷新工作区" },
-  { step: "ready", label: "创建完成", summary: "可在终端中打开" },
-];
-
-const INIT_STEP_INDEX = new Map(INIT_STEP_META.map((item, index) => [item.step, index]));
-
-type InitTracker = {
-  jobId: string;
-  worktreePath: string;
-  branch: string;
-  baseBranch?: string;
-};
-
 function resolveErrorMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : String(error);
   return message || fallback;
@@ -94,21 +69,11 @@ function validateCreateForm(params: {
 function resolveSubmitButtonLabel(params: {
   submitting: boolean;
   mode: "create" | "open-existing";
-  isInitRunning: boolean;
-  currentInitStep: WorktreeInitStep;
 }): string {
   if (params.mode === "open-existing") {
     return params.submitting ? "处理中..." : "添加并打开";
   }
-
-  const activeProgressLabel = params.currentInitStep === "pending" ? "排队中..." : "执行中...";
-  if (params.submitting || params.isInitRunning) {
-    return activeProgressLabel;
-  }
-  if (params.currentInitStep === "ready") {
-    return "再创建一个";
-  }
-  return "创建";
+  return params.submitting ? "处理中..." : "创建";
 }
 
 /** 在终端工作区内创建或打开 Git worktree 的弹窗。 */
@@ -130,10 +95,7 @@ export default function WorktreeCreateDialog({
   const [selectedExistingPath, setSelectedExistingPath] = useState("");
   const [autoOpen, setAutoOpen] = useState(true);
   const [error, setError] = useState("");
-  const [copyingDiagnostic, setCopyingDiagnostic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [cancellingInit, setCancellingInit] = useState(false);
-  const [activeInit, setActiveInit] = useState<InitTracker | null>(null);
 
   const hasExistingBranches = branches.length > 0;
   const hasExistingWorktrees = existingWorktrees.length > 0;
@@ -162,56 +124,6 @@ export default function WorktreeCreateDialog({
     return new Set((sourceProject.worktrees ?? []).map((item) => item.path));
   }, [sourceProject]);
 
-  const trackedInitWorktree = useMemo(() => {
-    if (!sourceProject || !activeInit) {
-      return null;
-    }
-    const normalizedActivePath = normalizePathForCompare(activeInit.worktreePath);
-    return (
-      (sourceProject.worktrees ?? []).find(
-        (item) =>
-          item.initJobId === activeInit.jobId ||
-          normalizePathForCompare(item.path) === normalizedActivePath,
-      ) ?? null
-    );
-  }, [activeInit, sourceProject]);
-
-  const initStatus = trackedInitWorktree?.status;
-  const currentInitStep: WorktreeInitStep = trackedInitWorktree?.initStep ?? "pending";
-  const isInitRunning = initStatus === "creating";
-  const hasInitFailed = currentInitStep === "failed" || currentInitStep === "cancelled";
-
-  const initError = useMemo(() => {
-    if (!trackedInitWorktree) {
-      return "";
-    }
-    if (trackedInitWorktree.initError) {
-      return trackedInitWorktree.initError;
-    }
-    if (hasInitFailed) {
-      return trackedInitWorktree.initMessage || "初始化失败";
-    }
-    return "";
-  }, [hasInitFailed, trackedInitWorktree]);
-
-  const initMessage = trackedInitWorktree?.initMessage || (activeInit ? "等待任务启动..." : "");
-
-  const initPhaseLabel = useMemo(() => {
-    if (!activeInit) {
-      return "";
-    }
-    if (hasInitFailed) {
-      return "已失败";
-    }
-    if (currentInitStep === "ready") {
-      return "已完成";
-    }
-    if (currentInitStep === "pending") {
-      return "排队中";
-    }
-    return "执行中";
-  }, [activeInit, currentInitStep, hasInitFailed]);
-
   useEffect(() => {
     if (!isOpen || !sourceProject) {
       return;
@@ -226,10 +138,7 @@ export default function WorktreeCreateDialog({
     setSelectedExistingPath("");
     setAutoOpen(true);
     setError("");
-    setCopyingDiagnostic(false);
     setSubmitting(false);
-    setCancellingInit(false);
-    setActiveInit(null);
   }, [isOpen, sourceProject]);
 
   useEffect(() => {
@@ -314,29 +223,8 @@ export default function WorktreeCreateDialog({
     return null;
   }
 
-  const waitForInitTerminalStep = async (jobId: string): Promise<WorktreeInitStep> => {
-    const timeoutAt = Date.now() + 10 * 60_000;
-
-    while (Date.now() < timeoutAt) {
-      const statuses = await worktreeInitStatus({
-        projectId: sourceProject.id,
-        projectPath: sourceProject.path,
-      });
-      const matched = statuses.find((item) => item.jobId === jobId);
-      const step = matched?.step;
-      if (step === "ready" || step === "failed" || step === "cancelled") {
-        return step;
-      }
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 250);
-      });
-    }
-
-    throw new Error("等待创建结果超时，请稍后在项目列表中查看状态");
-  };
-
   const handleSubmit = async () => {
-    if (mode === "create" && isInitRunning) {
+    if (submitting) {
       return;
     }
 
@@ -357,7 +245,8 @@ export default function WorktreeCreateDialog({
           setError(validationError);
           return;
         }
-        const result = await onSubmit({
+
+        await onSubmit({
           mode: "create",
           sourceProjectId: sourceProject.id,
           sourceProjectPath: sourceProject.path,
@@ -366,19 +255,8 @@ export default function WorktreeCreateDialog({
           baseBranch: branchMode === "new" ? trimmedBaseBranch : undefined,
           autoOpen,
         });
-        if (result.mode === "create") {
-          setActiveInit({
-            jobId: result.jobId,
-            worktreePath: result.worktreePath,
-            branch: result.branch,
-            baseBranch: result.baseBranch,
-          });
 
-          const terminalStep = await waitForInitTerminalStep(result.jobId);
-          if (terminalStep === "ready") {
-            onClose();
-          }
-        }
+        onClose();
       } else {
         if (!selectedExistingWorktree) {
           setError("请选择要打开的 worktree");
@@ -399,91 +277,11 @@ export default function WorktreeCreateDialog({
       setSubmitting(false);
     }
   };
-
-  const renderStepState = (step: WorktreeInitStep) => {
-    if (!activeInit) {
-      return { status: "pending" as const, marker: "○", className: "text-secondary-text" };
-    }
-
-    if (hasInitFailed) {
-      if (step === currentInitStep || step === "ready") {
-        return { status: "failed" as const, marker: "✕", className: "text-error" };
-      }
-      const failedIndex = INIT_STEP_INDEX.get(currentInitStep) ?? -1;
-      const index = INIT_STEP_INDEX.get(step) ?? -1;
-      if (failedIndex >= 0 && index >= 0 && index < failedIndex) {
-        return { status: "done" as const, marker: "✓", className: "text-text" };
-      }
-      return { status: "pending" as const, marker: "○", className: "text-secondary-text" };
-    }
-
-    const currentIndex = INIT_STEP_INDEX.get(currentInitStep) ?? -1;
-    const index = INIT_STEP_INDEX.get(step) ?? -1;
-    if (currentIndex >= 0 && index < currentIndex) {
-      return { status: "done" as const, marker: "✓", className: "text-text" };
-    }
-    if (currentIndex >= 0 && index === currentIndex) {
-      return { status: "current" as const, marker: "●", className: "text-text" };
-    }
-    return { status: "pending" as const, marker: "○", className: "text-secondary-text" };
-  };
-
-  const handleCopyDiagnostic = async () => {
-    if (!activeInit || !trackedInitWorktree) {
-      return;
-    }
-
-    const content = [
-      "[Worktree Init Diagnostic]",
-      `projectPath=${sourceProject.path}`,
-      `jobId=${activeInit.jobId}`,
-      `worktreePath=${activeInit.worktreePath}`,
-      `branch=${activeInit.branch}`,
-      `baseBranch=${trackedInitWorktree.baseBranch ?? activeInit.baseBranch ?? ""}`,
-      `step=${currentInitStep}`,
-      `status=${trackedInitWorktree.status ?? "unknown"}`,
-      `message=${trackedInitWorktree.initMessage ?? ""}`,
-      `error=${trackedInitWorktree.initError ?? ""}`,
-      `updatedAt=${trackedInitWorktree.updatedAt ?? ""}`,
-    ].join("\n");
-
-    setCopyingDiagnostic(true);
-    try {
-      await copyToClipboard(content);
-    } catch (err) {
-      setError(resolveErrorMessage(err, "复制诊断信息失败"));
-    } finally {
-      setCopyingDiagnostic(false);
-    }
-  };
-
-  const canCancelInit = mode === "create" && submitting && !!activeInit && isInitRunning;
-
-  const handleCancelAction = async () => {
-    if (!canCancelInit || !activeInit) {
-      onClose();
-      return;
-    }
-
-    if (cancellingInit) {
-      return;
-    }
-
-    setCancellingInit(true);
-    try {
-      await worktreeInitCancel(activeInit.jobId);
-    } catch (err) {
-      setError(resolveErrorMessage(err, "取消创建失败，请重试"));
-    } finally {
-      setCancellingInit(false);
-    }
-  };
+  const canClose = !submitting;
 
   const submitButtonLabel = resolveSubmitButtonLabel({
     submitting,
     mode,
-    isInitRunning,
-    currentInitStep,
   });
 
   return (
@@ -501,7 +299,7 @@ export default function WorktreeCreateDialog({
             <input
               type="radio"
               checked={mode === "create"}
-              disabled={isInitRunning}
+              disabled={submitting}
               onChange={() => setMode("create")}
             />
             新建 worktree
@@ -510,7 +308,7 @@ export default function WorktreeCreateDialog({
             <input
               type="radio"
               checked={mode === "open-existing"}
-              disabled={isInitRunning}
+              disabled={submitting}
               onChange={() => setMode("open-existing")}
             />
             打开已有 worktree
@@ -527,7 +325,7 @@ export default function WorktreeCreateDialog({
                     type="radio"
                     name="worktree-branch-mode"
                     checked={branchMode === "existing"}
-                    disabled={!hasExistingBranches || isInitRunning}
+                    disabled={!hasExistingBranches || submitting}
                     onChange={() => setBranchMode("existing")}
                   />
                   已有分支
@@ -537,7 +335,7 @@ export default function WorktreeCreateDialog({
                     type="radio"
                     name="worktree-branch-mode"
                     checked={branchMode === "new"}
-                    disabled={isInitRunning}
+                    disabled={submitting}
                     onChange={() => setBranchMode("new")}
                   />
                   新建分支
@@ -550,7 +348,7 @@ export default function WorktreeCreateDialog({
                   <select
                     className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
                     value={existingBranch}
-                    disabled={loadingBranches || !hasExistingBranches || isInitRunning}
+                    disabled={loadingBranches || !hasExistingBranches || submitting}
                     onChange={(event) => setExistingBranch(event.target.value)}
                   >
                     {hasExistingBranches ? (
@@ -572,7 +370,7 @@ export default function WorktreeCreateDialog({
                     <input
                       className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
                       value={newBranch}
-                      disabled={isInitRunning}
+                      disabled={submitting}
                       onChange={(event) => setNewBranch(event.target.value)}
                       placeholder="例如：feature/new-idea"
                     />
@@ -582,7 +380,7 @@ export default function WorktreeCreateDialog({
                     <select
                       className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
                       value={baseBranch}
-                      disabled={loadingBranches || !hasExistingBranches || isInitRunning}
+                      disabled={loadingBranches || !hasExistingBranches || submitting}
                       onChange={(event) => setBaseBranch(event.target.value)}
                     >
                       {hasExistingBranches ? (
@@ -606,62 +404,6 @@ export default function WorktreeCreateDialog({
             <div className="rounded-md border border-border bg-card-bg px-3 py-2 text-fs-caption text-secondary-text">
               固定目录策略：{targetPathPreview}
             </div>
-
-            <div className="flex flex-col gap-2 rounded-md border border-border bg-card-bg p-3">
-              <div className="text-[13px] text-secondary-text">初始化进度</div>
-              {activeInit ? (
-                <div className="rounded-md border border-border px-2.5 py-2 text-fs-caption text-secondary-text">
-                  分支：{activeInit.branch}
-                  {trackedInitWorktree?.baseBranch || activeInit.baseBranch ? (
-                    <>
-                      <br />
-                      基线：{trackedInitWorktree?.baseBranch || activeInit.baseBranch}
-                    </>
-                  ) : null}
-                  <br />
-                  路径：{activeInit.worktreePath}
-                </div>
-              ) : (
-                <div className="text-fs-caption text-secondary-text">提交后会实时展示后台初始化步骤，可随时关闭弹窗。</div>
-              )}
-              <div className="grid gap-1">
-                {INIT_STEP_META.map((item) => {
-                  const state = renderStepState(item.step);
-                  return (
-                    <div
-                      key={item.step}
-                      className={`flex items-center justify-between rounded-md border border-border px-2.5 py-1.5 text-fs-caption ${state.className}`}
-                    >
-                      <span className="inline-flex items-center gap-1.5">
-                        <span>{state.marker}</span>
-                        <span>{item.label}</span>
-                      </span>
-                      <span className="opacity-80">{item.summary}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {activeInit ? (
-                <div className="rounded-md border border-border px-2.5 py-2 text-fs-caption text-secondary-text">
-                  当前状态：{initPhaseLabel || "处理中"}
-                  <br />
-                  详情：{initMessage || "等待后台任务反馈"}
-                </div>
-              ) : null}
-              {hasInitFailed ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-[rgba(239,68,68,0.35)] bg-[rgba(239,68,68,0.08)] px-2.5 py-2 text-fs-caption text-error">
-                  <span className="min-w-0 flex-1 truncate">{initError || "初始化失败"}</span>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={copyingDiagnostic}
-                    onClick={() => void handleCopyDiagnostic()}
-                  >
-                    {copyingDiagnostic ? "复制中..." : "复制诊断"}
-                  </button>
-                </div>
-              ) : null}
-            </div>
           </>
         ) : (
           <div className="flex flex-col gap-2 rounded-md border border-border bg-card-bg p-3">
@@ -670,7 +412,7 @@ export default function WorktreeCreateDialog({
               <select
                 className="rounded-md border border-border bg-card-bg px-2 py-2 text-text"
                 value={selectedExistingPath}
-                disabled={loadingExistingWorktrees || !hasExistingWorktrees || isInitRunning}
+                disabled={loadingExistingWorktrees || !hasExistingWorktrees || submitting}
                 onChange={(event) => setSelectedExistingPath(event.target.value)}
               >
                 {hasExistingWorktrees ? (
@@ -708,7 +450,7 @@ export default function WorktreeCreateDialog({
             <input
               type="checkbox"
               checked={autoOpen}
-              disabled={isInitRunning}
+              disabled={submitting}
               onChange={(event) => setAutoOpen(event.target.checked)}
             />
             完成后在终端工作区打开
@@ -721,16 +463,16 @@ export default function WorktreeCreateDialog({
           <button
             type="button"
             className="btn"
-            onClick={() => void handleCancelAction()}
-            disabled={cancellingInit}
+            onClick={onClose}
+            disabled={!canClose}
           >
-            {canCancelInit ? (cancellingInit ? "取消中..." : "取消任务") : "取消"}
+            关闭
           </button>
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => void handleSubmit()}
-            disabled={submitting || (mode === "create" && isInitRunning)}
+            disabled={submitting}
           >
             {submitButtonLabel}
           </button>
@@ -754,9 +496,4 @@ function resolveNameFromPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
   return last || normalized || path;
-}
-
-function normalizePathForCompare(path: string): string {
-  const normalized = path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  return normalized.toLowerCase();
 }

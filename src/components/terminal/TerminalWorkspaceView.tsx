@@ -39,6 +39,7 @@ import {
   splitPane,
   updateSplitRatios,
 } from "../../utils/terminalLayout";
+import { isInteractionLocked } from "../../utils/interactionLock";
 import { IconFolder, IconGitBranch, IconSidebarRight, IconX } from "../Icons";
 import ResizablePanel from "./ResizablePanel";
 import SplitLayout from "./SplitLayout";
@@ -938,6 +939,11 @@ export default function TerminalWorkspaceView({
       return;
     }
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isInteractionLocked()) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (event.defaultPrevented || event.repeat) {
         return;
       }
