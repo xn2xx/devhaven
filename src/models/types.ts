@@ -55,6 +55,8 @@ export type GitIdentity = {
   email: string;
 };
 
+export type ProjectListViewMode = "card" | "list";
+
 export type AppSettings = {
   editorOpenTool: OpenToolSettings;
   terminalOpenTool: OpenToolSettings;
@@ -62,6 +64,7 @@ export type AppSettings = {
   terminalTheme: string;
   showMonitorWindow: boolean;
   gitIdentities: GitIdentity[];
+  projectListViewMode: ProjectListViewMode;
 };
 
 export type AppStateFile = {

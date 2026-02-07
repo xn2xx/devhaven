@@ -23,7 +23,7 @@ import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
 import type { TerminalWorkspaceSummary } from "./models/terminal";
 import type { CodexAgentEvent, CodexMonitorSession, CodexSessionView } from "./models/codex";
-import type { ColorData, Project, ProjectWorktree, TagData } from "./models/types";
+import type { ColorData, Project, ProjectListViewMode, ProjectWorktree, TagData } from "./models/types";
 import { jsDateToSwiftDate, swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
@@ -419,6 +419,8 @@ function AppLayout() {
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
     [appState.tags],
   );
+  const projectListViewMode: ProjectListViewMode =
+    appState.settings.projectListViewMode ?? "card";
 
   useEffect(() => {
     if (!worktreeDialogProjectId) {
@@ -1779,6 +1781,21 @@ function AppLayout() {
     [showToast, updateSettings],
   );
 
+  const handleChangeProjectListViewMode = useCallback(
+    async (mode: ProjectListViewMode) => {
+      if (mode === projectListViewMode) {
+        return;
+      }
+      try {
+        await updateSettings({ ...appState.settings, projectListViewMode: mode });
+      } catch (error) {
+        console.error("切换项目视图模式失败。", error);
+        showToast("切换失败，请稍后重试", "error");
+      }
+    },
+    [appState.settings, projectListViewMode, showToast, updateSettings],
+  );
+
   useEffect(() => {
     if (isMonitorView) {
       return;
@@ -1892,6 +1909,8 @@ function AppLayout() {
           onDateFilterChange={setDateFilter}
           gitFilter={gitFilter}
           onGitFilterChange={setGitFilter}
+          viewMode={projectListViewMode}
+          onViewModeChange={(mode) => void handleChangeProjectListViewMode(mode)}
           showDetailPanel={showDetailPanel}
           onToggleDetailPanel={handleToggleDetail}
           onOpenDashboard={() => setShowDashboard(true)}
