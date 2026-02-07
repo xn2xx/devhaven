@@ -71,6 +71,8 @@ struct SessionTracker {
     last_needs_attention_ts: i64,
     session_title: Option<String>,
     details: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
 }
 
 struct SessionMeta {
@@ -612,6 +614,8 @@ fn parse_session_file(
         id: meta.id,
         cwd: meta.cwd,
         cli_version: meta.cli_version,
+        model: tracker.model,
+        effort: tracker.effort,
         started_at: meta.started_at,
         last_activity_at: tracker.last_activity_at,
         state,
@@ -643,6 +647,7 @@ fn process_entry(value: &Value, tracker: &mut SessionTracker) {
     match typ {
         "event_msg" => process_event_msg(payload, timestamp, tracker),
         "response_item" => process_response_item(payload, timestamp, tracker),
+        "turn_context" => process_turn_context(payload, tracker),
         _ => {
             if entry_indicates_error(value) {
                 tracker.last_error_ts = tracker.last_error_ts.max(timestamp);
@@ -651,6 +656,30 @@ fn process_entry(value: &Value, tracker: &mut SessionTracker) {
                 }
             }
         }
+    }
+}
+
+fn process_turn_context(payload: Option<&Value>, tracker: &mut SessionTracker) {
+    let Some(payload) = payload else {
+        return;
+    };
+
+    if let Some(model) = payload
+        .get("model")
+        .and_then(|item| item.as_str())
+        .map(|text| text.trim())
+        .filter(|text| !text.is_empty())
+    {
+        tracker.model = Some(model.to_string());
+    }
+
+    if let Some(effort) = payload
+        .get("effort")
+        .and_then(|item| item.as_str())
+        .map(|text| text.trim())
+        .filter(|text| !text.is_empty())
+    {
+        tracker.effort = Some(effort.to_string());
     }
 }
 
@@ -1218,6 +1247,21 @@ mod tests {
             .timestamp_millis();
         let session = parse_session_file(&path, now, true).expect("parse session");
         assert_eq!(session.state, CodexMonitorState::Error);
+    }
+
+    #[test]
+    fn parse_session_file_extracts_model_and_effort_from_turn_context() {
+        let path = write_session(&[
+            r#"{"timestamp":"2026-01-28T05:07:13.570Z","type":"session_meta","payload":{"id":"abc","timestamp":"2026-01-28T05:07:13.545Z","cwd":"/tmp/project","cli_version":"0.92.0"}}"#,
+            r#"{"timestamp":"2036-01-28T05:08:13.000Z","type":"turn_context","payload":{"model":"gpt-5-codex","effort":"xhigh"}}"#,
+        ]);
+
+        let now = chrono::DateTime::parse_from_rfc3339("2036-01-28T05:08:20.000Z")
+            .expect("parse now")
+            .timestamp_millis();
+        let session = parse_session_file(&path, now, true).expect("parse session");
+        assert_eq!(session.model.as_deref(), Some("gpt-5-codex"));
+        assert_eq!(session.effort.as_deref(), Some("xhigh"));
     }
 
     #[test]

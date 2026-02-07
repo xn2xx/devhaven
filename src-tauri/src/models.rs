@@ -479,6 +479,10 @@ pub struct CodexMonitorSession {
     pub id: String,
     pub cwd: String,
     pub cli_version: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
     pub started_at: i64,
     pub last_activity_at: i64,
     pub state: CodexMonitorState,
@@ -523,5 +527,16 @@ pub struct CodexAgentEvent {
 pub struct CodexMonitorSnapshot {
     pub sessions: Vec<CodexMonitorSession>,
     pub is_codex_running: bool,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCodexPaneOverlay {
+    pub session_id: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub effort: Option<String>,
     pub updated_at: i64,
 }

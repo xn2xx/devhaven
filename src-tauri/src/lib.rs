@@ -22,12 +22,14 @@ use crate::models::{
     AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
     FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
     GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, MarkdownFileEntry, Project,
-    TerminalWorkspace, WorktreeInitCancelResult, WorktreeInitJobStatus, WorktreeInitRetryRequest,
-    WorktreeInitStartRequest, WorktreeInitStartResult, WorktreeInitStatusQuery,
+    TerminalCodexPaneOverlay, TerminalWorkspace, WorktreeInitCancelResult, WorktreeInitJobStatus,
+    WorktreeInitRetryRequest, WorktreeInitStartRequest, WorktreeInitStartResult,
+    WorktreeInitStatusQuery,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
-    TerminalState, terminal_create_session, terminal_kill, terminal_resize, terminal_write,
+    TerminalState, terminal_create_session, terminal_get_codex_pane_overlay, terminal_kill,
+    terminal_resize, terminal_write,
 };
 
 #[tauri::command]
@@ -472,6 +474,18 @@ fn get_codex_monitor_snapshot(app: AppHandle) -> Result<CodexMonitorSnapshot, St
     })
 }
 
+#[tauri::command]
+fn get_terminal_codex_pane_overlay(
+    app: AppHandle,
+    state: State<TerminalState>,
+    window_label: String,
+    session_ids: Vec<String>,
+) -> Result<Vec<TerminalCodexPaneOverlay>, String> {
+    log_command_result("get_terminal_codex_pane_overlay", || {
+        terminal_get_codex_pane_overlay(app, state, window_label, session_ids)
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// 启动 Tauri 应用。
 pub fn run() {
@@ -546,6 +560,7 @@ pub fn run() {
             save_terminal_workspace,
             delete_terminal_workspace,
             get_codex_monitor_snapshot,
+            get_terminal_codex_pane_overlay,
             terminal_create_session,
             terminal_write,
             terminal_resize,

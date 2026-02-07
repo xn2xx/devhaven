@@ -10,6 +10,8 @@ export type CodexMonitorSession = {
   id: string;
   cwd: string;
   cliVersion: string | null;
+  model: string | null;
+  effort: string | null;
   startedAt: number;
   lastActivityAt: number;
   state: CodexMonitorState;

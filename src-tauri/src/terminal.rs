@@ -1,16 +1,27 @@
-use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::collections::{HashMap, HashSet};
+use std::fs::{self, File};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use serde_json::Value;
+use sysinfo::{Pid, System};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
+
+use crate::models::TerminalCodexPaneOverlay;
 
 const TERMINAL_OUTPUT_EVENT: &str = "terminal-output";
 const TERMINAL_EXIT_EVENT: &str = "terminal-exit";
+const MAX_ROLLOUT_TAIL_LINES: usize = 800;
+const MAX_ROLLOUT_TAIL_BYTES: u64 = 192 * 1024;
+const MAX_ROLLOUT_TAIL_BYTES_CAP: u64 = 2 * 1024 * 1024;
+const MAX_ROLLOUT_JSON_LINE_BYTES: usize = 2 * 1024 * 1024;
 
 /// 将 PTY 的字节流按 UTF-8 逐步解码。
 ///
@@ -61,6 +72,23 @@ fn drain_utf8_stream(pending: &mut Vec<u8>) -> String {
 #[derive(Default)]
 pub struct TerminalState {
     pub sessions: Arc<Mutex<HashMap<String, Arc<PtySession>>>>,
+    pub session_meta_by_key: Arc<Mutex<HashMap<String, TerminalSessionMeta>>>,
+    pub pty_to_session_key: Arc<Mutex<HashMap<String, String>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TerminalSessionMeta {
+    pub window_label: String,
+    pub session_id: String,
+    pub pty_id: String,
+    pub shell_pid: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RolloutContextInfo {
+    model: Option<String>,
+    effort: Option<String>,
+    updated_at: i64,
 }
 
 pub struct PtySession {
@@ -138,6 +166,436 @@ fn ensure_terminal_env(cmd: &mut CommandBuilder) {
     }
 }
 
+fn build_terminal_session_key(window_label: &str, session_id: &str) -> String {
+    format!("{}::{}", window_label, session_id)
+}
+
+fn register_terminal_session_meta(
+    state: &TerminalState,
+    meta: TerminalSessionMeta,
+) -> Result<(), String> {
+    let key = build_terminal_session_key(&meta.window_label, &meta.session_id);
+    let old_pty = {
+        let mut session_meta_by_key = state
+            .session_meta_by_key
+            .lock()
+            .map_err(|_| "终端会话元信息锁定失败".to_string())?;
+        session_meta_by_key
+            .insert(key.clone(), meta.clone())
+            .map(|old| old.pty_id)
+    };
+
+    let mut pty_to_session_key = state
+        .pty_to_session_key
+        .lock()
+        .map_err(|_| "终端会话索引锁定失败".to_string())?;
+    if let Some(old_pty) = old_pty {
+        pty_to_session_key.remove(&old_pty);
+    }
+    pty_to_session_key.insert(meta.pty_id.clone(), key);
+    Ok(())
+}
+
+fn remove_terminal_session_meta_by_pty(
+    session_meta_by_key: &Arc<Mutex<HashMap<String, TerminalSessionMeta>>>,
+    pty_to_session_key: &Arc<Mutex<HashMap<String, String>>>,
+    pty_id: &str,
+) {
+    let key = {
+        let Ok(mut pty_index) = pty_to_session_key.lock() else {
+            return;
+        };
+        pty_index.remove(pty_id)
+    };
+
+    let Some(key) = key else {
+        return;
+    };
+
+    if let Ok(mut session_meta) = session_meta_by_key.lock() {
+        let should_remove = session_meta
+            .get(&key)
+            .map(|current| current.pty_id == pty_id)
+            .unwrap_or(false);
+        if should_remove {
+            session_meta.remove(&key);
+        }
+    }
+}
+
+fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn system_time_to_millis(time: SystemTime) -> Option<i64> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_millis() as i64)
+}
+
+fn file_modified_millis(path: &Path) -> Option<i64> {
+    let modified = fs::metadata(path).ok()?.modified().ok()?;
+    system_time_to_millis(modified)
+}
+
+fn parse_timestamp(value: &Value) -> Option<i64> {
+    value
+        .as_str()
+        .and_then(|text| chrono::DateTime::parse_from_rfc3339(text).ok())
+        .map(|dt| dt.timestamp_millis())
+}
+
+fn read_tail_lines(path: &Path, max_lines: usize, max_bytes: u64) -> Result<Vec<String>, String> {
+    let mut file = File::open(path).map_err(|err| format!("读取会话文件失败: {err}"))?;
+    let size = file
+        .metadata()
+        .map_err(|err| format!("读取文件元信息失败: {err}"))?
+        .len();
+    let start = if size > max_bytes {
+        size - max_bytes
+    } else {
+        0
+    };
+    let read_start = if start > 0 {
+        start.saturating_sub(1)
+    } else {
+        0
+    };
+
+    file.seek(SeekFrom::Start(read_start))
+        .map_err(|err| format!("定位会话文件失败: {err}"))?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)
+        .map_err(|err| format!("读取会话文件失败: {err}"))?;
+
+    let text = String::from_utf8_lossy(&buffer);
+    let mut lines: Vec<&str> = text.split('\n').collect();
+    if read_start > 0 && !lines.is_empty() {
+        lines.remove(0);
+    }
+
+    let mut trimmed: Vec<String> = lines
+        .into_iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.to_string())
+        .collect();
+
+    if trimmed.len() > max_lines {
+        trimmed = trimmed.split_off(trimmed.len() - max_lines);
+    }
+
+    Ok(trimmed)
+}
+
+fn read_tail_lines_resilient(
+    path: &Path,
+    max_lines: usize,
+    initial_bytes: u64,
+    max_bytes_cap: u64,
+) -> Result<Vec<String>, String> {
+    let size = fs::metadata(path)
+        .map_err(|err| format!("读取文件元信息失败: {err}"))?
+        .len();
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut bytes = initial_bytes.min(size).max(1024);
+    loop {
+        let lines = read_tail_lines(path, max_lines, bytes)?;
+        if !lines.is_empty() || bytes >= size || bytes >= max_bytes_cap {
+            return Ok(lines);
+        }
+        bytes = bytes.saturating_mul(2).min(size).min(max_bytes_cap);
+    }
+}
+
+fn parse_rollout_context(path: &Path) -> RolloutContextInfo {
+    let mut info = RolloutContextInfo {
+        updated_at: file_modified_millis(path).unwrap_or(0),
+        ..RolloutContextInfo::default()
+    };
+
+    let lines = match read_tail_lines_resilient(
+        path,
+        MAX_ROLLOUT_TAIL_LINES,
+        MAX_ROLLOUT_TAIL_BYTES,
+        MAX_ROLLOUT_TAIL_BYTES_CAP,
+    ) {
+        Ok(lines) => lines,
+        Err(_) => return info,
+    };
+
+    for line in lines {
+        if line.trim().is_empty() || line.len() > MAX_ROLLOUT_JSON_LINE_BYTES {
+            continue;
+        }
+        let value: Value = match serde_json::from_str(&line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if value.get("type").and_then(|item| item.as_str()) != Some("turn_context") {
+            continue;
+        }
+        let Some(payload) = value.get("payload") else {
+            continue;
+        };
+
+        if let Some(model) = payload
+            .get("model")
+            .and_then(|item| item.as_str())
+            .map(|text| text.trim())
+            .filter(|text| !text.is_empty())
+        {
+            info.model = Some(model.to_string());
+        }
+
+        if let Some(effort) = payload
+            .get("effort")
+            .and_then(|item| item.as_str())
+            .map(|text| text.trim())
+            .filter(|text| !text.is_empty())
+        {
+            info.effort = Some(effort.to_string());
+        }
+
+        if let Some(timestamp) = value
+            .get("timestamp")
+            .and_then(parse_timestamp)
+            .or_else(|| payload.get("timestamp").and_then(parse_timestamp))
+        {
+            info.updated_at = info.updated_at.max(timestamp);
+        }
+    }
+
+    info
+}
+
+fn is_rollout_file(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    file_name.starts_with("rollout-") && file_name.ends_with(".jsonl")
+}
+
+fn choose_latest_rollout_path(paths: &[PathBuf]) -> Option<PathBuf> {
+    let mut best_path: Option<PathBuf> = None;
+    let mut best_modified = i64::MIN;
+
+    for path in paths {
+        let modified = file_modified_millis(path).unwrap_or(0);
+        if best_path.is_none() || modified > best_modified {
+            best_path = Some(path.clone());
+            best_modified = modified;
+        }
+    }
+
+    best_path
+}
+
+fn run_lsof_output_for_pid(pid: u32) -> Option<std::process::Output> {
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = pid;
+        None
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let pid_text = pid.to_string();
+        let args = ["-n", "-P", "-Fn", "-p", pid_text.as_str()];
+        match Command::new("lsof").args(args).output() {
+            Ok(output) => Some(output),
+            Err(error) => {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    log::debug!("运行 lsof 失败: {}", error);
+                    return None;
+                }
+                for candidate in ["/usr/sbin/lsof", "/usr/bin/lsof"] {
+                    match Command::new(candidate).args(args).output() {
+                        Ok(output) => return Some(output),
+                        Err(_) => continue,
+                    }
+                }
+                None
+            }
+        }
+    }
+}
+
+fn list_rollout_files_opened_by_pid(pid: u32, codex_sessions_root: &Path) -> Vec<PathBuf> {
+    let output = match run_lsof_output_for_pid(pid) {
+        Some(output) => output,
+        None => return Vec::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files = Vec::new();
+    for line in stdout.lines() {
+        let Some(path_text) = line.strip_prefix('n') else {
+            continue;
+        };
+        let path = PathBuf::from(path_text.trim());
+        if !path.starts_with(codex_sessions_root) {
+            continue;
+        }
+        if !is_rollout_file(&path) {
+            continue;
+        }
+        files.push(path);
+    }
+
+    files.sort();
+    files.dedup();
+    files
+}
+
+fn build_process_children_index(system: &System) -> HashMap<u32, Vec<u32>> {
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (pid, process) in system.processes() {
+        let Some(parent) = process.parent() else {
+            continue;
+        };
+        children
+            .entry(parent.as_u32())
+            .or_default()
+            .push(pid.as_u32());
+    }
+    children
+}
+
+fn collect_descendant_codex_pids(
+    root_pid: u32,
+    system: &System,
+    children_index: &HashMap<u32, Vec<u32>>,
+) -> Vec<u32> {
+    let mut stack = vec![root_pid];
+    let mut seen = HashSet::new();
+    let mut codex_pids = Vec::new();
+
+    while let Some(current_pid) = stack.pop() {
+        if !seen.insert(current_pid) {
+            continue;
+        }
+
+        if current_pid != root_pid {
+            if let Some(process) = system.process(Pid::from_u32(current_pid)) {
+                let name = process.name().to_ascii_lowercase();
+                if name == "codex" || name == "codex.exe" {
+                    codex_pids.push(current_pid);
+                }
+            }
+        }
+
+        if let Some(children) = children_index.get(&current_pid) {
+            stack.extend(children.iter().copied());
+        }
+    }
+
+    codex_pids.sort_unstable();
+    codex_pids.dedup();
+    codex_pids
+}
+
+fn collect_target_terminal_sessions(
+    state: &TerminalState,
+    window_label: &str,
+    session_ids: &[String],
+) -> Result<Vec<TerminalSessionMeta>, String> {
+    let session_meta_by_key = state
+        .session_meta_by_key
+        .lock()
+        .map_err(|_| "终端会话元信息锁定失败".to_string())?;
+
+    let mut result = Vec::new();
+    for session_id in session_ids {
+        let key = build_terminal_session_key(window_label, session_id);
+        if let Some(meta) = session_meta_by_key.get(&key) {
+            result.push(meta.clone());
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn terminal_get_codex_pane_overlay(
+    app: AppHandle,
+    state: State<TerminalState>,
+    window_label: String,
+    session_ids: Vec<String>,
+) -> Result<Vec<TerminalCodexPaneOverlay>, String> {
+    if session_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let target_sessions = collect_target_terminal_sessions(&state, &window_label, &session_ids)?;
+    if target_sessions.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let codex_sessions_root = app
+        .path()
+        .home_dir()
+        .map_err(|err| format!("无法获取用户目录: {err}"))?
+        .join(".codex")
+        .join("sessions");
+    if !codex_sessions_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut system = System::new();
+    system.refresh_processes();
+    let children_index = build_process_children_index(&system);
+    let mut rollout_cache: HashMap<PathBuf, RolloutContextInfo> = HashMap::new();
+    let now = now_millis();
+
+    let mut overlays = Vec::new();
+    for terminal_session in target_sessions {
+        let Some(shell_pid) = terminal_session.shell_pid else {
+            continue;
+        };
+
+        let codex_pids = collect_descendant_codex_pids(shell_pid, &system, &children_index);
+        if codex_pids.is_empty() {
+            continue;
+        }
+
+        let mut rollout_paths = Vec::new();
+        for codex_pid in codex_pids {
+            rollout_paths.extend(list_rollout_files_opened_by_pid(
+                codex_pid,
+                &codex_sessions_root,
+            ));
+        }
+
+        let Some(rollout_path) = choose_latest_rollout_path(&rollout_paths) else {
+            continue;
+        };
+
+        let rollout_info = rollout_cache
+            .entry(rollout_path.clone())
+            .or_insert_with(|| parse_rollout_context(&rollout_path))
+            .clone();
+
+        overlays.push(TerminalCodexPaneOverlay {
+            session_id: terminal_session.session_id,
+            model: rollout_info.model,
+            effort: rollout_info.effort,
+            updated_at: if rollout_info.updated_at > 0 {
+                rollout_info.updated_at
+            } else {
+                now
+            },
+        });
+    }
+
+    Ok(overlays)
+}
+
 #[tauri::command]
 pub fn terminal_create_session(
     app: AppHandle,
@@ -179,6 +637,7 @@ pub fn terminal_create_session(
 
     let session_id = session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
     let pty_id = Uuid::new_v4().to_string();
+    let shell_pid = child.process_id();
 
     let session = Arc::new(PtySession {
         master: Mutex::new(master),
@@ -194,8 +653,29 @@ pub fn terminal_create_session(
         sessions.insert(pty_id.clone(), session.clone());
     }
 
+    if let Err(error) = register_terminal_session_meta(
+        &state,
+        TerminalSessionMeta {
+            window_label: window_label.clone(),
+            session_id: session_id.clone(),
+            pty_id: pty_id.clone(),
+            shell_pid,
+        },
+    ) {
+        if let Ok(mut sessions) = state.sessions.lock() {
+            sessions.remove(&pty_id);
+        }
+        if let Ok(mut child) = session.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        return Err(error);
+    }
+
     let app_handle = app.clone();
     let sessions_map = state.sessions.clone();
+    let session_meta_by_key = state.session_meta_by_key.clone();
+    let pty_to_session_key = state.pty_to_session_key.clone();
     let session_id_for_output = session_id.clone();
     let window_label_for_output = window_label.clone();
     let pty_id_for_output = pty_id.clone();
@@ -251,6 +731,11 @@ pub fn terminal_create_session(
         if let Ok(mut sessions) = sessions_map.lock() {
             sessions.remove(&pty_id_for_output);
         }
+        remove_terminal_session_meta_by_pty(
+            &session_meta_by_key,
+            &pty_to_session_key,
+            &pty_id_for_output,
+        );
     });
 
     Ok(TerminalCreateResult {
@@ -333,5 +818,10 @@ pub fn terminal_kill(state: State<TerminalState>, pty_id: String) -> Result<(), 
         let _ = child.kill();
         let _ = child.wait();
     }
+    remove_terminal_session_meta_by_pty(
+        &state.session_meta_by_key,
+        &state.pty_to_session_key,
+        &pty_id,
+    );
     Ok(())
 }

@@ -12,7 +12,13 @@ import type { ITheme } from "xterm";
 import type { RightSidebarState, SplitDirection, TerminalRightSidebarTab, TerminalTab, TerminalWorkspace } from "../../models/terminal";
 import type { ProjectScript } from "../../models/types";
 import { useDevHavenContext } from "../../state/DevHavenContext";
-import { killTerminal, listenTerminalOutput, writeTerminal } from "../../services/terminal";
+import {
+  getTerminalCodexPaneOverlay,
+  killTerminal,
+  listenTerminalOutput,
+  writeTerminal,
+  type TerminalCodexPaneOverlay,
+} from "../../services/terminal";
 import { saveTerminalWorkspace, loadTerminalWorkspace } from "../../services/terminalWorkspace";
 import { gitIsRepo } from "../../services/gitManagement";
 import {
@@ -59,8 +65,14 @@ type ScriptRuntime = {
 
 const TERMINAL_TITLE_PATTERN = /^终端\s*(\d+)$/;
 const QUICK_COMMAND_OUTPUT_BUFFER_LIMIT = 4096;
+const CODEX_STARTUP_OUTPUT_BUFFER_LIMIT = 4096;
 const QUICK_COMMAND_EXIT_MARKER_REGEX =
   /\u001b\]633;DevHaven;qc-exit;([^;]+);(-?\d+)\u0007/;
+const ANSI_CSI_REGEX = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+const ANSI_OSC_REGEX = /\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g;
+const CODEX_MODEL_LINE_REGEX = /model:\s*([^\s|]+)\s+([^\s|]+)\s+\/model\b/i;
+const CODEX_MODEL_CHANGED_REGEX = /model changed to\s+([^\s`]+)(?:\s+([^\s`]+))?/i;
+const CODEX_RESUME_MODEL_REGEX = /resuming with\s+`([^`]+)`/i;
 
 const DEFAULT_RIGHT_SIDEBAR: RightSidebarState = {
   open: false,
@@ -69,6 +81,56 @@ const DEFAULT_RIGHT_SIDEBAR: RightSidebarState = {
 };
 const MIN_RIGHT_SIDEBAR_WIDTH = 360;
 const MAX_RIGHT_SIDEBAR_WIDTH = 960;
+const CODEX_PANE_OVERLAY_REFRESH_INTERVAL_MS = 2500;
+
+type CodexStartupHint = {
+  model: string | null;
+  effort: string | null;
+  updatedAt: number;
+};
+
+function stripAnsiSequences(input: string) {
+  return input.replace(ANSI_OSC_REGEX, "").replace(ANSI_CSI_REGEX, "");
+}
+
+function parseCodexStartupModelLine(buffer: string): Pick<CodexStartupHint, "model" | "effort"> | null {
+  const lines = stripAnsiSequences(buffer).split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const normalized = lines[index].replace(/[│┃]/g, " ").replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      continue;
+    }
+
+    const modelChangedMatched = normalized.match(CODEX_MODEL_CHANGED_REGEX);
+    if (modelChangedMatched) {
+      return {
+        model: modelChangedMatched[1]?.trim() || null,
+        effort: modelChangedMatched[2]?.trim() || null,
+      };
+    }
+
+    const resumeModelMatched = normalized.match(CODEX_RESUME_MODEL_REGEX);
+    if (resumeModelMatched) {
+      return {
+        model: resumeModelMatched[1]?.trim() || null,
+        effort: null,
+      };
+    }
+
+    if (!normalized.toLowerCase().includes("model:")) {
+      continue;
+    }
+    const startupModelMatched = normalized.match(CODEX_MODEL_LINE_REGEX);
+    if (!startupModelMatched) {
+      continue;
+    }
+    return {
+      model: startupModelMatched[1]?.trim() || null,
+      effort: startupModelMatched[2]?.trim() || null,
+    };
+  }
+  return null;
+}
 
 function shellQuote(value: string) {
   // POSIX-safe single-quote escaping: 'foo'"'"'bar'
@@ -154,6 +216,7 @@ export default function TerminalWorkspaceView({
   const scriptIdBySessionIdRef = useRef(new Map<string, string>());
   const pendingStartBySessionIdRef = useRef(new Map<string, string>());
   const quickCommandOutputBufferBySessionIdRef = useRef(new Map<string, string>());
+  const codexStartupOutputBufferBySessionIdRef = useRef(new Map<string, string>());
   const pendingExternalActionsRef = useRef<TerminalQuickCommandAction[]>([]);
   const handledRequestIdsRef = useRef(new Set<string>());
 
@@ -164,6 +227,12 @@ export default function TerminalWorkspaceView({
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [previewDirty, setPreviewDirty] = useState(false);
   const [isGitRepo, setIsGitRepo] = useState(false);
+  const [codexPaneOverlayBySessionId, setCodexPaneOverlayBySessionId] = useState<
+    Record<string, TerminalCodexPaneOverlay>
+  >({});
+  const [codexStartupHintBySessionId, setCodexStartupHintBySessionId] = useState<
+    Record<string, CodexStartupHint>
+  >({});
   const dragStateRef = useRef<{
     startClientX: number;
     startClientY: number;
@@ -228,10 +297,13 @@ export default function TerminalWorkspaceView({
     sessionPtyIdRef.current.clear();
     pendingStartBySessionIdRef.current.clear();
     quickCommandOutputBufferBySessionIdRef.current.clear();
+    codexStartupOutputBufferBySessionIdRef.current.clear();
     pendingExternalActionsRef.current = [];
     handledRequestIdsRef.current.clear();
     setPreviewFilePath(null);
     setPreviewDirty(false);
+    setCodexPaneOverlayBySessionId({});
+    setCodexStartupHintBySessionId({});
     loadTerminalWorkspace(projectPath)
       .then((data) => {
         if (cancelled) {
@@ -351,6 +423,35 @@ export default function TerminalWorkspaceView({
       scriptIdBySessionIdRef.current.delete(sessionId);
       pendingStartBySessionIdRef.current.delete(sessionId);
       quickCommandOutputBufferBySessionIdRef.current.delete(sessionId);
+      codexStartupOutputBufferBySessionIdRef.current.delete(sessionId);
+    });
+
+    setCodexStartupHintBySessionId((prev) => {
+      let next: Record<string, CodexStartupHint> | null = null;
+      for (const sessionId of sessionIds) {
+        if (!(sessionId in prev)) {
+          continue;
+        }
+        if (!next) {
+          next = { ...prev };
+        }
+        delete next[sessionId];
+      }
+      return next ?? prev;
+    });
+
+    setCodexPaneOverlayBySessionId((prev) => {
+      let next: Record<string, TerminalCodexPaneOverlay> | null = null;
+      for (const sessionId of sessionIds) {
+        if (!(sessionId in prev)) {
+          continue;
+        }
+        if (!next) {
+          next = { ...prev };
+        }
+        delete next[sessionId];
+      }
+      return next ?? prev;
     });
   }, []);
 
@@ -362,6 +463,33 @@ export default function TerminalWorkspaceView({
         unlisten = await listenTerminalOutput((event) => {
           const payload = event.payload;
           const sessionId = payload.sessionId;
+
+          const startupBufferMap = codexStartupOutputBufferBySessionIdRef.current;
+          const startupPrev = startupBufferMap.get(sessionId) ?? "";
+          const startupNext = `${startupPrev}${payload.data}`.slice(-CODEX_STARTUP_OUTPUT_BUFFER_LIMIT);
+          startupBufferMap.set(sessionId, startupNext);
+
+          const startupHint = parseCodexStartupModelLine(startupNext);
+          if (startupHint) {
+            const now = Date.now();
+            setCodexStartupHintBySessionId((prev) => {
+              const existing = prev[sessionId];
+              const nextModel = startupHint.model ?? existing?.model ?? null;
+              const nextEffort = startupHint.effort ?? existing?.effort ?? null;
+              if (existing && existing.model === nextModel && existing.effort === nextEffort) {
+                return prev;
+              }
+              return {
+                ...prev,
+                [sessionId]: {
+                  model: nextModel,
+                  effort: nextEffort,
+                  updatedAt: now,
+                },
+              };
+            });
+          }
+
           const scriptId = scriptIdBySessionIdRef.current.get(sessionId);
           if (!scriptId) {
             return;
@@ -1149,6 +1277,56 @@ export default function TerminalWorkspaceView({
     pending.forEach(handleQuickCommandAction);
   }, [handleQuickCommandAction, workspace]);
 
+  useEffect(() => {
+    if (!workspace || !isActive) {
+      setCodexPaneOverlayBySessionId({});
+      return;
+    }
+
+    const sessionIds = Object.keys(workspace.sessions ?? {});
+    if (sessionIds.length === 0) {
+      setCodexPaneOverlayBySessionId({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const refreshOverlay = async () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      try {
+        const items = await getTerminalCodexPaneOverlay(windowLabel, sessionIds);
+        if (cancelled) {
+          return;
+        }
+        const next: Record<string, TerminalCodexPaneOverlay> = {};
+        for (const item of items ?? []) {
+          if (!item?.sessionId) {
+            continue;
+          }
+          next[item.sessionId] = item;
+        }
+        setCodexPaneOverlayBySessionId(next);
+      } catch {
+        if (!cancelled) {
+          setCodexPaneOverlayBySessionId({});
+        }
+      }
+    };
+
+    void refreshOverlay();
+    const timer = window.setInterval(() => {
+      void refreshOverlay();
+    }, CODEX_PANE_OVERLAY_REFRESH_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isActive, windowLabel, workspace]);
+
   if (!projectPath) {
     return (
       <div className="flex h-full items-center justify-center text-[var(--terminal-muted-fg)]">
@@ -1351,6 +1529,21 @@ export default function TerminalWorkspaceView({
                       sessionId={sessionId}
                       cwd={workspace.sessions[sessionId]?.cwd ?? workspace.projectPath}
                       savedState={workspace.sessions[sessionId]?.savedState ?? null}
+                      codexPaneOverlay={(() => {
+                        const backendOverlay = codexPaneOverlayBySessionId[sessionId] ?? null;
+                        if (!backendOverlay) {
+                          return null;
+                        }
+                        const startupHint = codexStartupHintBySessionId[sessionId] ?? null;
+                        if (!startupHint) {
+                          return backendOverlay;
+                        }
+                        return {
+                          ...backendOverlay,
+                          model: startupHint.model ?? backendOverlay.model,
+                          effort: startupHint.effort ?? backendOverlay.effort,
+                        };
+                      })()}
                       windowLabel={windowLabel}
                       // 仅对当前激活 Tab 启用 WebGL 渲染，避免创建过多 WebGL contexts（浏览器有上限）。
                       useWebgl={appState.settings.terminalUseWebglRenderer && tab.id === workspace.activeTabId}
