@@ -34,7 +34,7 @@ fn collect_single(path: &str, matcher: &IdentityMatcher) -> GitDailyResult {
                 path: path.to_string(),
                 git_daily: None,
                 error: Some(format!("执行 git log 失败: {err}")),
-            }
+            };
         }
     };
 
