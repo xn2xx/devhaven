@@ -150,6 +150,8 @@ pub struct ProjectWorktree {
     pub path: String,
     pub branch: String,
     #[serde(default)]
+    pub base_branch: Option<String>,
+    #[serde(default)]
     pub inherit_config: bool,
     pub created: SwiftDate,
     #[serde(default)]
@@ -335,6 +337,7 @@ pub enum WorktreeInitStep {
     Validating,
     CheckingBranch,
     CreatingWorktree,
+    PreparingEnvironment,
     Syncing,
     Ready,
     Failed,
@@ -349,6 +352,8 @@ pub struct WorktreeInitStartRequest {
     pub branch: String,
     pub create_branch: bool,
     #[serde(default)]
+    pub base_branch: Option<String>,
+    #[serde(default)]
     pub target_path: Option<String>,
 }
 
@@ -360,6 +365,8 @@ pub struct WorktreeInitStartResult {
     pub project_path: String,
     pub worktree_path: String,
     pub branch: String,
+    #[serde(default)]
+    pub base_branch: Option<String>,
     pub step: WorktreeInitStep,
     pub message: String,
 }
@@ -372,6 +379,8 @@ pub struct WorktreeInitProgressPayload {
     pub project_path: String,
     pub worktree_path: String,
     pub branch: String,
+    #[serde(default)]
+    pub base_branch: Option<String>,
     pub step: WorktreeInitStep,
     pub message: String,
     #[serde(default)]
@@ -408,6 +417,8 @@ pub struct WorktreeInitJobStatus {
     pub project_path: String,
     pub worktree_path: String,
     pub branch: String,
+    #[serde(default)]
+    pub base_branch: Option<String>,
     pub create_branch: bool,
     pub step: WorktreeInitStep,
     pub message: String,

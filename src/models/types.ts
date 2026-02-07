@@ -30,6 +30,7 @@ export type ProjectWorktree = {
   name: string;
   path: string;
   branch: string;
+  baseBranch?: string;
   inheritConfig: boolean;
   created: SwiftDate;
   status?: "creating" | "ready" | "failed";
@@ -38,6 +39,7 @@ export type ProjectWorktree = {
     | "validating"
     | "checking_branch"
     | "creating_worktree"
+    | "preparing_environment"
     | "syncing"
     | "ready"
     | "failed"

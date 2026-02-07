@@ -11,6 +11,7 @@ mod system;
 mod terminal;
 mod time_utils;
 mod worktree_init;
+mod worktree_setup;
 
 use std::time::Instant;
 use tauri::AppHandle;
@@ -28,8 +29,8 @@ use crate::models::{
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
-    TerminalState, terminal_create_session, terminal_get_codex_pane_overlay, terminal_kill,
-    terminal_resize, terminal_write,
+    terminal_create_session, terminal_get_codex_pane_overlay, terminal_kill, terminal_resize,
+    terminal_write, TerminalState,
 };
 
 #[tauri::command]
@@ -182,6 +183,20 @@ fn git_checkout_branch(path: String, branch: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+/// 删除本地分支（git branch -d/-D）。
+fn git_delete_branch(path: String, branch: String, force: bool) -> Result<(), String> {
+    log_command_result("git_delete_branch", || {
+        log::info!(
+            "git_delete_branch path={} branch={} force={}",
+            path,
+            branch,
+            force
+        );
+        git_ops::delete_branch(&path, &branch, force)
+    })
+}
+
+#[tauri::command]
 /// 创建 Git worktree。
 fn git_worktree_add(
     path: String,
@@ -197,7 +212,7 @@ fn git_worktree_add(
             branch,
             create_branch
         );
-        git_ops::add_worktree(&path, target_path.as_deref(), &branch, create_branch)
+        git_ops::add_worktree(&path, target_path.as_deref(), &branch, create_branch, None)
     })
 }
 
@@ -233,10 +248,11 @@ fn worktree_init_start(
 ) -> Result<WorktreeInitStartResult, String> {
     log_command_result("worktree_init_start", || {
         log::info!(
-            "worktree_init_start project_id={} path={} branch={} create_branch={}",
+            "worktree_init_start project_id={} path={} branch={} base_branch={} create_branch={}",
             request.project_id,
             request.project_path,
             request.branch,
+            request.base_branch.as_deref().unwrap_or("<none>"),
             request.create_branch
         );
         state.start(&app, request)
@@ -535,6 +551,7 @@ pub fn run() {
             git_discard_files,
             git_commit,
             git_checkout_branch,
+            git_delete_branch,
             git_worktree_add,
             git_worktree_list,
             git_worktree_remove,

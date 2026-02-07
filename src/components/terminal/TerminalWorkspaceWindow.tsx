@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import type { Project } from "../../models/types";
+import type { Project, ProjectWorktree } from "../../models/types";
 import type { GitWorktreeListItem } from "../../services/gitWorktree";
 import { useSystemColorScheme } from "../../hooks/useSystemColorScheme";
 import { useDevHavenContext } from "../../state/DevHavenContext";
@@ -29,6 +29,88 @@ export type TerminalWorkspaceWindowProps = {
   codexProjectStatusById: Record<string, CodexProjectStatus>;
   gitWorktreesByProjectId: Record<string, GitWorktreeListItem[] | undefined>;
 };
+
+type WorktreeRenderItem = {
+  path: string;
+  branch: string;
+  name: string;
+  status?: ProjectWorktree["status"];
+  initStep?: ProjectWorktree["initStep"];
+  initError?: string | null;
+};
+
+function normalizeWorktreePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function resolveNameFromPath(path: string): string {
+  const normalized = normalizeWorktreePath(path);
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || path;
+}
+
+function toWorktreeRenderItem(worktree: ProjectWorktree): WorktreeRenderItem {
+  return {
+    path: worktree.path,
+    branch: worktree.branch,
+    name: worktree.name,
+    status: worktree.status,
+    initStep: worktree.initStep,
+    initError: worktree.initError,
+  };
+}
+
+function mergeWorktreesToRender(
+  trackedWorktrees: ProjectWorktree[],
+  gitWorktrees: GitWorktreeListItem[] | undefined,
+): WorktreeRenderItem[] {
+  if (!gitWorktrees) {
+    return trackedWorktrees.map(toWorktreeRenderItem);
+  }
+
+  const trackedByPath = new Map(
+    trackedWorktrees.map((item) => [normalizeWorktreePath(item.path), item]),
+  );
+  const merged: WorktreeRenderItem[] = gitWorktrees.map((item) => {
+    const tracked = trackedByPath.get(normalizeWorktreePath(item.path));
+    return {
+      path: item.path,
+      branch: item.branch,
+      name: tracked?.name || resolveNameFromPath(item.path),
+      status: tracked?.status,
+      initStep: tracked?.initStep,
+      initError: tracked?.initError,
+    };
+  });
+
+  const existingPaths = new Set(merged.map((item) => normalizeWorktreePath(item.path)));
+  for (const tracked of trackedWorktrees) {
+    if (tracked.status !== "creating" && tracked.status !== "failed") {
+      continue;
+    }
+    const normalizedPath = normalizeWorktreePath(tracked.path);
+    if (existingPaths.has(normalizedPath)) {
+      continue;
+    }
+    existingPaths.add(normalizedPath);
+    merged.push(toWorktreeRenderItem(tracked));
+  }
+
+  return merged.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function resolveActiveProject(
+  openProjects: Project[],
+  activeProjectId: string | null,
+): Project | null {
+  if (openProjects.length === 0) {
+    return null;
+  }
+  if (!activeProjectId) {
+    return openProjects[0];
+  }
+  return openProjects.find((project) => project.id === activeProjectId) ?? openProjects[0];
+}
 
 export default function TerminalWorkspaceWindow({
   openProjects,
@@ -60,15 +142,10 @@ export default function TerminalWorkspaceWindow({
     } as CSSProperties;
   }, [terminalThemePreset]);
 
-  const activeProject = useMemo(() => {
-    if (openProjects.length === 0) {
-      return null;
-    }
-    if (activeProjectId) {
-      return openProjects.find((project) => project.id === activeProjectId) ?? openProjects[0];
-    }
-    return openProjects[0];
-  }, [activeProjectId, openProjects]);
+  const activeProject = useMemo(
+    () => resolveActiveProject(openProjects, activeProjectId),
+    [activeProjectId, openProjects],
+  );
 
   const rootProjects = useMemo(
     () => openProjects.filter((project) => !project.id.startsWith("worktree:")),
@@ -78,27 +155,6 @@ export default function TerminalWorkspaceWindow({
   const openProjectsByPath = useMemo(() => {
     return new Map(openProjects.map((project) => [project.path, project]));
   }, [openProjects]);
-
-  const trackedWorktreesByProjectId = useMemo(() => {
-    return new Map(rootProjects.map((project) => [project.id, project.worktrees ?? []]));
-  }, [rootProjects]);
-
-  const resolveWorktreeName = useMemo(() => {
-    return (sourceProjectId: string, worktreePath: string) => {
-      const tracked = trackedWorktreesByProjectId.get(sourceProjectId) ?? [];
-      const match = tracked.find((item) => item.path === worktreePath);
-      if (match?.name) {
-        return match.name;
-      }
-      const normalized = worktreePath.replace(/\\/g, "/").replace(/\/+$/, "");
-      const last = normalized.split("/").filter(Boolean).pop();
-      return last || worktreePath;
-    };
-  }, [trackedWorktreesByProjectId]);
-
-  const normalizeWorktreePath = useMemo(() => {
-    return (path: string) => path.replace(/\\/g, "/").replace(/\/+$/, "");
-  }, []);
 
   useEffect(() => {
     // 仅在终端可见时更新窗口标题；隐藏时恢复默认标题，避免主界面停留在“xx - 终端”。
@@ -145,60 +201,7 @@ export default function TerminalWorkspaceWindow({
             const codexRunningCount = codexStatus?.runningCount ?? 0;
             const trackedWorktrees = project.worktrees ?? [];
             const gitWorktrees = gitWorktreesByProjectId[project.id];
-
-            const trackedByPath = new Map(
-              trackedWorktrees.map((item) => [normalizeWorktreePath(item.path), item]),
-            );
-            const worktreesToRender = (
-              gitWorktrees !== undefined
-                ? (() => {
-                    const merged = gitWorktrees.map((item) => {
-                      const tracked = trackedByPath.get(normalizeWorktreePath(item.path));
-                      return {
-                        path: item.path,
-                        branch: item.branch,
-                        name: resolveWorktreeName(project.id, item.path),
-                        status: tracked?.status,
-                        initError: tracked?.initError,
-                      };
-                    });
-
-                    for (const tracked of trackedWorktrees) {
-                      const normalized = normalizeWorktreePath(tracked.path);
-                      const existed = merged.some(
-                        (item) => normalizeWorktreePath(item.path) === normalized,
-                      );
-                      if (existed) {
-                        continue;
-                      }
-                      if (tracked.status !== "creating" && tracked.status !== "failed") {
-                        continue;
-                      }
-                      merged.push({
-                        path: tracked.path,
-                        branch: tracked.branch,
-                        name: tracked.name,
-                        status: tracked.status,
-                        initError: tracked.initError,
-                      });
-                    }
-
-                    return merged.sort((left, right) => left.path.localeCompare(right.path));
-                  })()
-                : trackedWorktrees.map((item) => ({
-                    path: item.path,
-                    branch: item.branch,
-                    name: item.name,
-                    status: item.status,
-                    initError: item.initError,
-                  }))
-            ) as Array<{
-              path: string;
-              branch: string;
-              name: string;
-              status?: "creating" | "ready" | "failed";
-              initError?: string | null;
-            }>;
+            const worktreesToRender = mergeWorktreesToRender(trackedWorktrees, gitWorktrees);
 
             const hasWorktrees = worktreesToRender.length > 0;
             return (
@@ -270,6 +273,7 @@ export default function TerminalWorkspaceWindow({
                       const isWorktreeActive = activeProject?.path === worktree.path;
                       const isCreating = worktree.status === "creating";
                       const isFailed = worktree.status === "failed";
+                      const isQueued = isCreating && worktree.initStep === "pending";
                       const canOpen = !isCreating && !isFailed;
                       return (
                         <div
@@ -304,7 +308,7 @@ export default function TerminalWorkspaceWindow({
                           </span>
                           {isCreating ? (
                             <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
-                              创建中
+                              {isQueued ? "排队中" : "创建中"}
                             </span>
                           ) : null}
                           {isFailed ? (

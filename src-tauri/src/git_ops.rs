@@ -158,15 +158,40 @@ pub fn checkout_branch(base_path: &str, branch: &str) -> Result<(), String> {
     }
 }
 
+/// 删除本地分支（git branch -d/-D）。
+pub fn delete_branch(base_path: &str, branch: &str, force: bool) -> Result<(), String> {
+    if !is_git_repo(base_path) {
+        return Err("不是 Git 仓库".to_string());
+    }
+
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Err("分支名不能为空".to_string());
+    }
+
+    let args = if force {
+        ["branch", "-D", branch]
+    } else {
+        ["branch", "-d", branch]
+    };
+    let result = execute_git_command(base_path, &args);
+    if result.success {
+        Ok(())
+    } else {
+        Err(normalize_delete_branch_error(&result.output, force))
+    }
+}
+
 /// 创建 Git worktree。
 ///
-/// - create_branch=true: `git worktree add -b <branch> <target_path>`
+/// - create_branch=true: `git worktree add -b <branch> <target_path> [<start_point>]`
 /// - create_branch=false: `git worktree add <target_path> <branch>`
 pub fn add_worktree(
     base_path: &str,
     target_path: Option<&str>,
     branch: &str,
     create_branch: bool,
+    start_point: Option<&str>,
 ) -> Result<GitWorktreeAddResult, String> {
     if !is_git_repo(base_path) {
         return Err("不是 Git 仓库".to_string());
@@ -197,9 +222,13 @@ pub fn add_worktree(
 
     let mut args: Vec<&str> = vec!["worktree", "add"];
     if create_branch {
+        let start_point = start_point.map(str::trim).filter(|value| !value.is_empty());
         args.push("-b");
         args.push(branch);
         args.push(target_path.as_str());
+        if let Some(start_point) = start_point {
+            args.push(start_point);
+        }
     } else {
         args.push(target_path.as_str());
         args.push(branch);
@@ -214,6 +243,89 @@ pub fn add_worktree(
     }
 
     Err(normalize_worktree_add_error(&result.output, create_branch))
+}
+
+/// 解析“新建分支”模式下的创建起点：远端优先，本地回退。
+///
+/// 返回值是可直接用于 `git worktree add -b ... <start_point>` 的引用。
+/// 优先返回 `origin/<base_branch>`，若不可用则回退 `<base_branch>`。
+pub fn resolve_create_branch_start_point(
+    base_path: &str,
+    base_branch: &str,
+) -> Result<String, String> {
+    if !is_git_repo(base_path) {
+        return Err("不是 Git 仓库".to_string());
+    }
+
+    let base_branch = base_branch.trim();
+    if base_branch.is_empty() {
+        return Err("基线分支不可用：分支名不能为空".to_string());
+    }
+
+    let remote_ref = format!("origin/{base_branch}");
+
+    if has_origin_remote(base_path) {
+        match branch_exists_on_remote(base_path, base_branch) {
+            RemoteBranchCheck::Exists => {
+                let fetch_error = fetch_origin_branch(base_path, base_branch).err();
+                if ref_exists_locally(base_path, &remote_ref) {
+                    if let Some(err) = fetch_error {
+                        log::warn!(
+                            "刷新远端基线分支失败，改用本地缓存引用 {}: {}",
+                            remote_ref,
+                            err
+                        );
+                    }
+                    return Ok(remote_ref);
+                }
+
+                if ref_exists_locally(base_path, base_branch) {
+                    return Ok(base_branch.to_string());
+                }
+
+                if let Some(err) = fetch_error {
+                    return Err(format!(
+                        "基线分支不可用：远端分支 {} 刷新失败，且本地不存在同名分支（{}）",
+                        remote_ref, err
+                    ));
+                }
+
+                return Err(format!(
+                    "基线分支不可用：远端分支 {} 无法在本地解析",
+                    remote_ref
+                ));
+            }
+            RemoteBranchCheck::NotFound => {
+                if ref_exists_locally(base_path, base_branch) {
+                    return Ok(base_branch.to_string());
+                }
+                return Err(format!(
+                    "基线分支不可用：远端与本地均不存在分支 {}",
+                    base_branch
+                ));
+            }
+            RemoteBranchCheck::Error(error) => {
+                if ref_exists_locally(base_path, base_branch) {
+                    log::warn!(
+                        "远端基线分支校验失败，回退本地分支 {}: {}",
+                        base_branch,
+                        error
+                    );
+                    return Ok(base_branch.to_string());
+                }
+                return Err(format!(
+                    "基线分支不可用：无法校验远端分支 {}，且本地不存在同名分支（{}）",
+                    base_branch, error
+                ));
+            }
+        }
+    }
+
+    if ref_exists_locally(base_path, base_branch) {
+        return Ok(base_branch.to_string());
+    }
+
+    Err(format!("基线分支不可用：未找到本地分支 {}", base_branch))
 }
 
 pub fn resolve_worktree_target_path(
@@ -324,6 +436,72 @@ fn resolve_default_worktree_path(base_path: &str, branch: &str) -> Result<String
         .join(normalized_branch)
         .to_string_lossy()
         .to_string())
+}
+
+fn has_origin_remote(base_path: &str) -> bool {
+    let result = execute_git_command(base_path, &["remote", "get-url", "origin"]);
+    result.success
+}
+
+enum RemoteBranchCheck {
+    Exists,
+    NotFound,
+    Error(String),
+}
+
+fn branch_exists_on_remote(base_path: &str, branch: &str) -> RemoteBranchCheck {
+    let output = Command::new(resolve_git_executable())
+        .args(["ls-remote", "--exit-code", "--heads", "origin", branch])
+        .current_dir(base_path)
+        .output();
+
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                return RemoteBranchCheck::Exists;
+            }
+
+            if output.status.code() == Some(2) {
+                return RemoteBranchCheck::NotFound;
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let message = if stderr.is_empty() {
+                stdout
+            } else if stdout.is_empty() {
+                stderr
+            } else {
+                format!("{stdout}\n{stderr}").trim().to_string()
+            };
+            RemoteBranchCheck::Error(message)
+        }
+        Err(err) => RemoteBranchCheck::Error(format!("执行命令失败: {err}")),
+    }
+}
+
+fn fetch_origin_branch(base_path: &str, branch: &str) -> Result<(), String> {
+    let result = execute_git_command(base_path, &["fetch", "origin", branch]);
+    if result.success {
+        return Ok(());
+    }
+    Err(result.output)
+}
+
+fn ref_exists_locally(base_path: &str, reference: &str) -> bool {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return false;
+    }
+    let commit_ref = format!("{reference}^{{commit}}");
+    let output = Command::new(resolve_git_executable())
+        .args(["rev-parse", "--verify", "--quiet", commit_ref.as_str()])
+        .current_dir(base_path)
+        .output();
+    match output {
+        Ok(output) => output.status.success(),
+        Err(_) => false,
+    }
 }
 
 fn resolve_repo_name(base_path: &str) -> String {
@@ -532,6 +710,28 @@ fn normalize_worktree_remove_error(raw: &str, force: bool) -> String {
 
     if lower.contains("locked") && lower.contains("worktree") {
         return "worktree 已锁定，无法删除。可先执行 git worktree unlock 后重试".to_string();
+    }
+
+    raw.to_string()
+}
+
+fn normalize_delete_branch_error(raw: &str, force: bool) -> String {
+    let lower = raw.to_ascii_lowercase();
+
+    if lower.contains("not a git repository") {
+        return "不是 Git 仓库".to_string();
+    }
+
+    if lower.contains("not found") && lower.contains("branch") {
+        return "分支不存在或已删除".to_string();
+    }
+
+    if lower.contains("checked out") {
+        return "分支正在当前仓库或其他 worktree 中使用，无法删除".to_string();
+    }
+
+    if !force && lower.contains("not fully merged") {
+        return "分支包含未合并提交，无法删除。请先合并后重试".to_string();
     }
 
     raw.to_string()
@@ -880,8 +1080,8 @@ struct GitCommandResult {
 #[cfg(test)]
 mod tests {
     use super::{
-        add_worktree, is_git_repo, list_worktrees, parse_worktree_list_output, remove_worktree,
-        resolve_git_executable,
+        add_worktree, delete_branch, is_git_repo, list_worktrees, parse_worktree_list_output,
+        remove_worktree, resolve_create_branch_start_point, resolve_git_executable,
     };
     use std::fs;
     use std::path::Path;
@@ -937,8 +1137,14 @@ mod tests {
 
         let root_str = root.to_string_lossy().to_string();
         let worktree_str = worktree.to_string_lossy().to_string();
-        let result = add_worktree(&root_str, Some(&worktree_str), "feature/worktree", true)
-            .expect("create worktree");
+        let result = add_worktree(
+            &root_str,
+            Some(&worktree_str),
+            "feature/worktree",
+            true,
+            None,
+        )
+        .expect("create worktree");
 
         assert_eq!(result.path, worktree_str);
         assert_eq!(result.branch, "feature/worktree");
@@ -950,6 +1156,169 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&worktree);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn add_worktree_supports_explicit_start_point() {
+        let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
+        let worktree = root.with_file_name(format!(
+            "{}-wt-explicit",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+
+        fs::create_dir_all(&root).expect("create root");
+        git(&root, &["init"]).expect("git init");
+        fs::write(root.join("README.md"), "main\n").expect("write readme");
+        git(&root, &["add", "."]).expect("git add");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "init",
+            ],
+        )
+        .expect("git commit");
+
+        let default_branch = git(&root, &["branch", "--show-current"]).expect("default branch");
+        git(&root, &["checkout", "-b", "develop"]).expect("create develop");
+        fs::write(root.join("BASELINE.txt"), "develop\n").expect("write baseline marker");
+        git(&root, &["add", "."]).expect("git add develop");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "develop baseline",
+            ],
+        )
+        .expect("git commit develop");
+        git(&root, &["checkout", &default_branch]).expect("checkout default branch");
+
+        let root_str = root.to_string_lossy().to_string();
+        let worktree_str = worktree.to_string_lossy().to_string();
+        add_worktree(
+            &root_str,
+            Some(&worktree_str),
+            "feature/from-develop",
+            true,
+            Some("develop"),
+        )
+        .expect("create worktree with explicit start point");
+
+        assert_eq!(
+            git(
+                &worktree,
+                &["merge-base", "--is-ancestor", "develop", "HEAD"]
+            ),
+            Ok(String::new())
+        );
+        assert!(worktree.join("BASELINE.txt").exists());
+
+        let _ = fs::remove_dir_all(&worktree);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_create_branch_start_point_prefers_origin_ref() {
+        let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
+        let remote = root.with_file_name(format!(
+            "{}-remote.git",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+
+        fs::create_dir_all(&root).expect("create root");
+        Command::new(resolve_git_executable())
+            .args(["init", "--bare", remote.to_string_lossy().as_ref()])
+            .output()
+            .expect("init bare remote");
+
+        git(&root, &["init"]).expect("git init");
+        fs::write(root.join("README.md"), "init\n").expect("write readme");
+        git(&root, &["add", "."]).expect("git add");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "init",
+            ],
+        )
+        .expect("git commit");
+
+        let default_branch = git(&root, &["branch", "--show-current"]).expect("default branch");
+        git(
+            &root,
+            &["remote", "add", "origin", remote.to_string_lossy().as_ref()],
+        )
+        .expect("add origin");
+        git(&root, &["checkout", "-b", "develop"]).expect("create develop");
+        fs::write(root.join("DEVELOP.md"), "develop\n").expect("write develop marker");
+        git(&root, &["add", "."]).expect("git add develop");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "develop",
+            ],
+        )
+        .expect("git commit develop");
+        git(&root, &["push", "-u", "origin", "develop"]).expect("push develop");
+        git(&root, &["checkout", &default_branch]).expect("checkout default branch");
+
+        let start_point =
+            resolve_create_branch_start_point(root.to_string_lossy().as_ref(), "develop")
+                .expect("resolve start point");
+        assert_eq!(start_point, "origin/develop");
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&remote);
+    }
+
+    #[test]
+    fn resolve_create_branch_start_point_returns_error_when_branch_missing() {
+        let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
+
+        fs::create_dir_all(&root).expect("create root");
+        git(&root, &["init"]).expect("git init");
+        fs::write(root.join("README.md"), "init\n").expect("write readme");
+        git(&root, &["add", "."]).expect("git add");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "init",
+            ],
+        )
+        .expect("git commit");
+
+        let error = resolve_create_branch_start_point(root.to_string_lossy().as_ref(), "develop")
+            .expect_err("missing base branch should fail");
+        assert!(error.contains("基线分支不可用"));
+
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -981,19 +1350,54 @@ mod tests {
 
         let root_str = root.to_string_lossy().to_string();
         let worktree_str = worktree.to_string_lossy().to_string();
-        add_worktree(&root_str, Some(&worktree_str), "feature/remove", true)
+        add_worktree(&root_str, Some(&worktree_str), "feature/remove", true, None)
             .expect("create worktree");
 
         remove_worktree(&root_str, &worktree_str, false).expect("remove worktree");
 
         assert!(!worktree.exists());
-        assert!(
-            list_worktrees(&root_str)
-                .expect("list worktrees")
-                .is_empty()
-        );
+        assert!(list_worktrees(&root_str)
+            .expect("list worktrees")
+            .is_empty());
 
         let _ = fs::remove_dir_all(&worktree);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn delete_branch_removes_local_branch() {
+        let root = std::env::temp_dir().join(format!("devhaven_test_{}", uuid::Uuid::new_v4()));
+
+        fs::create_dir_all(&root).expect("create root");
+        git(&root, &["init"]).expect("git init");
+        fs::write(root.join("README.md"), "init\n").expect("write readme");
+        git(&root, &["add", "."]).expect("git add");
+        git(
+            &root,
+            &[
+                "-c",
+                "user.name=DevHaven",
+                "-c",
+                "user.email=devhaven@example.com",
+                "commit",
+                "-m",
+                "init",
+            ],
+        )
+        .expect("git commit");
+
+        let default_branch = git(&root, &["branch", "--show-current"]).expect("default branch");
+        git(&root, &["checkout", "-b", "feature/delete-me"]).expect("create feature branch");
+        git(&root, &["checkout", &default_branch]).expect("checkout default branch");
+
+        let root_str = root.to_string_lossy().to_string();
+        delete_branch(&root_str, "feature/delete-me", false).expect("delete branch");
+
+        assert_eq!(
+            git(&root, &["branch", "--list", "feature/delete-me"]).expect("list branch"),
+            ""
+        );
+
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -1006,7 +1410,7 @@ mod tests {
 
         fs::create_dir_all(&root).expect("create root");
 
-        let err = add_worktree(&root_str, Some(&worktree_str), "feature/x", true)
+        let err = add_worktree(&root_str, Some(&worktree_str), "feature/x", true, None)
             .expect_err("should reject non git repo");
         assert_eq!(err, "不是 Git 仓库");
 
@@ -1039,7 +1443,7 @@ mod tests {
         .expect("git commit");
         fs::create_dir_all(&worktree).expect("create existing worktree dir");
 
-        let err = add_worktree(&root_str, Some(&worktree_str), "feature/x", true)
+        let err = add_worktree(&root_str, Some(&worktree_str), "feature/x", true, None)
             .expect_err("should reject existing target");
         assert_eq!(err, "目标目录已存在，无法创建 worktree");
 

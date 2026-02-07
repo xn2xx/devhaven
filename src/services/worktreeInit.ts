@@ -6,6 +6,7 @@ export type WorktreeInitStep =
   | "validating"
   | "checking_branch"
   | "creating_worktree"
+  | "preparing_environment"
   | "syncing"
   | "ready"
   | "failed"
@@ -16,6 +17,7 @@ export type WorktreeInitStartRequest = {
   projectPath: string;
   branch: string;
   createBranch: boolean;
+  baseBranch?: string;
   targetPath?: string;
 };
 
@@ -25,6 +27,7 @@ export type WorktreeInitStartResult = {
   projectPath: string;
   worktreePath: string;
   branch: string;
+  baseBranch?: string;
   step: WorktreeInitStep;
   message: string;
 };
@@ -35,6 +38,7 @@ export type WorktreeInitProgressPayload = {
   projectPath: string;
   worktreePath: string;
   branch: string;
+  baseBranch?: string;
   step: WorktreeInitStep;
   message: string;
   error?: string | null;
@@ -51,6 +55,7 @@ export type WorktreeInitJobStatus = {
   projectPath: string;
   worktreePath: string;
   branch: string;
+  baseBranch?: string;
   createBranch: boolean;
   step: WorktreeInitStep;
   message: string;

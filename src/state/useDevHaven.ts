@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AppStateFile, Project, ProjectScript, ProjectWorktree, TagData } from "../models/types";
 import { jsDateToSwiftDate } from "../models/types";
@@ -88,6 +88,12 @@ export function useDevHaven(): DevHavenStore {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const projectsRef = useRef<Project[]>(projects);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
 
   const projectMap = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
 
@@ -341,6 +347,7 @@ export function useDevHaven(): DevHavenStore {
         name: worktree.name?.trim() || normalizedPath.split("/").pop() || normalizedPath,
         path: normalizedPath,
         branch: normalizedBranch,
+        baseBranch: worktree.baseBranch?.trim() || undefined,
         inheritConfig: worktree.inheritConfig,
         created: Number.isFinite(worktree.created) ? worktree.created : jsDateToSwiftDate(new Date()),
         status: worktree.status,
@@ -351,7 +358,8 @@ export function useDevHaven(): DevHavenStore {
         updatedAt: worktree.updatedAt,
       };
 
-      const nextProjects = projects.map((project) => {
+      const currentProjects = projectsRef.current;
+      const nextProjects = currentProjects.map((project) => {
         if (project.id !== projectId) {
           return project;
         }
@@ -362,6 +370,7 @@ export function useDevHaven(): DevHavenStore {
           worktrees[existingIndex] = {
             ...worktrees[existingIndex],
             ...nextWorktree,
+            baseBranch: nextWorktree.baseBranch ?? worktrees[existingIndex].baseBranch,
           };
           return { ...project, worktrees };
         }
@@ -370,7 +379,7 @@ export function useDevHaven(): DevHavenStore {
 
       await commitProjects(nextProjects);
     },
-    [commitProjects, projects],
+    [commitProjects],
   );
 
   /** 删除项目 worktree 子项并持久化。 */
@@ -381,7 +390,8 @@ export function useDevHaven(): DevHavenStore {
         return;
       }
 
-      const nextProjects = projects.map((project) => {
+      const currentProjects = projectsRef.current;
+      const nextProjects = currentProjects.map((project) => {
         if (project.id !== projectId) {
           return project;
         }
@@ -393,7 +403,7 @@ export function useDevHaven(): DevHavenStore {
 
       await commitProjects(nextProjects);
     },
-    [commitProjects, projects],
+    [commitProjects],
   );
 
   /** 根据 Git worktree 列表同步指定项目的 worktrees（一次性写盘，按 path 幂等）。 */
@@ -403,90 +413,25 @@ export function useDevHaven(): DevHavenStore {
         return;
       }
 
-      const normalizedGitWorktrees = worktrees
-        .map((item) => ({ path: item.path.trim(), branch: item.branch.trim() }))
-        .filter((item) => item.path && item.branch)
-        .sort((left, right) => left.path.localeCompare(right.path));
-
       const now = jsDateToSwiftDate(new Date());
-      let changed = false;
-
-      const nextProjects = projects.map((project) => {
-        if (project.id !== projectId) {
-          return project;
-        }
-
-        const existingWorktrees = project.worktrees ?? [];
-        const existingByPath = new Map(existingWorktrees.map((item) => [item.path, item]));
-
-        const nextWorktrees: ProjectWorktree[] = normalizedGitWorktrees.map((item) => {
-          const existing = existingByPath.get(item.path);
-          const name =
-            existing?.name?.trim() ||
-            item.path
-              .replace(/\\/g, "/")
-              .replace(/\/+$/, "")
-              .split("/")
-              .filter(Boolean)
-              .pop() ||
-            item.path;
-          const inheritConfig = existing?.inheritConfig ?? true;
-          const created = Number.isFinite(existing?.created) ? (existing?.created ?? now) : now;
-          const id = existing?.id?.trim() || `worktree:${item.path}`;
-          return {
-            id,
-            name,
-            path: item.path,
-            branch: item.branch,
-            inheritConfig,
-            created,
-            status: existing?.status,
-            initStep: existing?.initStep,
-            initMessage: existing?.initMessage,
-            initError: existing?.initError,
-            initJobId: existing?.initJobId,
-            updatedAt: existing?.updatedAt,
-          };
-        });
-
-        if (existingWorktrees.length !== nextWorktrees.length) {
-          changed = true;
-        } else {
-          for (let index = 0; index < nextWorktrees.length; index += 1) {
-            const prev = existingWorktrees[index];
-            const next = nextWorktrees[index];
-            if (
-              prev?.id !== next.id ||
-              prev?.name !== next.name ||
-              prev?.path !== next.path ||
-              prev?.branch !== next.branch ||
-              prev?.inheritConfig !== next.inheritConfig ||
-              prev?.created !== next.created ||
-              prev?.status !== next.status ||
-              prev?.initStep !== next.initStep ||
-              prev?.initMessage !== next.initMessage ||
-              prev?.initError !== next.initError ||
-              prev?.initJobId !== next.initJobId ||
-              prev?.updatedAt !== next.updatedAt
-            ) {
-              changed = true;
-              break;
-            }
-          }
-        }
-
-        if (!changed) {
-          return project;
-        }
-        return { ...project, worktrees: nextWorktrees };
-      });
-
-      if (!changed) {
+      const currentProjects = projectsRef.current;
+      const projectIndex = currentProjects.findIndex((project) => project.id === projectId);
+      if (projectIndex < 0) {
         return;
       }
+
+      const project = currentProjects[projectIndex];
+      const existingWorktrees = project.worktrees ?? [];
+      const nextWorktrees = buildSyncedWorktrees(existingWorktrees, worktrees, now);
+      if (areWorktreeListsEqual(existingWorktrees, nextWorktrees)) {
+        return;
+      }
+
+      const nextProjects = [...currentProjects];
+      nextProjects[projectIndex] = { ...project, worktrees: nextWorktrees };
       await commitProjects(nextProjects);
     },
-    [commitProjects, projects],
+    [commitProjects],
   );
 
   /** 添加需要扫描的工作目录并持久化。 */
@@ -727,6 +672,82 @@ function mergeProjectsByPath(existing: Project[], updates: Project[]) {
     }
   }
   return nextProjects;
+}
+
+function buildSyncedWorktrees(
+  existingWorktrees: ProjectWorktree[],
+  gitWorktrees: Array<{ path: string; branch: string }>,
+  now: number,
+): ProjectWorktree[] {
+  const normalizedGitWorktrees = normalizeGitWorktrees(gitWorktrees);
+  const existingByPath = new Map(existingWorktrees.map((item) => [item.path, item]));
+  return normalizedGitWorktrees.map((item) => buildSyncedWorktree(existingByPath.get(item.path), item, now));
+}
+
+function normalizeGitWorktrees(worktrees: Array<{ path: string; branch: string }>) {
+  return worktrees
+    .map((item) => ({ path: item.path.trim(), branch: item.branch.trim() }))
+    .filter((item) => item.path && item.branch)
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function buildSyncedWorktree(
+  existing: ProjectWorktree | undefined,
+  item: { path: string; branch: string },
+  now: number,
+): ProjectWorktree {
+  const created = Number.isFinite(existing?.created) ? (existing?.created ?? now) : now;
+  return {
+    id: existing?.id?.trim() || `worktree:${item.path}`,
+    name: existing?.name?.trim() || resolveWorktreeName(item.path),
+    path: item.path,
+    branch: item.branch,
+    baseBranch: existing?.baseBranch,
+    inheritConfig: existing?.inheritConfig ?? true,
+    created,
+    status: existing?.status,
+    initStep: existing?.initStep,
+    initMessage: existing?.initMessage,
+    initError: existing?.initError,
+    initJobId: existing?.initJobId,
+    updatedAt: existing?.updatedAt,
+  };
+}
+
+function resolveWorktreeName(path: string): string {
+  return (
+    path
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "")
+      .split("/")
+      .filter(Boolean)
+      .pop() || path
+  );
+}
+
+function areWorktreeListsEqual(left: ProjectWorktree[], right: ProjectWorktree[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((item, index) => isSameWorktree(item, right[index]));
+}
+
+function isSameWorktree(left: ProjectWorktree, right: ProjectWorktree): boolean {
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.path === right.path &&
+    left.branch === right.branch &&
+    left.baseBranch === right.baseBranch &&
+    left.inheritConfig === right.inheritConfig &&
+    left.created === right.created &&
+    left.status === right.status &&
+    left.initStep === right.initStep &&
+    left.initMessage === right.initMessage &&
+    left.initError === right.initError &&
+    left.initJobId === right.initJobId &&
+    left.updatedAt === right.updatedAt
+  );
 }
 
 function normalizeProject(project: Project): Project {

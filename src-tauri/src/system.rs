@@ -88,7 +88,9 @@ pub fn copy_to_clipboard(app: &AppHandle, content: &str) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn copy_with_pbcopy(content: &str) -> Result<(), std::io::Error> {
-    let mut child = Command::new("/usr/bin/pbcopy").stdin(Stdio::piped()).spawn()?;
+    let mut child = Command::new("/usr/bin/pbcopy")
+        .stdin(Stdio::piped())
+        .spawn()?;
     if let Some(stdin) = child.stdin.as_mut() {
         stdin.write_all(content.as_bytes())?;
     }

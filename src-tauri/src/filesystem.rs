@@ -7,7 +7,11 @@ use crate::models::{
 
 const MAX_FILE_PREVIEW_BYTES: u64 = 512 * 1024;
 
-pub fn list_dir_entries(project_path: &str, relative_path: &str, show_hidden: bool) -> FsListResponse {
+pub fn list_dir_entries(
+    project_path: &str,
+    relative_path: &str,
+    show_hidden: bool,
+) -> FsListResponse {
     let root = Path::new(project_path);
     let relative = Path::new(relative_path);
 

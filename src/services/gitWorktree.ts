@@ -23,6 +23,12 @@ export type GitWorktreeRemovePayload = {
   force?: boolean;
 };
 
+export type GitDeleteBranchPayload = {
+  path: string;
+  branch: string;
+  force?: boolean;
+};
+
 export async function gitWorktreeAdd(payload: GitWorktreeAddPayload): Promise<GitWorktreeAddResult> {
   const params: Record<string, unknown> = {
     path: payload.path,
@@ -44,6 +50,14 @@ export async function gitWorktreeRemove(payload: GitWorktreeRemovePayload): Prom
   await invoke("git_worktree_remove", {
     path: payload.path,
     worktreePath: payload.worktreePath,
+    force: payload.force ?? false,
+  });
+}
+
+export async function gitDeleteBranch(payload: GitDeleteBranchPayload): Promise<void> {
+  await invoke("git_delete_branch", {
+    path: payload.path,
+    branch: payload.branch,
     force: payload.force ?? false,
   });
 }

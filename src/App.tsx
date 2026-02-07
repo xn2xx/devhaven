@@ -33,7 +33,7 @@ import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
 import { deleteTerminalWorkspace } from "./services/terminalWorkspace";
-import { gitWorktreeList, gitWorktreeRemove } from "./services/gitWorktree";
+import { gitDeleteBranch, gitWorktreeList, gitWorktreeRemove } from "./services/gitWorktree";
 import type { GitWorktreeListItem } from "./services/gitWorktree";
 import { gitIsRepo } from "./services/gitManagement";
 import {
@@ -78,6 +78,69 @@ function resolveNameFromPath(path: string): string {
 
 function normalizePathForCompare(path: string): string {
   return path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function resolveErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isSamePath(left: string, right: string): boolean {
+  return normalizePathForCompare(left) === normalizePathForCompare(right);
+}
+
+function buildPendingWorktree(
+  path: string,
+  branch: string,
+  now: number,
+  options?: { baseBranch?: string; step?: ProjectWorktree["initStep"]; message?: string; jobId?: string },
+): ProjectWorktree {
+  return {
+    id: createWorktreeProjectId(path),
+    name: resolveNameFromPath(path),
+    path,
+    branch,
+    baseBranch: options?.baseBranch,
+    inheritConfig: true,
+    created: now,
+    status: "creating",
+    initStep: options?.step,
+    initMessage: options?.message,
+    initError: null,
+    initJobId: options?.jobId,
+    updatedAt: now,
+  };
+}
+
+function buildReadyWorktree(path: string, branch: string, now: number): ProjectWorktree {
+  return {
+    id: createWorktreeProjectId(path),
+    name: resolveNameFromPath(path),
+    path,
+    branch,
+    baseBranch: undefined,
+    inheritConfig: true,
+    created: now,
+    status: "ready",
+    initStep: "ready",
+    initMessage: "已添加现有 worktree",
+    initError: null,
+    initJobId: null,
+    updatedAt: now,
+  };
+}
+
+function buildTrackedWorktreeFromGitItem(
+  item: GitWorktreeListItem,
+  now: number,
+): ProjectWorktree {
+  return {
+    id: createWorktreeProjectId(item.path),
+    name: resolveNameFromPath(item.path),
+    path: item.path,
+    branch: item.branch,
+    inheritConfig: true,
+    created: now,
+  };
 }
 
 function buildWorktreeVirtualProject(sourceProject: Project, worktree: ProjectWorktree): Project {
@@ -781,23 +844,16 @@ function AppLayout() {
             projectPath: payload.sourceProjectPath,
             branch: payload.branch,
             createBranch: payload.createBranch,
+            baseBranch: payload.baseBranch,
           });
 
           const now = jsDateToSwiftDate(new Date());
-          const nextWorktree: ProjectWorktree = {
-            id: createWorktreeProjectId(started.worktreePath),
-            name: resolveNameFromPath(started.worktreePath),
-            path: started.worktreePath,
-            branch: started.branch,
-            inheritConfig: true,
-            created: now,
-            status: "creating",
-            initStep: started.step,
-            initMessage: started.message,
-            initError: null,
-            initJobId: started.jobId,
-            updatedAt: now,
-          };
+          const nextWorktree = buildPendingWorktree(started.worktreePath, started.branch, now, {
+            baseBranch: started.baseBranch ?? payload.baseBranch,
+            step: started.step,
+            message: started.message,
+            jobId: started.jobId,
+          });
 
           await addProjectWorktree(sourceProject.id, nextWorktree);
           worktreeInitAutoOpenByJobIdRef.current.set(started.jobId, {
@@ -813,24 +869,12 @@ function AppLayout() {
             jobId: started.jobId,
             worktreePath: started.worktreePath,
             branch: started.branch,
+            baseBranch: started.baseBranch ?? payload.baseBranch,
           };
         }
 
         const now = jsDateToSwiftDate(new Date());
-        const nextWorktree: ProjectWorktree = {
-          id: createWorktreeProjectId(payload.worktreePath),
-          name: resolveNameFromPath(payload.worktreePath),
-          path: payload.worktreePath,
-          branch: payload.branch,
-          inheritConfig: true,
-          created: now,
-          status: "ready",
-          initStep: "ready",
-          initMessage: "已添加现有 worktree",
-          initError: null,
-          initJobId: null,
-          updatedAt: now,
-        };
+        const nextWorktree = buildReadyWorktree(payload.worktreePath, payload.branch, now);
 
         await addProjectWorktree(sourceProject.id, nextWorktree);
         // 若当前已加载 Git worktree 列表，则同步更新缓存，避免列表显示旧数据。
@@ -839,8 +883,7 @@ function AppLayout() {
             return prev;
           }
           const current = prev[sourceProject.id] ?? [];
-          const normalizedTarget = normalizePathForCompare(payload.worktreePath);
-          if (current.some((item) => normalizePathForCompare(item.path) === normalizedTarget)) {
+          if (current.some((item) => isSamePath(item.path, payload.worktreePath))) {
             return prev;
           }
           const next = [...current, { path: payload.worktreePath, branch: payload.branch }].sort((left, right) =>
@@ -859,8 +902,7 @@ function AppLayout() {
           mode: "open-existing",
         };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        showToast(message || "创建 worktree 失败", "error");
+        showToast(resolveErrorMessage(error) || "创建 worktree 失败", "error");
         throw error;
       }
     },
@@ -1043,6 +1085,17 @@ function AppLayout() {
     [handleCloseTerminalProject, projectMap, showToast, syncProjectWorktrees],
   );
 
+  const removeWorktreeFromGitCache = useCallback((projectId: string, worktreePath: string) => {
+    setTerminalGitWorktreesByProjectId((prev) => {
+      const current = prev[projectId];
+      if (!current) {
+        return prev;
+      }
+      const next = current.filter((item) => !isSamePath(item.path, worktreePath));
+      return { ...prev, [projectId]: next };
+    });
+  }, []);
+
   const handleWorktreeInitProgress = useCallback(
     async (payload: WorktreeInitProgressPayload) => {
       const sourceProject = projectMap.get(payload.projectId);
@@ -1058,16 +1111,7 @@ function AppLayout() {
       if (payload.step === "cancelled") {
         worktreeInitAutoOpenByJobIdRef.current.delete(payload.jobId);
         await removeProjectWorktree(sourceProject.id, payload.worktreePath);
-        setTerminalGitWorktreesByProjectId((prev) => {
-          const current = prev[sourceProject.id];
-          if (!current) {
-            return prev;
-          }
-          const next = current.filter(
-            (item) => normalizePathForCompare(item.path) !== normalizedPath,
-          );
-          return { ...prev, [sourceProject.id]: next };
-        });
+        removeWorktreeFromGitCache(sourceProject.id, payload.worktreePath);
         showToast("worktree 创建已取消");
         return;
       }
@@ -1085,12 +1129,13 @@ function AppLayout() {
         name: existing?.name ?? resolveNameFromPath(payload.worktreePath),
         path: payload.worktreePath,
         branch: payload.branch,
+        baseBranch: existing?.baseBranch ?? payload.baseBranch,
         inheritConfig: existing?.inheritConfig ?? true,
         created: existing?.created ?? now,
         status,
         initStep: payload.step,
         initMessage: payload.message,
-        initError: payload.step === "failed" ? (payload.error ?? payload.message) : null,
+        initError: payload.step === "failed" ? (payload.error ?? payload.message) : (payload.error ?? null),
         initJobId: payload.jobId,
         updatedAt: now,
       };
@@ -1114,7 +1159,24 @@ function AppLayout() {
         console.error("同步 worktree 失败。", error);
       });
 
-      showToast("worktree 创建成功");
+      // 创建成功后再次写入 ready 状态，规避并发同步时被旧快照回写为 creating。
+      const hasSetupWarning = Boolean(payload.error?.trim());
+      await addProjectWorktree(sourceProject.id, {
+        ...nextWorktree,
+        status: "ready",
+        initStep: "ready",
+        initMessage: hasSetupWarning ? "创建完成（环境初始化存在告警）" : (payload.message || "创建完成"),
+        initError: payload.error ?? null,
+        updatedAt: jsDateToSwiftDate(new Date()),
+      });
+
+      if (hasSetupWarning) {
+        const warningText = payload.error ?? "";
+        const warningSummary = warningText.split("\n")[0] || warningText;
+        showToast(`worktree 创建完成，但环境初始化失败：${warningSummary}`, "error");
+      } else {
+        showToast("worktree 创建成功");
+      }
 
       if (pendingAutoOpen?.autoOpen) {
         openTerminalWorkspace(buildWorktreeVirtualProject(sourceProject, nextWorktree));
@@ -1124,6 +1186,7 @@ function AppLayout() {
       addProjectWorktree,
       openTerminalWorkspace,
       projectMap,
+      removeWorktreeFromGitCache,
       removeProjectWorktree,
       showToast,
       syncTerminalProjectWorktrees,
@@ -1215,6 +1278,7 @@ function AppLayout() {
         const now = jsDateToSwiftDate(new Date());
         await addProjectWorktree(sourceProject.id, {
           ...worktree,
+          baseBranch: restarted.baseBranch ?? worktree.baseBranch,
           status: "creating",
           initStep: restarted.step,
           initMessage: restarted.message,
@@ -1249,20 +1313,37 @@ function AppLayout() {
       const trackedWorktree = (sourceProject.worktrees ?? []).find((item) => item.path === normalizedPath);
       const cached = terminalGitWorktreesByProjectIdRef.current[projectId];
       const cachedMatch = cached?.find(
-        (item) => normalizePathForCompare(item.path) === normalizePathForCompare(normalizedPath),
+        (item) => isSamePath(item.path, normalizedPath),
       );
-      const worktree = trackedWorktree ?? (cachedMatch ? {
-        id: createWorktreeProjectId(cachedMatch.path),
-        name: resolveNameFromPath(cachedMatch.path),
-        path: cachedMatch.path,
-        branch: cachedMatch.branch,
-        inheritConfig: true,
-        created: jsDateToSwiftDate(new Date()),
-      } : null);
+      const worktree = trackedWorktree ?? (cachedMatch
+        ? buildTrackedWorktreeFromGitItem(cachedMatch, jsDateToSwiftDate(new Date()))
+        : null);
       if (!worktree) {
         showToast("worktree 不存在或已移除", "error");
         return;
       }
+      const shouldDeleteManagedBranch = Boolean(trackedWorktree?.baseBranch?.trim());
+
+      const removeRecordOnly = async () => {
+        await removeProjectWorktree(sourceProject.id, worktree.path);
+        await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
+        showToast("worktree 记录已移除", "success");
+      };
+
+      const confirmRemoveRecordOnly = async () => {
+        const removeOnly = await confirm(
+          "是否仅从 DevHaven 列表中移除该 worktree 记录？（不会执行 Git 删除）",
+          {
+            title: "移除 worktree 记录",
+            kind: "warning",
+            okLabel: "移除记录",
+            cancelLabel: "取消",
+          },
+        );
+        if (removeOnly) {
+          await removeRecordOnly();
+        }
+      };
 
       if (worktree.status === "creating" && worktree.initJobId) {
         const cancelConfirmed = await confirm(
@@ -1284,23 +1365,13 @@ function AppLayout() {
         });
         worktreeInitAutoOpenByJobIdRef.current.delete(worktree.initJobId);
         await removeProjectWorktree(sourceProject.id, worktree.path);
-        setTerminalGitWorktreesByProjectId((prev) => {
-          const current = prev[sourceProject.id];
-          if (!current) {
-            return prev;
-          }
-          const next = current.filter(
-            (item) =>
-              normalizePathForCompare(item.path) !== normalizePathForCompare(worktree.path),
-          );
-          return { ...prev, [sourceProject.id]: next };
-        });
+        removeWorktreeFromGitCache(sourceProject.id, worktree.path);
         showToast("已取消 worktree 创建并移除记录", "success");
         return;
       }
 
       const confirmed = await confirm(
-        `确定要删除该 worktree 吗？\n\n分支：${worktree.branch}\n路径：${worktree.path}\n\n将执行 git worktree remove 并删除该目录。`,
+        `确定要删除该 worktree 吗？\n\n分支：${worktree.branch}\n路径：${worktree.path}\n\n将执行 git worktree remove 并删除该目录${shouldDeleteManagedBranch ? "，并删除对应本地分支" : ""}。`,
         {
           title: "删除 worktree",
           kind: "warning",
@@ -1326,7 +1397,7 @@ function AppLayout() {
           force: false,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = resolveErrorMessage(error);
         const forceConfirmed = await confirm(
           `删除失败：${message || "未知错误"}\n\n是否尝试“强制删除”？（可能丢失未提交修改）`,
           {
@@ -1337,20 +1408,7 @@ function AppLayout() {
           },
         );
         if (!forceConfirmed) {
-          const removeOnly = await confirm(
-            "是否仅从 DevHaven 列表中移除该 worktree 记录？（不会执行 Git 删除）",
-            {
-              title: "移除 worktree 记录",
-              kind: "warning",
-              okLabel: "移除记录",
-              cancelLabel: "取消",
-            },
-          );
-          if (removeOnly) {
-            await removeProjectWorktree(sourceProject.id, worktree.path);
-            await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
-            showToast("worktree 记录已移除", "success");
-          }
+          await confirmRemoveRecordOnly();
           return;
         }
         try {
@@ -1360,32 +1418,46 @@ function AppLayout() {
             force: true,
           });
         } catch (forceError) {
-          const forceMessage = forceError instanceof Error ? forceError.message : String(forceError);
+          const forceMessage = resolveErrorMessage(forceError);
           showToast(forceMessage || "强制删除 worktree 失败", "error");
-          const removeOnly = await confirm(
-            "是否仅从 DevHaven 列表中移除该 worktree 记录？（不会执行 Git 删除）",
-            {
-              title: "移除 worktree 记录",
-              kind: "warning",
-              okLabel: "移除记录",
-              cancelLabel: "取消",
-            },
-          );
-          if (removeOnly) {
-            await removeProjectWorktree(sourceProject.id, worktree.path);
-            await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
-            showToast("worktree 记录已移除", "success");
-          }
+          await confirmRemoveRecordOnly();
           return;
+        }
+      }
+
+      let branchDeleteError: string | null = null;
+      if (shouldDeleteManagedBranch) {
+        try {
+          await gitDeleteBranch({
+            path: sourceProject.path,
+            branch: worktree.branch,
+            force: false,
+          });
+        } catch (error) {
+          branchDeleteError = resolveErrorMessage(error);
         }
       }
 
       await removeProjectWorktree(sourceProject.id, worktree.path);
       await deleteTerminalWorkspace(worktree.path).catch(() => undefined);
-      showToast("worktree 已删除", "success");
+      if (branchDeleteError) {
+        showToast(`worktree 已删除，但分支删除失败：${branchDeleteError}`, "error");
+      } else if (shouldDeleteManagedBranch) {
+        showToast("worktree 与对应分支已删除", "success");
+      } else {
+        showToast("worktree 已删除", "success");
+      }
       void syncTerminalProjectWorktrees(projectId).catch(() => undefined);
     },
-    [handleCloseTerminalProject, projectMap, removeProjectWorktree, showToast, syncTerminalProjectWorktrees, worktreeInitCancel],
+    [
+      handleCloseTerminalProject,
+      projectMap,
+      removeProjectWorktree,
+      removeWorktreeFromGitCache,
+      showToast,
+      syncTerminalProjectWorktrees,
+      worktreeInitCancel,
+    ],
   );
 
   const handleOpenCodexSession = useCallback(
