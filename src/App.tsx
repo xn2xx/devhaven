@@ -245,6 +245,17 @@ function buildCodexSessionViews(sessions: CodexMonitorSession[], projects: Proje
   });
 }
 
+function shouldBlockReloadShortcut(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
+  if (key === "f5" || event.code === "F5") {
+    return true;
+  }
+  if (key !== "r") {
+    return false;
+  }
+  return (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey;
+}
+
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
   const {
@@ -315,6 +326,32 @@ function AppLayout() {
       document.documentElement.classList.remove("is-monitor-view");
     };
   }, [isMonitorView]);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD || typeof window === "undefined") {
+      return;
+    }
+
+    // 生产环境阻断原生右键刷新入口与刷新快捷键，避免页面重载导致会话状态丢失。
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!shouldBlockReloadShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("contextmenu", handleContextMenu, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("contextmenu", handleContextMenu, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, []);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastTerminalVisibleRef = useRef(showTerminalWorkspace);
