@@ -19,6 +19,16 @@ pub struct AppStateFile {
 pub type TerminalWorkspace = JsonValue;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalWorkspaceSummary {
+    pub project_path: String,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalWorkspacesFile {
     pub version: i32,
     #[serde(default)]

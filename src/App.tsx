@@ -21,6 +21,7 @@ import type { DateFilter, GitFilter } from "./models/filters";
 import { DATE_FILTER_OPTIONS } from "./models/filters";
 import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
+import type { TerminalWorkspaceSummary } from "./models/terminal";
 import type { CodexAgentEvent, CodexMonitorSession, CodexSessionView } from "./models/codex";
 import type { ColorData, Project, ProjectWorktree, TagData } from "./models/types";
 import { jsDateToSwiftDate, swiftDateToJsDate } from "./models/types";
@@ -33,7 +34,7 @@ import { DevHavenProvider, useDevHavenContext } from "./state/DevHavenContext";
 import { useHeatmapData } from "./state/useHeatmapData";
 import { copyToClipboard, sendSystemNotification } from "./services/system";
 import { closeMonitorWindow, openMonitorWindow } from "./services/monitorWindow";
-import { deleteTerminalWorkspace } from "./services/terminalWorkspace";
+import { deleteTerminalWorkspace, listTerminalWorkspaceSummaries } from "./services/terminalWorkspace";
 import { gitDeleteBranch, gitWorktreeList, gitWorktreeRemove } from "./services/gitWorktree";
 import type { GitWorktreeListItem } from "./services/gitWorktree";
 import { gitIsRepo } from "./services/gitManagement";
@@ -320,6 +321,7 @@ function AppLayout() {
   const terminalOpenProjectsRef = useRef<Project[]>(terminalOpenProjects);
   const terminalActiveProjectIdRef = useRef<string | null>(terminalActiveProjectId);
   const terminalGitWorktreesByProjectIdRef = useRef<Record<string, GitWorktreeListItem[]>>(terminalGitWorktreesByProjectId);
+  const terminalRestoreCheckedRef = useRef(false);
   const worktreeAutoSyncedProjectIdsRef = useRef<Set<string>>(new Set());
   const worktreeSyncingProjectIdsRef = useRef<Set<string>>(new Set());
   const worktreeRecoveryCheckedProjectIdsRef = useRef<Set<string>>(new Set());
@@ -1034,6 +1036,86 @@ function AppLayout() {
       })();
     }
   }, [addProjectWorktree, projects]);
+
+  useEffect(() => {
+    if (isMonitorView || isLoading || terminalRestoreCheckedRef.current) {
+      return;
+    }
+
+    terminalRestoreCheckedRef.current = true;
+    if (terminalOpenProjectsRef.current.length > 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      let summaries: TerminalWorkspaceSummary[] = [];
+      try {
+        summaries = await listTerminalWorkspaceSummaries();
+      } catch (error) {
+        console.error("读取终端工作区列表失败。", error);
+        return;
+      }
+
+      if (cancelled || summaries.length === 0) {
+        return;
+      }
+
+      const restoredProjects: Project[] = [];
+      const openedProjectIds = new Set<string>();
+      let restoredActiveProjectId: string | null = null;
+      let latestUpdatedAt = Number.NEGATIVE_INFINITY;
+
+      const pushProject = (project: Project) => {
+        if (openedProjectIds.has(project.id)) {
+          return;
+        }
+        openedProjectIds.add(project.id);
+        restoredProjects.push(project);
+      };
+
+      for (const summary of summaries) {
+        const rootProject = projects.find(
+          (item) => !isWorktreeProject(item) && isSamePath(item.path, summary.projectPath),
+        );
+
+        if (rootProject) {
+          pushProject(rootProject);
+          if ((summary.updatedAt ?? Number.NEGATIVE_INFINITY) >= latestUpdatedAt) {
+            latestUpdatedAt = summary.updatedAt ?? Number.NEGATIVE_INFINITY;
+            restoredActiveProjectId = rootProject.id;
+          }
+          continue;
+        }
+
+        const sourceProject = resolveWorktreeSourceProjectByPath(projects, summary.projectPath);
+        const worktreeProject = resolveWorktreeVirtualProjectByPath(projects, summary.projectPath);
+        if (!sourceProject || !worktreeProject) {
+          continue;
+        }
+
+        pushProject(sourceProject);
+        pushProject(worktreeProject);
+
+        if ((summary.updatedAt ?? Number.NEGATIVE_INFINITY) >= latestUpdatedAt) {
+          latestUpdatedAt = summary.updatedAt ?? Number.NEGATIVE_INFINITY;
+          restoredActiveProjectId = worktreeProject.id;
+        }
+      }
+
+      if (cancelled || restoredProjects.length === 0) {
+        return;
+      }
+
+      setTerminalOpenProjects(restoredProjects);
+      setTerminalActiveProjectId(restoredActiveProjectId ?? restoredProjects[0].id);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading, isMonitorView, projects]);
 
   useEffect(() => {
     setTerminalOpenProjects((prev) =>

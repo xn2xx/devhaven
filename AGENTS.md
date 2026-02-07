@@ -104,6 +104,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 ### G. 终端工作区（内置终端 + 布局持久化）
 - 终端窗口管理：`src/services/terminalWindow.ts`、`src/components/terminal/TerminalWorkspaceWindow.tsx`
 - 关闭已打开项目（并删除该项目的终端工作区 sessions/tabs 持久化）：`src/components/terminal/TerminalWorkspaceWindow.tsx`、`src/App.tsx` → `src/services/terminalWorkspace.ts`（`deleteTerminalWorkspace`） ↔ `src-tauri/src/lib.rs`（Command：`delete_terminal_workspace`）→ `src-tauri/src/storage.rs`（删除 `terminal_workspaces.json` entry）
+- 应用重启恢复终端“已打开项目”列表（按 `updatedAt` 恢复最近活跃项目）：`src/App.tsx`（恢复入口） → `src/services/terminalWorkspace.ts`（`listTerminalWorkspaceSummaries`） ↔ `src-tauri/src/lib.rs`（Command：`list_terminal_workspace_summaries`）→ `src-tauri/src/storage.rs`（读取 `terminal_workspaces.json` 摘要）
 - 终端 UI（xterm、分屏、标签）：`src/components/terminal/*`
 - 终端右侧快捷命令悬浮窗（可拖拽，按项目记忆位置/开关，支持运行/停止）：`src/components/terminal/TerminalWorkspaceView.tsx`；事件协议：`src/services/terminalQuickCommands.ts`；面板状态持久化写入 `terminal_workspaces.json` 的 `workspace.ui.quickCommandsPanel`（类型：`src/models/terminal.ts`；默认/兼容处理：`src/utils/terminalLayout.ts`）
 - 终端右侧侧边栏（可拖拽调整宽度，Tabs：文件/Git）：`src/components/terminal/TerminalRightSidebar.tsx`、`src/components/terminal/ResizablePanel.tsx`、`src/components/terminal/TerminalWorkspaceView.tsx`；面板状态持久化：`terminal_workspaces.json` 的 `workspace.ui.rightSidebar`（open/width/tab；类型：`src/models/terminal.ts`；默认/兼容：`src/utils/terminalLayout.ts`）
@@ -118,8 +119,9 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
   - 后端：`src-tauri/src/terminal.rs`
   - Command：`src-tauri/src/lib.rs`（`terminal_create_session/terminal_write/terminal_resize/terminal_kill`）
 - 工作区持久化：
-  - 前端：`src/services/terminalWorkspace.ts`
+  - 前端：`src/services/terminalWorkspace.ts`（`load/save/delete/listTerminalWorkspaceSummaries`）
   - 后端：`src-tauri/src/storage.rs`（`terminal_workspaces.json`）
+  - Command：`src-tauri/src/lib.rs`（`load_terminal_workspace/save_terminal_workspace/delete_terminal_workspace/list_terminal_workspace_summaries`）
 
 ### H. 悬浮监控窗（Monitor）
 - 窗口创建/置顶/跨工作区：`src/services/monitorWindow.ts`
