@@ -66,3 +66,9 @@ export type TerminalWorkspace = {
   ui?: TerminalWorkspaceUi;
   updatedAt: number;
 };
+
+export type TerminalWorkspaceSummary = {
+  projectPath: string;
+  projectId: string | null;
+  updatedAt: number | null;
+};

@@ -23,14 +23,14 @@ use crate::models::{
     AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
     FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
     GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, MarkdownFileEntry, Project,
-    TerminalCodexPaneOverlay, TerminalWorkspace, WorktreeInitCancelResult, WorktreeInitJobStatus,
-    WorktreeInitRetryRequest, WorktreeInitStartRequest, WorktreeInitStartResult,
-    WorktreeInitStatusQuery,
+    TerminalCodexPaneOverlay, TerminalWorkspace, TerminalWorkspaceSummary,
+    WorktreeInitCancelResult, WorktreeInitJobStatus, WorktreeInitRetryRequest,
+    WorktreeInitStartRequest, WorktreeInitStartResult, WorktreeInitStatusQuery,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
-    terminal_create_session, terminal_get_codex_pane_overlay, terminal_kill, terminal_resize,
-    terminal_write, TerminalState,
+    TerminalState, terminal_create_session, terminal_get_codex_pane_overlay, terminal_kill,
+    terminal_resize, terminal_write,
 };
 
 #[tauri::command]
@@ -481,6 +481,15 @@ fn delete_terminal_workspace(app: AppHandle, project_path: String) -> Result<(),
 }
 
 #[tauri::command]
+fn list_terminal_workspace_summaries(
+    app: AppHandle,
+) -> Result<Vec<TerminalWorkspaceSummary>, String> {
+    log_command_result("list_terminal_workspace_summaries", || {
+        storage::list_terminal_workspace_summaries(&app)
+    })
+}
+
+#[tauri::command]
 fn get_codex_monitor_snapshot(app: AppHandle) -> Result<CodexMonitorSnapshot, String> {
     log_command_result("get_codex_monitor_snapshot", || {
         if let Err(error) = codex_monitor::ensure_monitoring_started(&app) {
@@ -576,6 +585,7 @@ pub fn run() {
             load_terminal_workspace,
             save_terminal_workspace,
             delete_terminal_workspace,
+            list_terminal_workspace_summaries,
             get_codex_monitor_snapshot,
             get_terminal_codex_pane_overlay,
             terminal_create_session,
