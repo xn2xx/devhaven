@@ -1,12 +1,13 @@
 use std::fs;
 use std::path::PathBuf;
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use tauri::{AppHandle, Manager};
 
 use crate::models::{
-    AppStateFile, HeatmapCacheFile, Project, TerminalWorkspace, TerminalWorkspacesFile,
+    AppStateFile, HeatmapCacheFile, Project, TerminalWorkspace, TerminalWorkspaceSummary,
+    TerminalWorkspacesFile,
 };
 
 // 获取应用数据目录。
@@ -31,7 +32,8 @@ fn read_json<T: DeserializeOwned>(path: &PathBuf) -> Result<T, String> {
 
 // 以易读格式写入 JSON。
 fn write_json_pretty<T: Serialize>(path: &PathBuf, value: &T) -> Result<(), String> {
-    let data = serde_json::to_vec_pretty(value).map_err(|err| format!("序列化 JSON 失败: {err}"))?;
+    let data =
+        serde_json::to_vec_pretty(value).map_err(|err| format!("序列化 JSON 失败: {err}"))?;
     fs::write(path, data).map_err(|err| format!("写入文件失败: {err}"))
 }
 
@@ -149,4 +151,41 @@ pub fn delete_terminal_workspace(app: &AppHandle, project_path: &str) -> Result<
         save_terminal_workspaces(app, &workspaces)?;
     }
     Ok(())
+}
+
+/// 列出已保存的终端工作空间摘要。
+pub fn list_terminal_workspace_summaries(
+    app: &AppHandle,
+) -> Result<Vec<TerminalWorkspaceSummary>, String> {
+    let workspaces = load_terminal_workspaces(app)?;
+    let mut summaries = Vec::with_capacity(workspaces.workspaces.len());
+
+    for (project_path, workspace) in workspaces.workspaces {
+        let project_id = workspace
+            .get("projectId")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let updated_at = workspace.get("updatedAt").and_then(|value| {
+            value
+                .as_i64()
+                .or_else(|| value.as_f64().map(|number| number as i64))
+        });
+
+        summaries.push(TerminalWorkspaceSummary {
+            project_path,
+            project_id,
+            updated_at,
+        });
+    }
+
+    // 按最近更新时间排序，便于前端恢复“最后活跃项目”。
+    summaries.sort_by(|left, right| {
+        right
+            .updated_at
+            .unwrap_or_default()
+            .cmp(&left.updated_at.unwrap_or_default())
+            .then_with(|| left.project_path.cmp(&right.project_path))
+    });
+
+    Ok(summaries)
 }

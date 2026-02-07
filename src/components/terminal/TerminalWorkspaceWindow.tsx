@@ -2,7 +2,8 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-import type { Project } from "../../models/types";
+import type { Project, ProjectWorktree } from "../../models/types";
+import type { GitWorktreeListItem } from "../../services/gitWorktree";
 import { useSystemColorScheme } from "../../hooks/useSystemColorScheme";
 import { useDevHavenContext } from "../../state/DevHavenContext";
 import {
@@ -17,21 +18,115 @@ export type TerminalWorkspaceWindowProps = {
   activeProjectId: string | null;
   onSelectProject: (projectId: string) => void;
   onCloseProject: (projectId: string) => void;
+  onCreateWorktree: (projectId: string) => void;
+  onOpenWorktree: (projectId: string, worktreePath: string) => void;
+  onDeleteWorktree: (projectId: string, worktreePath: string) => void;
+  onRetryWorktree: (projectId: string, worktreePath: string) => void;
+  onRefreshWorktrees: (projectId: string) => void;
   onExit?: () => void;
   windowLabel: string;
   isVisible: boolean;
   codexProjectStatusById: Record<string, CodexProjectStatus>;
+  gitWorktreesByProjectId: Record<string, GitWorktreeListItem[] | undefined>;
 };
+
+type WorktreeRenderItem = {
+  path: string;
+  branch: string;
+  name: string;
+  status?: ProjectWorktree["status"];
+  initStep?: ProjectWorktree["initStep"];
+  initError?: string | null;
+};
+
+function normalizeWorktreePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function resolveNameFromPath(path: string): string {
+  const normalized = normalizeWorktreePath(path);
+  const segments = normalized.split("/").filter(Boolean);
+  return segments[segments.length - 1] || path;
+}
+
+function toWorktreeRenderItem(worktree: ProjectWorktree): WorktreeRenderItem {
+  return {
+    path: worktree.path,
+    branch: worktree.branch,
+    name: worktree.name,
+    status: worktree.status,
+    initStep: worktree.initStep,
+    initError: worktree.initError,
+  };
+}
+
+function mergeWorktreesToRender(
+  trackedWorktrees: ProjectWorktree[],
+  gitWorktrees: GitWorktreeListItem[] | undefined,
+): WorktreeRenderItem[] {
+  if (!gitWorktrees) {
+    return trackedWorktrees.map(toWorktreeRenderItem);
+  }
+
+  const trackedByPath = new Map(
+    trackedWorktrees.map((item) => [normalizeWorktreePath(item.path), item]),
+  );
+  const merged: WorktreeRenderItem[] = gitWorktrees.map((item) => {
+    const tracked = trackedByPath.get(normalizeWorktreePath(item.path));
+    return {
+      path: item.path,
+      branch: item.branch,
+      name: tracked?.name || resolveNameFromPath(item.path),
+      status: tracked?.status,
+      initStep: tracked?.initStep,
+      initError: tracked?.initError,
+    };
+  });
+
+  const existingPaths = new Set(merged.map((item) => normalizeWorktreePath(item.path)));
+  for (const tracked of trackedWorktrees) {
+    if (tracked.status !== "creating" && tracked.status !== "failed") {
+      continue;
+    }
+    const normalizedPath = normalizeWorktreePath(tracked.path);
+    if (existingPaths.has(normalizedPath)) {
+      continue;
+    }
+    existingPaths.add(normalizedPath);
+    merged.push(toWorktreeRenderItem(tracked));
+  }
+
+  return merged.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function resolveActiveProject(
+  openProjects: Project[],
+  activeProjectId: string | null,
+): Project | null {
+  if (openProjects.length === 0) {
+    return null;
+  }
+  if (!activeProjectId) {
+    return openProjects[0];
+  }
+  return openProjects.find((project) => project.id === activeProjectId) ?? openProjects[0];
+}
 
 export default function TerminalWorkspaceWindow({
   openProjects,
   activeProjectId,
   onSelectProject,
   onCloseProject,
+  onCreateWorktree,
+  onOpenWorktree,
+  onDeleteWorktree,
+  onRetryWorktree,
+  onRefreshWorktrees,
   onExit,
   windowLabel,
   isVisible,
   codexProjectStatusById,
+  gitWorktreesByProjectId,
 }: TerminalWorkspaceWindowProps) {
   const { appState } = useDevHavenContext();
   const systemScheme = useSystemColorScheme();
@@ -47,15 +142,19 @@ export default function TerminalWorkspaceWindow({
     } as CSSProperties;
   }, [terminalThemePreset]);
 
-  const activeProject = useMemo(() => {
-    if (openProjects.length === 0) {
-      return null;
-    }
-    if (activeProjectId) {
-      return openProjects.find((project) => project.id === activeProjectId) ?? openProjects[0];
-    }
-    return openProjects[0];
-  }, [activeProjectId, openProjects]);
+  const activeProject = useMemo(
+    () => resolveActiveProject(openProjects, activeProjectId),
+    [activeProjectId, openProjects],
+  );
+
+  const rootProjects = useMemo(
+    () => openProjects.filter((project) => !project.id.startsWith("worktree:")),
+    [openProjects],
+  );
+
+  const openProjectsByPath = useMemo(() => {
+    return new Map(openProjects.map((project) => [project.path, project]));
+  }, [openProjects]);
 
   useEffect(() => {
     // 仅在终端可见时更新窗口标题；隐藏时恢复默认标题，避免主界面停留在“xx - 终端”。
@@ -96,45 +195,174 @@ export default function TerminalWorkspaceWindow({
           ) : null}
         </div>
         <div className="flex flex-col gap-1 p-2">
-          {openProjects.map((project) => {
+          {rootProjects.map((project) => {
             const isActive = (activeProject?.id ?? "") === project.id;
             const codexStatus = codexProjectStatusById[project.id] ?? null;
             const codexRunningCount = codexStatus?.runningCount ?? 0;
+            const trackedWorktrees = project.worktrees ?? [];
+            const gitWorktrees = gitWorktreesByProjectId[project.id];
+            const worktreesToRender = mergeWorktreesToRender(trackedWorktrees, gitWorktrees);
+
+            const hasWorktrees = worktreesToRender.length > 0;
             return (
-              <div
-                key={project.id}
-                className={`group flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] font-semibold transition-colors ${
-                  isActive
-                    ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
-                    : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
-                }`}
-                title={project.path}
-              >
-                <button className="min-w-0 flex-1 truncate text-left" onClick={() => onSelectProject(project.id)}>
-                  {project.name}
-                </button>
-                {codexRunningCount > 0 ? (
-                  <span
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--terminal-divider)] bg-[var(--terminal-hover-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--terminal-muted-fg)]"
-                    title={`Codex 运行中（${codexRunningCount} 个会话）`}
-                  >
-                    <span className="h-2 w-2 rounded-full bg-[var(--terminal-accent)]" aria-hidden="true" />
-                    <span className="whitespace-nowrap">Codex</span>
-                  </span>
-                ) : null}
-                <button
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onCloseProject(project.id);
-                  }}
-                  aria-label={`关闭 ${project.name}`}
-                  title="关闭项目"
-                  type="button"
+              <div key={project.id} className="flex flex-col gap-1" title={project.path}>
+                <div
+                  className={`group flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-[12px] font-semibold transition-colors ${
+                    isActive
+                      ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
+                      : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+                  }`}
                 >
-                  ×
-                </button>
+                  <button className="min-w-0 flex-1 truncate text-left" onClick={() => onSelectProject(project.id)}>
+                    {project.name}
+                  </button>
+                  {codexRunningCount > 0 ? (
+                    <span
+                      className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--terminal-accent)]"
+                      title={`Codex 运行中（${codexRunningCount} 个会话）`}
+                      aria-label={`Codex 运行中（${codexRunningCount} 个会话）`}
+                    >
+                      <span className="sr-only">Codex 运行中</span>
+                    </span>
+                  ) : null}
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onRefreshWorktrees(project.id);
+                    }}
+                    aria-label={`刷新 ${project.name} worktree`}
+                    title="刷新 worktree"
+                    type="button"
+                  >
+                    ↻
+                  </button>
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onCreateWorktree(project.id);
+                    }}
+                    aria-label={`为 ${project.name} 创建 worktree`}
+                    title="创建 worktree"
+                    type="button"
+                  >
+                    +
+                  </button>
+                  <button
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onCloseProject(project.id);
+                    }}
+                    aria-label={`关闭 ${project.name}`}
+                    title="关闭项目"
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {hasWorktrees ? (
+                  <div className="flex flex-col gap-1 pl-3">
+                    {worktreesToRender.map((worktree) => {
+                      const openedProject = openProjectsByPath.get(worktree.path);
+                      const codexWorktreeStatus =
+                        openedProject ? codexProjectStatusById[`worktree:${worktree.path}`] ?? null : null;
+                      const codexWorktreeRunningCount = codexWorktreeStatus?.runningCount ?? 0;
+                      const isWorktreeActive = activeProject?.path === worktree.path;
+                      const isCreating = worktree.status === "creating";
+                      const isFailed = worktree.status === "failed";
+                      const isQueued = isCreating && worktree.initStep === "pending";
+                      const canOpen = !isCreating && !isFailed;
+                      return (
+                        <div
+                          key={worktree.path}
+                          className={`group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors ${
+                            isWorktreeActive
+                              ? "bg-[var(--terminal-accent-bg)] text-[var(--terminal-fg)]"
+                              : "text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+                          }`}
+                          title={worktree.path}
+                        >
+                          <button
+                            className={`min-w-0 flex-1 truncate text-left ${
+                              canOpen ? "" : "opacity-60 cursor-not-allowed"
+                            }`}
+                            disabled={!canOpen}
+                            onClick={() => {
+                              if (!canOpen) {
+                                return;
+                              }
+                              if (openedProject) {
+                                onSelectProject(openedProject.id);
+                                return;
+                              }
+                              onOpenWorktree(project.id, worktree.path);
+                            }}
+                          >
+                            ↳ {worktree.name}
+                          </button>
+                          <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
+                            {worktree.branch}
+                          </span>
+                          {codexWorktreeRunningCount > 0 ? (
+                            <span
+                              className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--terminal-accent)]"
+                              title={`Codex 运行中（${codexWorktreeRunningCount} 个会话）`}
+                              aria-label={`Codex 运行中（${codexWorktreeRunningCount} 个会话）`}
+                            >
+                              <span className="sr-only">Codex 运行中</span>
+                            </span>
+                          ) : null}
+                          {isCreating ? (
+                            <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
+                              {isQueued ? "排队中" : "创建中"}
+                            </span>
+                          ) : null}
+                          {isFailed ? (
+                            <span className="shrink-0 rounded border border-[rgba(239,68,68,0.35)] px-1.5 py-0.5 text-[10px] text-[rgba(239,68,68,0.9)]">
+                              失败
+                            </span>
+                          ) : null}
+                          {isFailed ? (
+                            <button
+                              className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                onRetryWorktree(project.id, worktree.path);
+                              }}
+                              title={worktree.initError || "重试创建"}
+                              type="button"
+                            >
+                              重试
+                            </button>
+                          ) : null}
+                          <button
+                            className="inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[rgba(239,68,68,0.35)] hover:bg-[rgba(239,68,68,0.15)] hover:text-[rgba(239,68,68,0.9)] group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (isCreating) {
+                                return;
+                              }
+                              onDeleteWorktree(project.id, worktree.path);
+                            }}
+                            title={isCreating ? "创建中（不可取消）" : "删除 worktree"}
+                            type="button"
+                            disabled={isCreating}
+                          >
+                            {isCreating ? "创建中" : "删除"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             );
           })}

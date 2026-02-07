@@ -25,6 +25,31 @@ export type ProjectScript = {
   stop?: string | null;
 };
 
+export type ProjectWorktree = {
+  id: string;
+  name: string;
+  path: string;
+  branch: string;
+  baseBranch?: string;
+  inheritConfig: boolean;
+  created: SwiftDate;
+  status?: "creating" | "ready" | "failed";
+  initStep?:
+    | "pending"
+    | "validating"
+    | "checking_branch"
+    | "creating_worktree"
+    | "preparing_environment"
+    | "syncing"
+    | "ready"
+    | "failed"
+    | "cancelled";
+  initMessage?: string;
+  initError?: string | null;
+  initJobId?: string | null;
+  updatedAt?: SwiftDate;
+};
+
 export type GitIdentity = {
   name: string;
   email: string;
@@ -53,6 +78,7 @@ export type Project = {
   path: string;
   tags: string[];
   scripts: ProjectScript[];
+  worktrees: ProjectWorktree[];
   mtime: SwiftDate;
   size: number;
   checksum: string;

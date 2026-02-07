@@ -104,29 +104,36 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 ### G. 终端工作区（内置终端 + 布局持久化）
 - 终端窗口管理：`src/services/terminalWindow.ts`、`src/components/terminal/TerminalWorkspaceWindow.tsx`
 - 关闭已打开项目（并删除该项目的终端工作区 sessions/tabs 持久化）：`src/components/terminal/TerminalWorkspaceWindow.tsx`、`src/App.tsx` → `src/services/terminalWorkspace.ts`（`deleteTerminalWorkspace`） ↔ `src-tauri/src/lib.rs`（Command：`delete_terminal_workspace`）→ `src-tauri/src/storage.rs`（删除 `terminal_workspaces.json` entry）
+- 应用重启恢复终端“已打开项目”列表（按 `updatedAt` 恢复最近活跃项目）：`src/App.tsx`（恢复入口） → `src/services/terminalWorkspace.ts`（`listTerminalWorkspaceSummaries`） ↔ `src-tauri/src/lib.rs`（Command：`list_terminal_workspace_summaries`）→ `src-tauri/src/storage.rs`（读取 `terminal_workspaces.json` 摘要）
 - 终端 UI（xterm、分屏、标签）：`src/components/terminal/*`
 - 终端右侧快捷命令悬浮窗（可拖拽，按项目记忆位置/开关，支持运行/停止）：`src/components/terminal/TerminalWorkspaceView.tsx`；事件协议：`src/services/terminalQuickCommands.ts`；面板状态持久化写入 `terminal_workspaces.json` 的 `workspace.ui.quickCommandsPanel`（类型：`src/models/terminal.ts`；默认/兼容处理：`src/utils/terminalLayout.ts`）
 - 终端右侧侧边栏（可拖拽调整宽度，Tabs：文件/Git）：`src/components/terminal/TerminalRightSidebar.tsx`、`src/components/terminal/ResizablePanel.tsx`、`src/components/terminal/TerminalWorkspaceView.tsx`；面板状态持久化：`terminal_workspaces.json` 的 `workspace.ui.rightSidebar`（open/width/tab；类型：`src/models/terminal.ts`；默认/兼容：`src/utils/terminalLayout.ts`）
 - 终端右侧文件（文件树 + 预览/编辑：Markdown 渲染、源码语法高亮、自动保存 + ⌘/Ctrl+S 保存）：`src/components/terminal/TerminalFileExplorerPanel.tsx`、`src/components/terminal/TerminalFilePreviewPanel.tsx`、`src/components/terminal/TerminalMonacoEditor.tsx`、`src/components/terminal/TerminalRightSidebar.tsx`；前端：`src/services/filesystem.ts`（`listProjectDirEntries/readProjectFile/writeProjectFile`）+ `src/utils/fileTypes.ts`/`src/utils/detectLanguage.ts` ↔ 后端：`src-tauri/src/filesystem.rs`；Command：`src-tauri/src/lib.rs`（`list_project_dir_entries/read_project_file/write_project_file`）；面板状态持久化：`terminal_workspaces.json` 的 `workspace.ui.fileExplorerPanel.showHidden`（隐藏文件开关；`workspace.ui.fileExplorerPanel.open` 为 legacy 字段，由 `rightSidebar` 同步）
 - 终端 Git 管理（仅对 `projectPath/.git` 存在的项目显示；状态/变更列表/文件查看编辑/对比/暂存/取消暂存/丢弃未暂存/提交/切分支）：`src/components/terminal/TerminalGitPanel.tsx`（左侧列表/操作）、`src/components/terminal/TerminalGitFileViewPanel.tsx`（右侧文件/对比视图）、`src/components/terminal/TerminalRightSidebar.tsx`；前端：`src/services/gitManagement.ts`（`gitIsRepo/gitGetStatus/gitGetDiffContents/gitStageFiles/gitUnstageFiles/gitDiscardFiles/gitCommit/gitCheckoutBranch`）+ `src/services/git.ts`（`listBranches`）↔ 后端：`src-tauri/src/git_ops.rs`；Command：`src-tauri/src/lib.rs`（`git_is_repo/git_get_status/git_get_diff_contents/git_stage_files/git_unstage_files/git_discard_files/git_commit/git_checkout_branch`）；面板状态持久化：`terminal_workspaces.json` 的 `workspace.ui.rightSidebar.tab`（`workspace.ui.gitPanel.open` 为 legacy 字段，由 `rightSidebar` 同步）
-- 终端工作区显示 Codex CLI 运行状态（按项目路径归属聚合会话）：`src/utils/codexProjectStatus.ts`、`src/App.tsx` → `src/components/terminal/TerminalWorkspaceWindow.tsx`/`src/components/terminal/TerminalWorkspaceView.tsx`
+- 终端 worktree 创建/打开/删除/同步（在“已打开项目”列表为父项目创建并展示 worktree 子项，支持已有/新建分支、打开仓库已存在 worktree、可选创建后打开；“新建分支”支持显式 `baseBranch`（基线分支），创建时按“远端 `origin/<base>` 优先、本地 `<base>` 回退”解析起点；创建任务改为同项目 FIFO 排队，可取消排队任务；目标目录固定为 `~/.devhaven/worktrees/<project>/<branch>`，创建后会自动复制主仓库 `.devhaven` 到 worktree（如缺失）并按 `.devhaven/config.json` 的 `setup` 命令初始化环境（失败仅告警，不阻断创建）；创建采用**非阻塞创建命令 + 全局交互锁遮罩**（`worktree_init_create` / `worktree_init_create_blocking`，事件 `interaction-lock` / `worktree-init-progress`），确保遮罩立即显示并实时展示进度；打开时默认继承父项目 tags/scripts；删除会执行 `git worktree remove` 并在受管创建分支场景下额外执行本地 `git branch -d`，随后移除记录；终端打开或点击“刷新 worktree”会从 `git worktree list` 同步 `Project.worktrees` 记录）：`src/components/terminal/TerminalWorkspaceWindow.tsx`（入口/子项列表/刷新/删除/失败重试）+ `src/components/terminal/WorktreeCreateDialog.tsx`（创建弹窗，默认“新建分支”+基线分支，含排队/执行进度与失败诊断复制）+ `src/components/InteractionLockOverlay.tsx`（全局交互锁遮罩 + 初始化进度展示）；前端：`src/services/gitWorktree.ts`（`gitWorktreeList/gitWorktreeRemove/gitDeleteBranch`）+ `src/services/worktreeInit.ts`（`worktreeInitCreate/worktreeInitCreateBlocking/worktreeInitCancel/worktreeInitRetry/worktreeInitStatus` + `worktree-init-progress` 监听）+ `src/services/interactionLock.ts`（`getInteractionLockState`）+ `src/state/useDevHaven.ts`（`syncProjectWorktrees`）↔ 后端：`src-tauri/src/interaction_lock.rs`（全局交互锁状态/事件）+ `src-tauri/src/worktree_init.rs`（后台初始化任务、项目内队列、取消/重试/状态查询）+ `src-tauri/src/worktree_setup.rs`（`.devhaven` 配置复制与 setup 命令执行）+ `src-tauri/src/git_ops.rs`（`add_worktree/resolve_create_branch_start_point/list_worktrees/remove_worktree/delete_branch`）/`src-tauri/src/project_loader.rs`（扫描过滤 worktree 顶层目录）；Command：`src-tauri/src/lib.rs`（`worktree_init_create/worktree_init_create_blocking/worktree_init_cancel/worktree_init_retry/worktree_init_status` + `get_interaction_lock_state` + `git_worktree_add/git_worktree_list/git_worktree_remove/git_delete_branch`）；持久化：`projects.json` 的 `Project.worktrees`（含 `baseBranch/status/initStep/initError/initJobId` 等创建态字段）
+- 终端工作区显示 Codex CLI 运行状态（按项目/Worktree 路径归属聚合会话）：`src/utils/codexProjectStatus.ts`、`src/App.tsx` → `src/components/terminal/TerminalWorkspaceWindow.tsx`/`src/components/terminal/TerminalWorkspaceView.tsx`
+- 终端 pane 右上角 Codex 浮层（模型/推理强度，按 pane 精确匹配）：`src/components/terminal/TerminalWorkspaceView.tsx`（轮询分发）→ `src/components/terminal/TerminalPane.tsx`（浮层渲染）→ `src/services/terminal.ts`（`getTerminalCodexPaneOverlay`）↔ `src-tauri/src/lib.rs`（Command：`get_terminal_codex_pane_overlay`）→ `src-tauri/src/terminal.rs`（shell 子进程树 + lsof rollout 关联）
 - 终端快捷键（iTerm2/浏览器风格）：`src/components/terminal/TerminalWorkspaceView.tsx`（⌘T 新建 Tab、⌘W 关闭 Pane/Tab、⌘↑/⌘↓/⌘←/⌘→ 上一/下一 Tab、⌘⇧[ / ⌘⇧] 上一/下一 Tab、⌘1..⌘9 快速切换 Tab、⌘D 分屏）
 - 会话/PTY 通信：
   - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
   - 后端：`src-tauri/src/terminal.rs`
   - Command：`src-tauri/src/lib.rs`（`terminal_create_session/terminal_write/terminal_resize/terminal_kill`）
 - 工作区持久化：
-  - 前端：`src/services/terminalWorkspace.ts`
+  - 前端：`src/services/terminalWorkspace.ts`（`load/save/delete/listTerminalWorkspaceSummaries`）
   - 后端：`src-tauri/src/storage.rs`（`terminal_workspaces.json`）
+  - Command：`src-tauri/src/lib.rs`（`load_terminal_workspace/save_terminal_workspace/delete_terminal_workspace/list_terminal_workspace_summaries`）
 
 ### H. 悬浮监控窗（Monitor）
 - 窗口创建/置顶/跨工作区：`src/services/monitorWindow.ts`
 - macOS 全屏空间辅助显示：`src-tauri/src/lib.rs`（`set_window_fullscreen_auxiliary/apply_fullscreen_auxiliary`）
 - 悬浮窗 UI：`src/components/MonitorWindow.tsx`
 
-### I. Codex CLI 会话集成（监听 ~/.codex/sessions）
-- 前端：`src/hooks/useCodexSessions.ts`、`src/services/codex.ts`、`src/components/CodexSessionSection.tsx`
-- 后端：`src-tauri/src/codex_sessions.rs`（文件监听 + 事件 `codex-sessions-update`）
+### I. Codex CLI 监控集成（监听 ~/.codex/sessions）
+- 前端：`src/hooks/useCodexMonitor.ts`、`src/services/codex.ts`、`src/components/CodexSessionSection.tsx`、`src/App.tsx`
+- 后端：`src-tauri/src/codex_monitor.rs`（文件监听 + 进程轮询 + 状态机 + 事件流）
+- Tauri Command：`src-tauri/src/lib.rs`（`get_codex_monitor_snapshot`）
+- 会话字段：`CodexMonitorSession` 额外包含 `model/effort`（来自 rollout `turn_context`）
+- 事件：`codex-monitor-snapshot`（快照）、`codex-monitor-agent-event`（`agent-active/task-complete/task-error/needs-attention/...`）
 
 ### J. 更新检查
 - GitHub Releases latest 检查：`src/services/update.ts`

@@ -1,30 +1,44 @@
-mod models;
+mod codex_monitor;
+mod filesystem;
 mod git_daily;
 mod git_ops;
+mod interaction_lock;
 mod markdown;
+mod models;
 mod notes;
 mod project_loader;
-mod filesystem;
 mod storage;
 mod system;
-mod time_utils;
-mod codex_sessions;
 mod terminal;
+mod time_utils;
+mod worktree_init;
+mod worktree_setup;
 
+use std::thread;
+use std::time::Duration;
 use std::time::Instant;
 use tauri::AppHandle;
 use tauri::Manager;
+use tauri::State;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::models::{
-    AppStateFile, BranchListItem, CodexSessionSummary, GitDailyResult, GitDiffContents, GitIdentity,
-    GitRepoStatus, HeatmapCacheFile, MarkdownFileEntry, Project, TerminalWorkspace, FsListResponse,
-    FsReadResponse, FsWriteResponse,
+    AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
+    FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
+    GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, InteractionLockPayload,
+    MarkdownFileEntry, Project, TerminalCodexPaneOverlay, TerminalWorkspace,
+    TerminalWorkspaceSummary,
+    WorktreeInitCancelResult, WorktreeInitCreateBlockingResult, WorktreeInitJobStatus,
+    WorktreeInitRetryRequest, WorktreeInitStartRequest, WorktreeInitStartResult,
+    WorktreeInitStatusQuery, WorktreeInitStep,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
-    terminal_create_session, terminal_kill, terminal_resize, terminal_write, TerminalState,
+    TerminalState, terminal_create_session, terminal_get_codex_pane_overlay, terminal_kill,
+    terminal_resize, terminal_write,
 };
+
+const INTERACTION_LOCK_REASON_WORKTREE_CREATE: &str = "worktree-create";
 
 #[tauri::command]
 /// 读取应用状态。
@@ -122,7 +136,11 @@ fn git_get_diff_contents(
 /// 暂存文件（git add）。
 fn git_stage_files(path: String, relative_paths: Vec<String>) -> Result<(), String> {
     log_command_result("git_stage_files", || {
-        log::info!("git_stage_files path={} files={}", path, relative_paths.len());
+        log::info!(
+            "git_stage_files path={} files={}",
+            path,
+            relative_paths.len()
+        );
         git_ops::stage_files(&path, &relative_paths)
     })
 }
@@ -168,6 +186,260 @@ fn git_checkout_branch(path: String, branch: String) -> Result<(), String> {
     log_command_result("git_checkout_branch", || {
         log::info!("git_checkout_branch path={} branch={}", path, branch);
         git_ops::checkout_branch(&path, &branch)
+    })
+}
+
+#[tauri::command]
+/// 删除本地分支（git branch -d/-D）。
+fn git_delete_branch(path: String, branch: String, force: bool) -> Result<(), String> {
+    log_command_result("git_delete_branch", || {
+        log::info!(
+            "git_delete_branch path={} branch={} force={}",
+            path,
+            branch,
+            force
+        );
+        git_ops::delete_branch(&path, &branch, force)
+    })
+}
+
+#[tauri::command]
+/// 创建 Git worktree。
+fn git_worktree_add(
+    path: String,
+    branch: String,
+    create_branch: bool,
+    target_path: Option<String>,
+) -> Result<GitWorktreeAddResult, String> {
+    log_command_result("git_worktree_add", || {
+        log::info!(
+            "git_worktree_add path={} target_path={} branch={} create_branch={}",
+            path,
+            target_path.as_deref().unwrap_or("<auto>"),
+            branch,
+            create_branch
+        );
+        git_ops::add_worktree(&path, target_path.as_deref(), &branch, create_branch, None)
+    })
+}
+
+#[tauri::command]
+/// 列出仓库下已有 worktree（不包含主仓库目录）。
+fn git_worktree_list(path: String) -> Result<Vec<GitWorktreeListItem>, String> {
+    log_command_result("git_worktree_list", || {
+        log::info!("git_worktree_list path={}", path);
+        git_ops::list_worktrees(&path)
+    })
+}
+
+#[tauri::command]
+/// 删除 Git worktree（git worktree remove）。
+fn git_worktree_remove(path: String, worktree_path: String, force: bool) -> Result<(), String> {
+    log_command_result("git_worktree_remove", || {
+        log::info!(
+            "git_worktree_remove path={} worktree_path={} force={}",
+            path,
+            worktree_path,
+            force
+        );
+        git_ops::remove_worktree(&path, &worktree_path, force)
+    })
+}
+
+#[tauri::command]
+/// 查询当前全局交互锁状态。
+fn get_interaction_lock_state(
+    state: State<interaction_lock::InteractionLockState>,
+) -> InteractionLockPayload {
+    state.snapshot()
+}
+
+#[tauri::command]
+/// 启动后台 worktree 初始化任务（快速返回 jobId）。
+fn worktree_init_start(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    request: WorktreeInitStartRequest,
+) -> Result<WorktreeInitStartResult, String> {
+    log_command_result("worktree_init_start", || {
+        log::info!(
+            "worktree_init_start project_id={} path={} branch={} base_branch={} create_branch={}",
+            request.project_id,
+            request.project_path,
+            request.branch,
+            request.base_branch.as_deref().unwrap_or("<none>"),
+            request.create_branch
+        );
+        state.start(&app, request)
+    })
+}
+
+#[tauri::command]
+/// 非阻塞式创建 worktree：快速返回 jobId，同时在后台持有全局交互锁直到任务结束。
+fn worktree_init_create(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    interaction_lock: State<interaction_lock::InteractionLockState>,
+    request: WorktreeInitStartRequest,
+) -> Result<WorktreeInitStartResult, String> {
+    log_command_result("worktree_init_create", || {
+        log::info!(
+            "worktree_init_create project_id={} path={} branch={} base_branch={} create_branch={}",
+            request.project_id,
+            request.project_path,
+            request.branch,
+            request.base_branch.as_deref().unwrap_or("<none>"),
+            request.create_branch
+        );
+
+        let started = state.start(&app, request)?;
+        let job_id = started.job_id.clone();
+        let query = WorktreeInitStatusQuery {
+            project_id: Some(started.project_id.clone()),
+            project_path: Some(started.project_path.clone()),
+        };
+
+        let app_for_thread = app.clone();
+        let state_for_thread = state.inner().clone();
+        let lock_for_thread = interaction_lock.inner().clone();
+
+        thread::spawn(move || {
+            let _lock_guard = lock_for_thread.lock(
+                &app_for_thread,
+                Some(INTERACTION_LOCK_REASON_WORKTREE_CREATE.to_string()),
+            );
+
+            loop {
+                match state_for_thread.query_status(query.clone()) {
+                    Ok(statuses) => {
+                        let is_terminal = statuses
+                            .into_iter()
+                            .find(|item| item.job_id == job_id)
+                            .map(|item| {
+                                matches!(
+                                    item.step,
+                                    WorktreeInitStep::Ready
+                                        | WorktreeInitStep::Failed
+                                        | WorktreeInitStep::Cancelled
+                                )
+                            })
+                            .unwrap_or(false);
+                        if is_terminal {
+                            break;
+                        }
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "查询 worktree_init_create 任务状态失败，job_id={}: {}",
+                            job_id,
+                            error
+                        );
+                    }
+                }
+
+                thread::sleep(Duration::from_millis(200));
+            }
+        });
+
+        Ok(started)
+    })
+}
+
+#[tauri::command]
+/// 阻塞式创建 worktree：仅在创建成功或失败后返回。
+///
+/// 创建期间会启用全局交互锁，拦截所有窗口交互与关闭/退出请求。
+fn worktree_init_create_blocking(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    interaction_lock: State<interaction_lock::InteractionLockState>,
+    request: WorktreeInitStartRequest,
+) -> Result<WorktreeInitCreateBlockingResult, String> {
+    log_command_result("worktree_init_create_blocking", || {
+        let _lock_guard = interaction_lock.lock(
+            &app,
+            Some(INTERACTION_LOCK_REASON_WORKTREE_CREATE.to_string()),
+        );
+
+        let started = state.start(&app, request)?;
+        let job_id = started.job_id.clone();
+        let query = WorktreeInitStatusQuery {
+            project_id: Some(started.project_id.clone()),
+            project_path: Some(started.project_path.clone()),
+        };
+
+        loop {
+            let statuses = state.query_status(query.clone())?;
+            let matched = statuses.into_iter().find(|item| item.job_id == job_id);
+            let Some(status) = matched else {
+                thread::sleep(Duration::from_millis(200));
+                continue;
+            };
+
+            match status.step {
+                WorktreeInitStep::Ready => {
+                    return Ok(WorktreeInitCreateBlockingResult {
+                        job_id: status.job_id,
+                        project_id: status.project_id,
+                        project_path: status.project_path,
+                        worktree_path: status.worktree_path,
+                        branch: status.branch,
+                        base_branch: status.base_branch,
+                        message: status.message,
+                        warning: status.error,
+                    });
+                }
+                WorktreeInitStep::Failed => {
+                    return Err(status.error.unwrap_or_else(|| status.message));
+                }
+                WorktreeInitStep::Cancelled => {
+                    return Err(status.message);
+                }
+                _ => {
+                    thread::sleep(Duration::from_millis(200));
+                }
+            }
+        }
+    })
+}
+
+#[tauri::command]
+/// 请求取消后台 worktree 初始化任务。
+fn worktree_init_cancel(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    job_id: String,
+) -> Result<WorktreeInitCancelResult, String> {
+    log_command_result("worktree_init_cancel", || {
+        log::info!("worktree_init_cancel job_id={}", job_id);
+        state.cancel(&app, &job_id)
+    })
+}
+
+#[tauri::command]
+/// 重试失败/取消的 worktree 初始化任务。
+fn worktree_init_retry(
+    app: AppHandle,
+    state: State<worktree_init::WorktreeInitState>,
+    request: WorktreeInitRetryRequest,
+) -> Result<WorktreeInitStartResult, String> {
+    log_command_result("worktree_init_retry", || {
+        log::info!("worktree_init_retry job_id={}", request.job_id);
+        state.retry(&app, request)
+    })
+}
+
+#[tauri::command]
+/// 查询 worktree 初始化任务状态。
+fn worktree_init_status(
+    state: State<worktree_init::WorktreeInitState>,
+    query: Option<WorktreeInitStatusQuery>,
+) -> Result<Vec<WorktreeInitJobStatus>, String> {
+    log_command_result("worktree_init_status", || {
+        state.query_status(query.unwrap_or(WorktreeInitStatusQuery {
+            project_id: None,
+            project_path: None,
+        }))
     })
 }
 
@@ -262,7 +534,11 @@ fn read_project_markdown_file(path: String, relative_path: String) -> Result<Str
 
 #[tauri::command]
 /// 列出项目内指定目录的直接子项（文件/文件夹）。
-fn list_project_dir_entries(path: String, relative_path: String, show_hidden: bool) -> FsListResponse {
+fn list_project_dir_entries(
+    path: String,
+    relative_path: String,
+    show_hidden: bool,
+) -> FsListResponse {
     log_command("list_project_dir_entries", || {
         log::info!(
             "list_project_dir_entries path={} dir={} show_hidden={}",
@@ -312,7 +588,9 @@ fn load_heatmap_cache(app: AppHandle) -> Result<HeatmapCacheFile, String> {
 
 #[tauri::command]
 fn save_heatmap_cache(app: AppHandle, cache: HeatmapCacheFile) -> Result<(), String> {
-    log_command_result("save_heatmap_cache", || storage::save_heatmap_cache(&app, &cache))
+    log_command_result("save_heatmap_cache", || {
+        storage::save_heatmap_cache(&app, &cache)
+    })
 }
 
 #[tauri::command]
@@ -347,19 +625,40 @@ fn delete_terminal_workspace(app: AppHandle, project_path: String) -> Result<(),
 }
 
 #[tauri::command]
-fn list_codex_sessions(app: AppHandle) -> Result<Vec<CodexSessionSummary>, String> {
-    log_command_result("list_codex_sessions", || {
-        if let Err(error) = codex_sessions::ensure_session_watcher(&app) {
-            log::warn!("启动 Codex 会话监听失败: {}", error);
+fn list_terminal_workspace_summaries(
+    app: AppHandle,
+) -> Result<Vec<TerminalWorkspaceSummary>, String> {
+    log_command_result("list_terminal_workspace_summaries", || {
+        storage::list_terminal_workspace_summaries(&app)
+    })
+}
+
+#[tauri::command]
+fn get_codex_monitor_snapshot(app: AppHandle) -> Result<CodexMonitorSnapshot, String> {
+    log_command_result("get_codex_monitor_snapshot", || {
+        if let Err(error) = codex_monitor::ensure_monitoring_started(&app) {
+            log::warn!("启动 Codex 监控失败: {}", error);
         }
-        codex_sessions::list_sessions(&app)
+        codex_monitor::get_snapshot(&app)
+    })
+}
+
+#[tauri::command]
+fn get_terminal_codex_pane_overlay(
+    app: AppHandle,
+    state: State<TerminalState>,
+    window_label: String,
+    session_ids: Vec<String>,
+) -> Result<Vec<TerminalCodexPaneOverlay>, String> {
+    log_command_result("get_terminal_codex_pane_overlay", || {
+        terminal_get_codex_pane_overlay(app, state, window_label, session_ids)
     })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// 启动 Tauri 应用。
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .targets([
@@ -373,6 +672,19 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(TerminalState::default())
+        .manage(worktree_init::WorktreeInitState::default())
+        .manage(interaction_lock::InteractionLockState::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let locked = window
+                    .app_handle()
+                    .state::<interaction_lock::InteractionLockState>()
+                    .is_locked();
+                if locked {
+                    api.prevent_close();
+                }
+            }
+        })
         .setup(|app| {
             log::info!(
                 "app start name={} version={}",
@@ -383,8 +695,8 @@ pub fn run() {
                 log::info!("log dir={}", path.display());
             }
             let app_handle = app.handle();
-            if let Err(error) = codex_sessions::ensure_session_watcher(&app_handle) {
-                log::warn!("启动 Codex 会话监听失败: {}", error);
+            if let Err(error) = codex_monitor::ensure_monitoring_started(&app_handle) {
+                log::warn!("启动 Codex 监控失败: {}", error);
             }
             Ok(())
         })
@@ -404,6 +716,17 @@ pub fn run() {
             git_discard_files,
             git_commit,
             git_checkout_branch,
+            git_delete_branch,
+            git_worktree_add,
+            git_worktree_list,
+            git_worktree_remove,
+            get_interaction_lock_state,
+            worktree_init_start,
+            worktree_init_create,
+            worktree_init_create_blocking,
+            worktree_init_cancel,
+            worktree_init_retry,
+            worktree_init_status,
             open_in_finder,
             open_in_editor,
             set_window_fullscreen_auxiliary,
@@ -421,26 +744,36 @@ pub fn run() {
             load_terminal_workspace,
             save_terminal_workspace,
             delete_terminal_workspace,
-            list_codex_sessions,
+            list_terminal_workspace_summaries,
+            get_codex_monitor_snapshot,
+            get_terminal_codex_pane_overlay,
             terminal_create_session,
             terminal_write,
             terminal_resize,
             terminal_kill,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            let locked = app_handle
+                .state::<interaction_lock::InteractionLockState>()
+                .is_locked();
+            if locked {
+                api.prevent_exit();
+            }
+        }
+    });
 }
 
 #[cfg(target_os = "macos")]
-fn apply_fullscreen_auxiliary(
-    window: &tauri::WebviewWindow,
-    enabled: bool,
-) -> Result<(), String> {
+fn apply_fullscreen_auxiliary(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
+    use objc2::runtime::AnyObject;
     use objc2_app_kit::{
         NSNormalWindowLevel, NSPanel, NSScreenSaverWindowLevel, NSWindow,
         NSWindowCollectionBehavior, NSWindowStyleMask,
     };
-    use objc2::runtime::AnyObject;
 
     let ns_window = window.ns_window().map_err(|error| error.to_string())?;
     if ns_window.is_null() {
@@ -492,16 +825,21 @@ fn apply_fullscreen_auxiliary(
 }
 
 #[cfg(target_os = "macos")]
-fn try_set_window_class(target: &objc2::runtime::AnyObject, class_name: &str) -> Result<(), String> {
+fn try_set_window_class(
+    target: &objc2::runtime::AnyObject,
+    class_name: &str,
+) -> Result<(), String> {
     use std::ffi::CStr;
 
     let class_cstr = match class_name {
         "NSPanel" => CStr::from_bytes_with_nul(b"NSPanel\0").map_err(|_| "类名非法".to_string())?,
-        "NSWindow" => CStr::from_bytes_with_nul(b"NSWindow\0").map_err(|_| "类名非法".to_string())?,
+        "NSWindow" => {
+            CStr::from_bytes_with_nul(b"NSWindow\0").map_err(|_| "类名非法".to_string())?
+        }
         _ => return Err("不支持的类名".to_string()),
     };
-    let target_class = objc2::runtime::AnyClass::get(class_cstr)
-        .ok_or_else(|| "无法获取目标类".to_string())?;
+    let target_class =
+        objc2::runtime::AnyClass::get(class_cstr).ok_or_else(|| "无法获取目标类".to_string())?;
     let current_class = target.class();
     if current_class.name() == target_class.name() {
         return Ok(());

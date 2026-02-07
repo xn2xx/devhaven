@@ -8,6 +8,32 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), UnoCSS()],
+  build: {
+    // Monaco workers are intentionally large; keep warning threshold aligned with actual max chunk size.
+    chunkSizeWarningLimit: 8192,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+          if (id.includes("monaco-editor") || id.includes("@monaco-editor")) {
+            return "vendor-monaco";
+          }
+          if (id.includes("xterm") || id.includes("xterm-addon")) {
+            return "vendor-xterm";
+          }
+          if (id.includes("@tauri-apps")) {
+            return "vendor-tauri";
+          }
+          if (id.includes("react") || id.includes("scheduler")) {
+            return "vendor-react";
+          }
+          return "vendor";
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -7,7 +7,11 @@ use crate::models::{
 
 const MAX_FILE_PREVIEW_BYTES: u64 = 512 * 1024;
 
-pub fn list_dir_entries(project_path: &str, relative_path: &str, show_hidden: bool) -> FsListResponse {
+pub fn list_dir_entries(
+    project_path: &str,
+    relative_path: &str,
+    show_hidden: bool,
+) -> FsListResponse {
     let root = Path::new(project_path);
     let relative = Path::new(relative_path);
 
@@ -20,7 +24,7 @@ pub fn list_dir_entries(project_path: &str, relative_path: &str, show_hidden: bo
                 entries: Vec::new(),
                 reason: Some(reason),
                 message: None,
-            }
+            };
         }
     };
 
@@ -143,7 +147,7 @@ pub fn read_file(project_path: &str, relative_path: &str) -> FsReadResponse {
                 max_size: MAX_FILE_PREVIEW_BYTES,
                 reason: Some(reason),
                 message: None,
-            }
+            };
         }
     };
 
@@ -259,7 +263,7 @@ pub fn write_file(project_path: &str, relative_path: &str, content: &str) -> FsW
                 max_size: MAX_FILE_PREVIEW_BYTES,
                 reason: Some(reason),
                 message: None,
-            }
+            };
         }
     };
 
@@ -360,7 +364,7 @@ fn resolve_project_path(root: &Path, relative: &Path) -> Result<PathBuf, FsFailu
                             FsFailureReason::NotFound
                         } else {
                             FsFailureReason::IoError
-                        })
+                        });
                     }
                 };
                 if metadata.file_type().is_symlink() {
