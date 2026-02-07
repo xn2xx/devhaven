@@ -338,30 +338,6 @@ export default function TerminalWorkspaceWindow({
                           >
                             {isCreating ? "取消" : "删除"}
                           </button>
-                          <button
-                            className={`inline-flex h-5 items-center justify-center rounded-md border border-transparent px-1.5 text-[10px] text-[var(--terminal-muted-fg)] opacity-0 transition-opacity hover:border-[var(--terminal-divider)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)] group-hover:opacity-100 ${
-                              canOpen ? "" : "cursor-not-allowed opacity-30"
-                            }`}
-                            disabled={!canOpen}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              if (!canOpen) {
-                                return;
-                              }
-                              if (openedProject) {
-                                onCloseProject(openedProject.id);
-                                return;
-                              }
-                              onOpenWorktree(project.id, worktree.path);
-                            }}
-                            title={
-                              !canOpen ? "worktree 尚未就绪" : openedProject ? "关闭 worktree" : "打开 worktree"
-                            }
-                            type="button"
-                          >
-                            {openedProject ? "关闭" : "打开"}
-                          </button>
                         </div>
                       );
                     })}
