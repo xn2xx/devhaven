@@ -70,6 +70,13 @@ function isWorktreeProject(project: Project): boolean {
   return project.id.startsWith("worktree:");
 }
 
+function parseWorktreePathFromProjectId(projectId: string): string | null {
+  if (!projectId.startsWith("worktree:")) {
+    return null;
+  }
+  return projectId.slice("worktree:".length);
+}
+
 function resolveNameFromPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
   const last = normalized.split("/").filter(Boolean).pop();
@@ -86,6 +93,66 @@ function resolveErrorMessage(error: unknown): string {
 
 function isSamePath(left: string, right: string): boolean {
   return normalizePathForCompare(left) === normalizePathForCompare(right);
+}
+
+function resolveWorktreeVirtualProjectByPath(projects: Project[], worktreePath: string): Project | null {
+  const normalizedTarget = normalizePathForCompare(worktreePath);
+  for (const project of projects) {
+    if (isWorktreeProject(project)) {
+      continue;
+    }
+    const worktree = (project.worktrees ?? []).find(
+      (item) => normalizePathForCompare(item.path) === normalizedTarget,
+    );
+    if (!worktree) {
+      continue;
+    }
+    return buildWorktreeVirtualProject(project, worktree);
+  }
+  return null;
+}
+
+function resolveWorktreeSourceProjectByPath(projects: Project[], worktreePath: string): Project | null {
+  const normalizedTarget = normalizePathForCompare(worktreePath);
+  for (const project of projects) {
+    if (isWorktreeProject(project)) {
+      continue;
+    }
+    const hasWorktree = (project.worktrees ?? []).some(
+      (item) => normalizePathForCompare(item.path) === normalizedTarget,
+    );
+    if (hasWorktree) {
+      return project;
+    }
+  }
+  return null;
+}
+
+function buildCodexProjectMatchCandidates(
+  projects: Project[],
+  terminalOpenProjects: Project[],
+): Project[] {
+  const byId = new Map<string, Project>();
+
+  for (const project of projects) {
+    byId.set(project.id, project);
+  }
+
+  for (const project of projects) {
+    if (isWorktreeProject(project)) {
+      continue;
+    }
+    for (const worktree of project.worktrees ?? []) {
+      const virtualProject = buildWorktreeVirtualProject(project, worktree);
+      byId.set(virtualProject.id, virtualProject);
+    }
+  }
+
+  for (const project of terminalOpenProjects) {
+    byId.set(project.id, project);
+  }
+
+  return Array.from(byId.values());
 }
 
 function buildPendingWorktree(
@@ -312,9 +379,13 @@ function AppLayout() {
     [heatmapStore],
   );
   const codexMonitorStore = useCodexMonitor();
+  const codexProjectMatchCandidates = useMemo(
+    () => buildCodexProjectMatchCandidates(projects, terminalOpenProjects),
+    [projects, terminalOpenProjects],
+  );
   const codexSessionViews = useMemo(
-    () => buildCodexSessionViews(codexMonitorStore.sessions, projects),
-    [codexMonitorStore.sessions, projects],
+    () => buildCodexSessionViews(codexMonitorStore.sessions, codexProjectMatchCandidates),
+    [codexMonitorStore.sessions, codexProjectMatchCandidates],
   );
   const codexProjectStatusById = useMemo(
     () => buildCodexProjectStatusById(codexSessionViews),
@@ -331,6 +402,17 @@ function AppLayout() {
     return projectMap.get(worktreeDialogProjectId) ?? null;
   }, [projectMap, worktreeDialogProjectId]);
 
+  const resolveProjectFromCodexProjectId = useCallback(
+    (projectId: string): Project | null => {
+      const worktreePath = parseWorktreePathFromProjectId(projectId);
+      if (worktreePath) {
+        return resolveWorktreeVirtualProjectByPath(projects, worktreePath);
+      }
+      return projectMap.get(projectId) ?? null;
+    },
+    [projectMap, projects],
+  );
+
   const resolveProjectFromCodexEvent = useCallback(
     (event: CodexAgentEvent): Project | null => {
       const bySession =
@@ -338,19 +420,19 @@ function AppLayout() {
           ? codexSessionViews.find((session) => session.id === event.sessionId && session.projectId)
           : null;
       if (bySession?.projectId) {
-        return projectMap.get(bySession.projectId) ?? null;
+        const resolved = resolveProjectFromCodexProjectId(bySession.projectId);
+        if (resolved) {
+          return resolved;
+        }
       }
 
-      const byWorkingDirectory = event.workingDirectory
-        ? projects.find((project) => event.workingDirectory?.startsWith(project.path)) ?? null
-        : null;
-      if (byWorkingDirectory) {
-        return byWorkingDirectory;
+      if (event.workingDirectory) {
+        return matchProjectByCwd(event.workingDirectory, codexProjectMatchCandidates);
       }
 
       return null;
     },
-    [codexSessionViews, projectMap, projects],
+    [codexProjectMatchCandidates, codexSessionViews, resolveProjectFromCodexProjectId],
   );
 
   const hiddenTags = useMemo(
@@ -658,19 +740,41 @@ function AppLayout() {
     [showToast],
   );
 
-  const openTerminalWorkspace = useCallback((project: Project) => {
-    setShowTerminalWorkspace(true);
-    setTerminalOpenProjects((prev) => {
-      const index = prev.findIndex((item) => item.id === project.id);
-      if (index >= 0) {
-        const next = [...prev];
-        next[index] = project;
+  const openTerminalWorkspace = useCallback(
+    (project: Project) => {
+      setShowTerminalWorkspace(true);
+      setTerminalOpenProjects((prev) => {
+        let next = prev;
+        const ensureMutable = () => {
+          if (next === prev) {
+            next = [...next];
+          }
+        };
+        const upsert = (item: Project) => {
+          const index = next.findIndex((existing) => existing.id === item.id);
+          ensureMutable();
+          if (index >= 0) {
+            next[index] = item;
+          } else {
+            next.push(item);
+          }
+        };
+
+        if (isWorktreeProject(project)) {
+          const sourceProject = resolveWorktreeSourceProjectByPath(projects, project.path);
+          if (sourceProject) {
+            upsert(sourceProject);
+          }
+        }
+
+        upsert(project);
+
         return next;
-      }
-      return [...prev, project];
-    });
-    setTerminalActiveProjectId(project.id);
-  }, []);
+      });
+      setTerminalActiveProjectId(project.id);
+    },
+    [projects],
+  );
 
   const handleRunProjectScript = useCallback(
     async (projectId: string, scriptId: string) => {
@@ -1466,23 +1570,50 @@ function AppLayout() {
         showToast("未能匹配到项目", "error");
         return;
       }
-      const project = projectMap.get(session.projectId);
+      const project = resolveProjectFromCodexProjectId(session.projectId);
       if (!project) {
         showToast("项目不存在或已移除", "error");
         return;
       }
       openTerminalWorkspace(project);
     },
-    [openTerminalWorkspace, projectMap, showToast],
+    [openTerminalWorkspace, resolveProjectFromCodexProjectId, showToast],
   );
 
   const resolveProjectFromPayload = useCallback(
-    (payload: MonitorOpenSessionPayload) =>
-      (payload.projectId ? projectMap.get(payload.projectId) ?? null : null) ??
-      (payload.projectPath ? projects.find((item) => item.path === payload.projectPath) ?? null : null) ??
-      (payload.projectName ? projects.find((item) => item.name === payload.projectName) ?? null : null) ??
-      (payload.cwd ? matchProjectByCwd(payload.cwd, projects) : null),
-    [projectMap, projects],
+    (payload: MonitorOpenSessionPayload) => {
+      if (payload.projectId) {
+        const resolved = resolveProjectFromCodexProjectId(payload.projectId);
+        if (resolved) {
+          return resolved;
+        }
+      }
+
+      if (payload.projectPath) {
+        const worktree = resolveWorktreeVirtualProjectByPath(projects, payload.projectPath);
+        if (worktree) {
+          return worktree;
+        }
+        const byPath = projects.find((item) => item.path === payload.projectPath) ?? null;
+        if (byPath) {
+          return byPath;
+        }
+      }
+
+      if (payload.projectName) {
+        const byName = projects.find((item) => item.name === payload.projectName) ?? null;
+        if (byName) {
+          return byName;
+        }
+      }
+
+      if (payload.cwd) {
+        return matchProjectByCwd(payload.cwd, codexProjectMatchCandidates);
+      }
+
+      return null;
+    },
+    [codexProjectMatchCandidates, projects, resolveProjectFromCodexProjectId],
   );
 
   const handleMonitorOpenCodexSession = useCallback(async (session: CodexSessionView) => {

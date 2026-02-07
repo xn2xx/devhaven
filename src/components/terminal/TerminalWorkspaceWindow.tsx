@@ -270,6 +270,9 @@ export default function TerminalWorkspaceWindow({
                   <div className="flex flex-col gap-1 pl-3">
                     {worktreesToRender.map((worktree) => {
                       const openedProject = openProjectsByPath.get(worktree.path);
+                      const codexWorktreeStatus =
+                        openedProject ? codexProjectStatusById[`worktree:${worktree.path}`] ?? null : null;
+                      const codexWorktreeRunningCount = codexWorktreeStatus?.runningCount ?? 0;
                       const isWorktreeActive = activeProject?.path === worktree.path;
                       const isCreating = worktree.status === "creating";
                       const isFailed = worktree.status === "failed";
@@ -306,6 +309,15 @@ export default function TerminalWorkspaceWindow({
                           <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
                             {worktree.branch}
                           </span>
+                          {codexWorktreeRunningCount > 0 ? (
+                            <span
+                              className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--terminal-accent)]"
+                              title={`Codex 运行中（${codexWorktreeRunningCount} 个会话）`}
+                              aria-label={`Codex 运行中（${codexWorktreeRunningCount} 个会话）`}
+                            >
+                              <span className="sr-only">Codex 运行中</span>
+                            </span>
+                          ) : null}
                           {isCreating ? (
                             <span className="shrink-0 rounded border border-[var(--terminal-divider)] px-1.5 py-0.5 text-[10px] text-[var(--terminal-muted-fg)]">
                               {isQueued ? "排队中" : "创建中"}
