@@ -1,7 +1,7 @@
 {
   "name": "DevHaven",
   "private": true,
-  "version": "2.4.1",
+  "version": "2.4.2",
   "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22.12.0"
