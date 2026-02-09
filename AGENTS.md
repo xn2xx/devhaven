@@ -79,7 +79,9 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
   - 后端：`src-tauri/src/git_ops.rs`（`list_branches`）
   - Command：`src-tauri/src/lib.rs`（`list_branches`）
 - 项目备注 `PROJECT_NOTES.md`：
+  - UI：`src/components/DetailPanel.tsx`（备注为空时自动读取项目根 `README.md` 作为只读参考，可一键“用 README 初始化”）
   - 前端：`src/services/notes.ts`
+  - README 回退读取：`src/services/markdown.ts`（`read_project_markdown_file`）
   - 后端：`src-tauri/src/notes.rs`
   - Command：`src-tauri/src/lib.rs`（`read_project_notes/read_project_notes_previews/write_project_notes`）
 - 项目内 Markdown 文件浏览/预览：
