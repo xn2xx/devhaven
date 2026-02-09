@@ -118,6 +118,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - 终端 pane 右上角 Codex 浮层（模型/推理强度，按 pane 精确匹配）：`src/components/terminal/TerminalWorkspaceView.tsx`（轮询分发）→ `src/components/terminal/TerminalPane.tsx`（浮层渲染）→ `src/services/terminal.ts`（`getTerminalCodexPaneOverlay`）↔ `src-tauri/src/lib.rs`（Command：`get_terminal_codex_pane_overlay`）→ `src-tauri/src/terminal.rs`（shell 子进程树 + lsof rollout 关联）
 - 终端快捷键（iTerm2/浏览器风格）：`src/components/terminal/TerminalWorkspaceView.tsx`（⌘T 新建 Tab、⌘W 关闭 Pane/Tab、⌘↑/⌘↓/⌘←/⌘→ 上一/下一 Tab、⌘⇧[ / ⌘⇧] 上一/下一 Tab、⌘1..⌘9 快速切换 Tab、⌘D 分屏）
 - 会话/PTY 通信：
+  - macOS shell 启动链路：`src-tauri/src/terminal.rs` 中 `terminal_create_session` 使用 login shell 风格启动（`/usr/bin/login -flp <user> /bin/bash --noprofile --norc -c "exec -l <shell>"`），以对齐 Ghostty 并加载用户 login 环境（例如 `~/.zprofile` 的 PATH）。
   - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
   - 后端：`src-tauri/src/terminal.rs`
   - Command：`src-tauri/src/lib.rs`（`terminal_create_session/terminal_write/terminal_resize/terminal_kill`）
