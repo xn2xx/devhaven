@@ -72,6 +72,8 @@ pub struct AppSettings {
     pub show_monitor_window: bool,
     #[serde(default)]
     pub git_identities: Vec<GitIdentity>,
+    #[serde(default = "default_project_list_view_mode")]
+    pub project_list_view_mode: ProjectListViewMode,
 }
 
 impl Default for AppSettings {
@@ -83,8 +85,20 @@ impl Default for AppSettings {
             terminal_theme: default_terminal_theme(),
             show_monitor_window: false,
             git_identities: Vec::new(),
+            project_list_view_mode: default_project_list_view_mode(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectListViewMode {
+    Card,
+    List,
+}
+
+fn default_project_list_view_mode() -> ProjectListViewMode {
+    ProjectListViewMode::Card
 }
 
 fn default_terminal_use_webgl_renderer() -> bool {
@@ -193,6 +207,13 @@ pub struct ProjectScript {
 pub struct MarkdownFileEntry {
     pub path: String,
     pub absolute_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectNotesPreview {
+    pub path: String,
+    pub notes_preview: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

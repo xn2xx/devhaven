@@ -52,11 +52,12 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 
 ### A. 工作目录/项目扫描与项目列表
 - 侧边栏「目录」区：`src/components/Sidebar.tsx`
-- 主列表/卡片渲染：`src/components/MainContent.tsx`、`src/components/ProjectCard.tsx`
+- 主列表渲染（卡片/列表模式切换）：`src/components/MainContent.tsx`、`src/components/ProjectCard.tsx`、`src/components/ProjectListRow.tsx`
 - 核心状态与动作（刷新/扫描/合并/持久化）：`src/state/useDevHaven.ts`、`src/state/DevHavenContext.tsx`
 - 调用 Tauri 命令：`src/services/appStorage.ts`（`discoverProjects/buildProjects/load/save`）
 - 扫描与构建项目元数据（是否 Git 仓库、提交数、最后提交时间）：`src-tauri/src/project_loader.rs`
 - Command 注册处：`src-tauri/src/lib.rs`（`discover_projects`、`build_projects`、`load_projects`、`save_projects`）
+- 列表模式备注预览（批量读取 `PROJECT_NOTES.md` 首行）：`src/services/notes.ts`（`readProjectNotesPreviews`） ↔ `src-tauri/src/notes.rs`（`read_notes_previews`） ↔ `src-tauri/src/lib.rs`（`read_project_notes_previews`）
 
 ### B. 筛选（标签/目录/搜索/时间范围/Git 状态）
 - 筛选状态与组合逻辑（搜索词、目录、标签、日期、Git Filter 等）：`src/App.tsx`
@@ -78,9 +79,11 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
   - 后端：`src-tauri/src/git_ops.rs`（`list_branches`）
   - Command：`src-tauri/src/lib.rs`（`list_branches`）
 - 项目备注 `PROJECT_NOTES.md`：
+  - UI：`src/components/DetailPanel.tsx`（备注为空时自动读取项目根 `README.md` 作为只读参考，可一键“用 README 初始化”）
   - 前端：`src/services/notes.ts`
+  - README 回退读取：`src/services/markdown.ts`（`read_project_markdown_file`）
   - 后端：`src-tauri/src/notes.rs`
-  - Command：`src-tauri/src/lib.rs`（`read_project_notes/write_project_notes`）
+  - Command：`src-tauri/src/lib.rs`（`read_project_notes/read_project_notes_previews/write_project_notes`）
 - 项目内 Markdown 文件浏览/预览：
   - UI：`src/components/ProjectMarkdownSection.tsx`
   - 前端：`src/services/markdown.ts`
@@ -115,6 +118,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - 终端 pane 右上角 Codex 浮层（模型/推理强度，按 pane 精确匹配）：`src/components/terminal/TerminalWorkspaceView.tsx`（轮询分发）→ `src/components/terminal/TerminalPane.tsx`（浮层渲染）→ `src/services/terminal.ts`（`getTerminalCodexPaneOverlay`）↔ `src-tauri/src/lib.rs`（Command：`get_terminal_codex_pane_overlay`）→ `src-tauri/src/terminal.rs`（shell 子进程树 + lsof rollout 关联）
 - 终端快捷键（iTerm2/浏览器风格）：`src/components/terminal/TerminalWorkspaceView.tsx`（⌘T 新建 Tab、⌘W 关闭 Pane/Tab、⌘↑/⌘↓/⌘←/⌘→ 上一/下一 Tab、⌘⇧[ / ⌘⇧] 上一/下一 Tab、⌘1..⌘9 快速切换 Tab、⌘D 分屏）
 - 会话/PTY 通信：
+  - macOS shell 启动链路：`src-tauri/src/terminal.rs` 中 `terminal_create_session` 使用 login shell 风格启动（`/usr/bin/login -flp <user> /bin/bash --noprofile --norc -c "exec -l <shell>"`），以对齐 Ghostty 并加载用户 login 环境（例如 `~/.zprofile` 的 PATH）。
   - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
   - 后端：`src-tauri/src/terminal.rs`
   - Command：`src-tauri/src/lib.rs`（`terminal_create_session/terminal_write/terminal_resize/terminal_kill`）
@@ -143,6 +147,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - 设置模型：`src/models/types.ts`（`AppSettings`）
 - 保存入口：`src/App.tsx`（打开/关闭设置弹窗 + 保存设置）与 `src/state/useDevHaven.ts`（`updateSettings` 持久化到 `app_state.json`）
 - 终端主题配色（Ghostty 风格 `light:xxx,dark:yyy`）：`src/themes/terminalThemes.ts`、`src/hooks/useSystemColorScheme.ts`、`src/components/terminal/*`
+- 主内容视图模式持久化（卡片/列表）：`AppSettings.projectListViewMode`（`src/models/types.ts`、`src/state/useDevHaven.ts`、`src/App.tsx`、`src-tauri/src/models.rs`）
 
 ## 3) 回写（维护）AGENTS.md 的逻辑
 

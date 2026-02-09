@@ -123,6 +123,45 @@ fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string())
 }
 
+#[cfg(target_os = "macos")]
+fn resolve_login_username() -> Option<String> {
+    if let Some(user) = std::env::var("USER")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        return Some(user);
+    }
+
+    Command::new("/usr/bin/id")
+        .arg("-un")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn build_terminal_command(shell: &str) -> CommandBuilder {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(username) = resolve_login_username() {
+            let mut cmd = CommandBuilder::new("/usr/bin/login");
+            cmd.arg("-flp");
+            cmd.arg(username);
+            cmd.arg("/bin/bash");
+            cmd.arg("--noprofile");
+            cmd.arg("--norc");
+            cmd.arg("-c");
+            cmd.arg(format!("exec -l {shell}"));
+            return cmd;
+        }
+    }
+
+    CommandBuilder::new(shell.to_string())
+}
+
 fn ensure_terminal_env(cmd: &mut CommandBuilder) {
     // GUI 启动的 macOS App 往往缺少 TERM/PATH 等环境变量，导致交互式 shell 初始化时报错。
     if cmd.get_env("TERM").is_none() {
@@ -140,20 +179,33 @@ fn ensure_terminal_env(cmd: &mut CommandBuilder) {
         let existing: Vec<PathBuf> = std::env::split_paths(&current).collect();
 
         let mut prepend: Vec<PathBuf> = Vec::new();
-        for dir in [
-            "/opt/homebrew/bin",
-            "/opt/homebrew/sbin",
-            "/usr/local/bin",
-            "/usr/local/sbin",
-        ] {
-            let p = Path::new(dir);
+        let mut candidate_dirs: Vec<PathBuf> = vec![
+            PathBuf::from("/opt/homebrew/bin"),
+            PathBuf::from("/opt/homebrew/sbin"),
+            PathBuf::from("/usr/local/bin"),
+            PathBuf::from("/usr/local/sbin"),
+        ];
+
+        // JetBrains Toolbox 的 shell scripts（例如 idea）默认安装在这里，
+        // GUI 启动时通常不会自动出现在 PATH 中。
+        if let Some(home) = std::env::var_os("HOME") {
+            let toolbox_scripts = PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("JetBrains")
+                .join("Toolbox")
+                .join("scripts");
+            candidate_dirs.push(toolbox_scripts);
+        }
+
+        for p in candidate_dirs {
             if !p.exists() {
                 continue;
             }
-            if existing.iter().any(|e| e == p) || prepend.iter().any(|e| e == p) {
+            if existing.iter().any(|e| e == &p) || prepend.iter().any(|e| e == &p) {
                 continue;
             }
-            prepend.push(p.to_path_buf());
+            prepend.push(p);
         }
 
         if !prepend.is_empty() {
@@ -617,7 +669,7 @@ pub fn terminal_create_session(
         })
         .map_err(|err| format!("创建终端失败: {err}"))?;
 
-    let mut cmd = CommandBuilder::new(shell.clone());
+    let mut cmd = build_terminal_command(&shell);
     cmd.cwd(project_path);
     ensure_terminal_env(&mut cmd);
 

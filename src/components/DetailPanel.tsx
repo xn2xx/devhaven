@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { marked } from "marked";
 
 import type { Project, ProjectScript, TagData } from "../models/types";
 import type { BranchListItem } from "../models/branch";
 import { swiftDateToJsDate } from "../models/types";
+import { readProjectMarkdownFile } from "../services/markdown";
 import { readProjectNotes, writeProjectNotes } from "../services/notes";
 import { listBranches } from "../services/git";
+import { formatPathWithTilde } from "../utils/pathDisplay";
 import { IconX } from "./Icons";
 import ProjectMarkdownSection from "./ProjectMarkdownSection";
 
@@ -53,6 +56,13 @@ export default function DetailPanel({
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
   const [notes, setNotes] = useState("");
   const [notesSnapshot, setNotesSnapshot] = useState("");
+  const [hasProjectNotes, setHasProjectNotes] = useState(false);
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const [fallbackReadme, setFallbackReadme] = useState<{
+    path: string;
+    content: string;
+  } | null>(null);
+  const [fallbackReadmeLoading, setFallbackReadmeLoading] = useState(false);
   const [branches, setBranches] = useState<BranchListItem[]>([]);
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
   const [scriptDialog, setScriptDialog] = useState<{
@@ -74,11 +84,26 @@ export default function DetailPanel({
 
   useEffect(() => {
     if (!project) {
+      setNotesLoaded(false);
+      setHasProjectNotes(false);
+      setFallbackReadme(null);
+      setFallbackReadmeLoading(false);
       return;
     }
+
+    if (saveTimer.current) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+
     let cancelled = false;
+    setNotesLoaded(false);
+    setHasProjectNotes(false);
+    setFallbackReadme(null);
+    setFallbackReadmeLoading(false);
     setNotes("");
     setNotesSnapshot("");
+
     readProjectNotes(project.path)
       .then((value) => {
         if (cancelled) {
@@ -87,6 +112,8 @@ export default function DetailPanel({
         const resolved = value ?? "";
         setNotes(resolved);
         setNotesSnapshot(resolved);
+        setHasProjectNotes(Boolean(value?.trim()));
+        setNotesLoaded(true);
       })
       .catch(() => {
         if (cancelled) {
@@ -94,9 +121,16 @@ export default function DetailPanel({
         }
         setNotes("");
         setNotesSnapshot("");
+        setHasProjectNotes(false);
+        setNotesLoaded(true);
       });
+
     return () => {
       cancelled = true;
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
     };
   }, [project?.id]);
 
@@ -114,12 +148,68 @@ export default function DetailPanel({
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
     }
+
+    const projectPath = project.path;
+    const nextNotes = notes;
+
     saveTimer.current = window.setTimeout(() => {
-      const trimmed = notes.trim();
-      void writeProjectNotes(project.path, trimmed ? trimmed : null);
-      setNotesSnapshot(notes);
+      const trimmed = nextNotes.trim();
+      void writeProjectNotes(projectPath, trimmed ? trimmed : null)
+        .then(() => {
+          setNotesSnapshot(nextNotes);
+          setHasProjectNotes(Boolean(trimmed));
+        })
+        .catch(() => {
+          // 忽略保存失败，继续保留本地输入，等待用户后续编辑触发重试。
+        });
     }, 800);
-  }, [notes, notesSnapshot, project]);
+
+    return () => {
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+    };
+  }, [notes, notesSnapshot, project?.id, project?.path]);
+
+  useEffect(() => {
+    if (!project || !notesLoaded || hasProjectNotes) {
+      setFallbackReadme(null);
+      setFallbackReadmeLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setFallbackReadmeLoading(true);
+    setFallbackReadme(null);
+
+    const readmeCandidates = ["README.md", "README.MD", "readme.md", "Readme.md"];
+
+    void (async () => {
+      for (const candidate of readmeCandidates) {
+        try {
+          const content = await readProjectMarkdownFile(project.path, candidate);
+          if (cancelled) {
+            return;
+          }
+          setFallbackReadme({ path: candidate, content });
+          setFallbackReadmeLoading(false);
+          return;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!cancelled) {
+        setFallbackReadme(null);
+        setFallbackReadmeLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasProjectNotes, notesLoaded, project?.id, project?.path]);
 
   useEffect(() => {
     if (!project || activeTab !== "branches") {
@@ -156,6 +246,15 @@ export default function DetailPanel({
   };
 
   const scripts = useMemo(() => project?.scripts ?? [], [project]);
+  const displayPath = useMemo(() => formatPathWithTilde(project?.path ?? ""), [project?.path]);
+  const shouldShowReadmeFallback = !hasProjectNotes && notes.trim().length === 0;
+  const fallbackReadmePreview = useMemo(() => {
+    if (!fallbackReadme?.content) {
+      return "";
+    }
+    const rendered = marked.parse(fallbackReadme.content);
+    return typeof rendered === "string" ? rendered : "";
+  }, [fallbackReadme?.content]);
 
   if (!project) {
     return (
@@ -171,7 +270,7 @@ export default function DetailPanel({
         <div>
           <div className="text-[16px] font-semibold">{project.name}</div>
           <div className="max-w-[320px] truncate text-fs-caption text-secondary-text" title={project.path}>
-            {project.path}
+            {displayPath}
           </div>
         </div>
         <button className="icon-btn" onClick={onClose} aria-label="关闭">
@@ -254,13 +353,52 @@ export default function DetailPanel({
           </section>
 
           <section className="flex flex-col gap-2.5">
-            <div className="text-[14px] font-semibold">备注</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[14px] font-semibold">备注</div>
+              {shouldShowReadmeFallback && fallbackReadme ? (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setNotes(fallbackReadme.content);
+                    setHasProjectNotes(true);
+                  }}
+                >
+                  用 README 初始化
+                </button>
+              ) : null}
+            </div>
             <textarea
               className="min-h-[120px] resize-y rounded-md border border-border bg-card-bg px-2 py-2 text-text focus:outline-2 focus:outline-accent focus:outline-offset-[-1px]"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              placeholder="记录项目备注"
+              placeholder="记录项目备注（保存到 PROJECT_NOTES.md）"
             />
+            {shouldShowReadmeFallback ? (
+              <div className="flex flex-col gap-2 rounded-md border border-border bg-secondary-background p-2.5">
+                <div className="text-fs-caption text-secondary-text">
+                  {fallbackReadmeLoading
+                    ? "未发现备注，正在读取 README.md..."
+                    : fallbackReadme
+                      ? `未发现备注，当前展示 ${fallbackReadme.path} 作为只读参考`
+                      : "未发现备注，也未找到 README.md"}
+                </div>
+                {fallbackReadme ? (
+                  fallbackReadmePreview ? (
+                    <div className="max-h-[220px] overflow-y-auto rounded-md border border-border bg-card-bg px-3 py-2.5 text-fs-caption leading-relaxed text-text">
+                      <div
+                        className="markdown-content"
+                        dangerouslySetInnerHTML={{
+                          __html: fallbackReadmePreview,
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-fs-caption text-secondary-text">README 内容为空</div>
+                  )
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <section className="flex flex-col gap-2.5">

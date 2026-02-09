@@ -1,14 +1,20 @@
-import type { Project } from "../models/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import type { Project, ProjectListViewMode } from "../models/types";
 import type { DateFilter, GitFilter } from "../models/filters";
 import { DATE_FILTER_OPTIONS, GIT_FILTER_OPTIONS } from "../models/filters";
+import { readProjectNotesPreviews } from "../services/notes";
 import ProjectCard from "./ProjectCard";
+import ProjectListRow from "./ProjectListRow";
 import SearchBar from "./SearchBar";
 import {
   IconCalendar,
   IconChartLine,
+  IconList,
   IconSearch,
   IconSettings,
   IconSidebarRight,
+  IconSquares,
 } from "./Icons";
 
 export type MainContentProps = {
@@ -23,6 +29,8 @@ export type MainContentProps = {
   onDateFilterChange: (value: DateFilter) => void;
   gitFilter: GitFilter;
   onGitFilterChange: (value: GitFilter) => void;
+  viewMode: ProjectListViewMode;
+  onViewModeChange: (value: ProjectListViewMode) => void;
   showDetailPanel: boolean;
   onToggleDetailPanel: () => void;
   onOpenDashboard: () => void;
@@ -52,6 +60,8 @@ export default function MainContent({
   onDateFilterChange,
   gitFilter,
   onGitFilterChange,
+  viewMode,
+  onViewModeChange,
   showDetailPanel,
   onToggleDetailPanel,
   onOpenDashboard,
@@ -67,6 +77,57 @@ export default function MainContent({
   getTagColor,
   searchInputRef,
 }: MainContentProps) {
+  const [notePreviewByPath, setNotePreviewByPath] = useState<Record<string, string>>({});
+  const [isNotesPreviewLoading, setIsNotesPreviewLoading] = useState(false);
+  const previewRequestIdRef = useRef(0);
+  const listProjectPaths = useMemo(() => filteredProjects.map((project) => project.path), [filteredProjects]);
+  const listProjectPathsKey = useMemo(() => listProjectPaths.join("\n"), [listProjectPaths]);
+
+  useEffect(() => {
+    if (viewMode !== "list") {
+      return;
+    }
+    if (listProjectPaths.length === 0) {
+      setNotePreviewByPath({});
+      setIsNotesPreviewLoading(false);
+      return;
+    }
+
+    const requestId = previewRequestIdRef.current + 1;
+    previewRequestIdRef.current = requestId;
+    setIsNotesPreviewLoading(true);
+
+    void readProjectNotesPreviews(listProjectPaths)
+      .then((entries) => {
+        if (previewRequestIdRef.current !== requestId) {
+          return;
+        }
+        const previews = Object.fromEntries(
+          listProjectPaths.map((path) => [path, "—"]),
+        ) as Record<string, string>;
+
+        for (const entry of entries) {
+          const value = (entry.notesPreview ?? "").trim();
+          previews[entry.path] = value || "—";
+        }
+
+        setNotePreviewByPath(previews);
+      })
+      .catch(() => {
+        if (previewRequestIdRef.current !== requestId) {
+          return;
+        }
+        setNotePreviewByPath(
+          Object.fromEntries(listProjectPaths.map((path) => [path, "—"])) as Record<string, string>,
+        );
+      })
+      .finally(() => {
+        if (previewRequestIdRef.current === requestId) {
+          setIsNotesPreviewLoading(false);
+        }
+      });
+  }, [listProjectPaths, listProjectPathsKey, viewMode]);
+
   return (
     <section className="flex min-h-0 min-w-0 flex-col bg-background">
       <div className="flex h-search-area-h items-center gap-3 border-b border-search-area-border bg-search-area-bg p-2">
@@ -113,6 +174,34 @@ export default function MainContent({
             </button>
           ))}
         </div>
+        <div className="inline-flex items-center gap-1 rounded-lg border border-search-border bg-search-bg p-0.5">
+          <button
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-semibold transition-colors duration-150 ${
+              viewMode === "card"
+                ? "bg-accent text-white"
+                : "text-secondary-text hover:bg-button-hover hover:text-text"
+            }`}
+            onClick={() => onViewModeChange("card")}
+            aria-label="卡片模式"
+            title="卡片模式"
+          >
+            <IconSquares size={13} />
+            卡片
+          </button>
+          <button
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-semibold transition-colors duration-150 ${
+              viewMode === "list"
+                ? "bg-accent text-white"
+                : "text-secondary-text hover:bg-button-hover hover:text-text"
+            }`}
+            onClick={() => onViewModeChange("list")}
+            aria-label="列表模式"
+            title="列表模式"
+          >
+            <IconList size={13} />
+            列表
+          </button>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -141,6 +230,31 @@ export default function MainContent({
             <IconSearch className="text-secondary-text" size={36} />
             <div>没有匹配的项目</div>
             <div>尝试修改搜索条件或清除标签筛选</div>
+          </div>
+        ) : viewMode === "list" ? (
+          <div className="flex flex-col gap-3 p-4">
+            <div className="grid grid-cols-[minmax(220px,2.2fr)_170px_minmax(180px,2fr)_116px] items-center gap-3 px-3 text-fs-caption font-semibold text-secondary-text">
+              <div>项目</div>
+              <div>最后时间</div>
+              <div>备注</div>
+              <div className="text-right">操作</div>
+            </div>
+            <div className="overflow-hidden rounded-xl border border-card-border bg-card-bg">
+              {filteredProjects.map((project) => (
+                <ProjectListRow
+                  key={project.id}
+                  project={project}
+                  isSelected={selectedProjects.has(project.id)}
+                  selectedProjectIds={selectedProjects}
+                  notePreview={notePreviewByPath[project.path] ?? (isNotesPreviewLoading ? "加载中..." : "—")}
+                  onSelect={(event) => onSelectProject(project, event)}
+                  onOpenTerminal={onOpenTerminal}
+                  onRefreshProject={onRefreshProject}
+                  onCopyPath={onCopyPath}
+                  onMoveToRecycleBin={onMoveToRecycleBin}
+                />
+              ))}
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-4 p-4">

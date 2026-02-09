@@ -23,7 +23,7 @@ import type { HeatmapData } from "./models/heatmap";
 import { HEATMAP_CONFIG } from "./models/heatmap";
 import type { TerminalWorkspaceSummary } from "./models/terminal";
 import type { CodexAgentEvent, CodexMonitorSession, CodexSessionView } from "./models/codex";
-import type { ColorData, Project, ProjectWorktree, TagData } from "./models/types";
+import type { ColorData, Project, ProjectListViewMode, ProjectWorktree, TagData } from "./models/types";
 import { jsDateToSwiftDate, swiftDateToJsDate } from "./models/types";
 import { colorDataToHex } from "./utils/colors";
 import { formatDateKey } from "./utils/gitDaily";
@@ -245,6 +245,17 @@ function buildCodexSessionViews(sessions: CodexMonitorSession[], projects: Proje
   });
 }
 
+function shouldBlockReloadShortcut(event: KeyboardEvent): boolean {
+  const key = event.key.toLowerCase();
+  if (key === "f5" || event.code === "F5") {
+    return true;
+  }
+  if (key !== "r") {
+    return false;
+  }
+  return (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey;
+}
+
 /** 应用主布局，负责筛选、状态联动与面板展示。 */
 function AppLayout() {
   const {
@@ -315,6 +326,32 @@ function AppLayout() {
       document.documentElement.classList.remove("is-monitor-view");
     };
   }, [isMonitorView]);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD || typeof window === "undefined") {
+      return;
+    }
+
+    // 生产环境阻断原生右键刷新入口与刷新快捷键，避免页面重载导致会话状态丢失。
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!shouldBlockReloadShortcut(event)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("contextmenu", handleContextMenu, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("contextmenu", handleContextMenu, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, []);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const lastTerminalVisibleRef = useRef(showTerminalWorkspace);
@@ -419,6 +456,8 @@ function AppLayout() {
     () => new Set(appState.tags.filter((tag) => tag.hidden).map((tag) => tag.name)),
     [appState.tags],
   );
+  const projectListViewMode: ProjectListViewMode =
+    appState.settings.projectListViewMode ?? "card";
 
   useEffect(() => {
     if (!worktreeDialogProjectId) {
@@ -1779,6 +1818,21 @@ function AppLayout() {
     [showToast, updateSettings],
   );
 
+  const handleChangeProjectListViewMode = useCallback(
+    async (mode: ProjectListViewMode) => {
+      if (mode === projectListViewMode) {
+        return;
+      }
+      try {
+        await updateSettings({ ...appState.settings, projectListViewMode: mode });
+      } catch (error) {
+        console.error("切换项目视图模式失败。", error);
+        showToast("切换失败，请稍后重试", "error");
+      }
+    },
+    [appState.settings, projectListViewMode, showToast, updateSettings],
+  );
+
   useEffect(() => {
     if (isMonitorView) {
       return;
@@ -1892,6 +1946,8 @@ function AppLayout() {
           onDateFilterChange={setDateFilter}
           gitFilter={gitFilter}
           onGitFilterChange={setGitFilter}
+          viewMode={projectListViewMode}
+          onViewModeChange={(mode) => void handleChangeProjectListViewMode(mode)}
           showDetailPanel={showDetailPanel}
           onToggleDetailPanel={handleToggleDetail}
           onOpenDashboard={() => setShowDashboard(true)}

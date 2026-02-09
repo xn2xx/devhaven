@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+use crate::models::ProjectNotesPreview;
+
 const NOTES_FILE: &str = "PROJECT_NOTES.md";
 
 /// 读取项目备注内容，空内容返回 None。
@@ -36,4 +38,26 @@ pub fn write_notes(project_path: &str, notes: Option<String>) -> Result<(), Stri
             Ok(())
         }
     }
+}
+
+/// 批量读取项目备注首行预览，读取失败时返回空预览。
+pub fn read_notes_previews(project_paths: &[String]) -> Vec<ProjectNotesPreview> {
+    project_paths
+        .iter()
+        .map(|path| ProjectNotesPreview {
+            path: path.clone(),
+            notes_preview: read_notes(path)
+                .ok()
+                .flatten()
+                .and_then(|content| extract_preview_line(&content)),
+        })
+        .collect()
+}
+
+fn extract_preview_line(content: &str) -> Option<String> {
+    content
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
 }

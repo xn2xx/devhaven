@@ -84,6 +84,30 @@ export function IconCalendar(props: IconProps) {
   );
 }
 
+export function IconSquares(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="4" y="4" width="7" height="7" rx="1" />
+      <rect x="13" y="4" width="7" height="7" rx="1" />
+      <rect x="4" y="13" width="7" height="7" rx="1" />
+      <rect x="13" y="13" width="7" height="7" rx="1" />
+    </IconBase>
+  );
+}
+
+export function IconList(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <line x1="8" y1="6" x2="21" y2="6" />
+      <line x1="8" y1="12" x2="21" y2="12" />
+      <line x1="8" y1="18" x2="21" y2="18" />
+      <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
+    </IconBase>
+  );
+}
+
 export function IconArrowUpCircle(props: IconProps) {
   return (
     <IconBase {...props}>

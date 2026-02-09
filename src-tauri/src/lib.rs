@@ -26,11 +26,10 @@ use crate::models::{
     AppStateFile, BranchListItem, CodexMonitorSnapshot, FsListResponse, FsReadResponse,
     FsWriteResponse, GitDailyResult, GitDiffContents, GitIdentity, GitRepoStatus,
     GitWorktreeAddResult, GitWorktreeListItem, HeatmapCacheFile, InteractionLockPayload,
-    MarkdownFileEntry, Project, TerminalCodexPaneOverlay, TerminalWorkspace,
-    TerminalWorkspaceSummary,
-    WorktreeInitCancelResult, WorktreeInitCreateBlockingResult, WorktreeInitJobStatus,
-    WorktreeInitRetryRequest, WorktreeInitStartRequest, WorktreeInitStartResult,
-    WorktreeInitStatusQuery, WorktreeInitStep,
+    MarkdownFileEntry, Project, ProjectNotesPreview, TerminalCodexPaneOverlay, TerminalWorkspace,
+    TerminalWorkspaceSummary, WorktreeInitCancelResult, WorktreeInitCreateBlockingResult,
+    WorktreeInitJobStatus, WorktreeInitRetryRequest, WorktreeInitStartRequest,
+    WorktreeInitStartResult, WorktreeInitStatusQuery, WorktreeInitStep,
 };
 use crate::system::EditorOpenParams;
 use crate::terminal::{
@@ -501,6 +500,15 @@ fn read_project_notes(path: String) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
+/// 批量读取项目备注预览（首行文本）。
+fn read_project_notes_previews(paths: Vec<String>) -> Vec<ProjectNotesPreview> {
+    log_command("read_project_notes_previews", || {
+        log::info!("read_project_notes_previews paths={}", paths.len());
+        notes::read_notes_previews(&paths)
+    })
+}
+
+#[tauri::command]
 /// 写入项目备注内容。
 fn write_project_notes(path: String, notes: Option<String>) -> Result<(), String> {
     log_command_result("write_project_notes", || {
@@ -732,6 +740,7 @@ pub fn run() {
             set_window_fullscreen_auxiliary,
             copy_to_clipboard,
             read_project_notes,
+            read_project_notes_previews,
             write_project_notes,
             list_project_markdown_files,
             read_project_markdown_file,
