@@ -41,9 +41,15 @@ importers:
       xterm-addon-fit:
         specifier: ^0.8.0
         version: 0.8.0(xterm@5.3.0)
+      xterm-addon-search:
+        specifier: ^0.13.0
+        version: 0.13.0(xterm@5.3.0)
       xterm-addon-serialize:
         specifier: ^0.11.0
         version: 0.11.0(xterm@5.3.0)
+      xterm-addon-web-links:
+        specifier: ^0.9.0
+        version: 0.9.0(xterm@5.3.0)
       xterm-addon-webgl:
         specifier: ^0.16.0
         version: 0.16.0(xterm@5.3.0)
@@ -80,7 +86,7 @@ importers:
         version: 7.3.1(jiti@2.6.1)
 
 packages:
-  
+
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
 
@@ -1047,9 +1053,21 @@ packages:
     peerDependencies:
       xterm: ^5.0.0
 
+  xterm-addon-search@0.13.0:
+    resolution: {integrity: sha512-sDUwG4CnqxUjSEFh676DlS3gsh3XYCzAvBPSvJ5OPgF3MRL3iHLPfsb06doRicLC2xXNpeG2cWk8x1qpESWJMA==}
+    deprecated: This package is now deprecated. Move to @xterm/addon-search instead.
+    peerDependencies:
+      xterm: ^5.0.0
+
   xterm-addon-serialize@0.11.0:
     resolution: {integrity: sha512-2CNDnmLdLkNWfsxNFkGsI5FE9W/BbsMzeOrbu59yNqH9L6k1gmL+Ab6VXxEp2NQUJSzaiqi6t0nFR5k5EDkVIg==}
     deprecated: This package is now deprecated. Move to @xterm/addon-serialize instead.
+    peerDependencies:
+      xterm: ^5.0.0
+
+  xterm-addon-web-links@0.9.0:
+    resolution: {integrity: sha512-LIzi4jBbPlrKMZF3ihoyqayWyTXAwGfu4yprz1aK2p71e9UKXN6RRzVONR0L+Zd+Ik5tPVI9bwp9e8fDTQh49Q==}
+    deprecated: This package is now deprecated. Move to @xterm/addon-web-links instead.
     peerDependencies:
       xterm: ^5.0.0
 
@@ -1965,7 +1983,15 @@ snapshots:
     dependencies:
       xterm: 5.3.0
 
+  xterm-addon-search@0.13.0(xterm@5.3.0):
+    dependencies:
+      xterm: 5.3.0
+
   xterm-addon-serialize@0.11.0(xterm@5.3.0):
+    dependencies:
+      xterm: 5.3.0
+
+  xterm-addon-web-links@0.9.0(xterm@5.3.0):
     dependencies:
       xterm: 5.3.0
 

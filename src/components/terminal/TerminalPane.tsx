@@ -1,11 +1,14 @@
-import { useEffect, useRef } from "react";
-import { Terminal, type ITheme } from "xterm";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { Terminal, type ILink, type ILinkProvider, type ITheme } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+import { SearchAddon } from "xterm-addon-search";
 import { WebglAddon } from "xterm-addon-webgl";
+import { WebLinksAddon } from "xterm-addon-web-links";
 import { SerializeAddon } from "xterm-addon-serialize";
 import "xterm/css/xterm.css";
 
-import { copyToClipboard } from "../../services/system";
+import { copyToClipboard, openInFinder } from "../../services/system";
 import {
   createTerminalSession,
   killTerminal,
@@ -26,6 +29,243 @@ type PtyRegistryEntry = {
 
 const PTY_REGISTRY = new Map<string, PtyRegistryEntry>();
 const PTY_KILL_GRACE_MS = 1000;
+const SEARCH_OPTIONS = {
+  caseSensitive: false,
+  regex: false,
+  wholeWord: false,
+};
+const SAFE_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+const LOCAL_PATH_TOKEN_REGEX = /(?<![:/A-Za-z0-9._~-])(?:~\/|\/|Users\/)[^\s"'<>`|]+/g;
+const LOCAL_PATH_TRAILING_PUNCTUATION = /[.,;!?]+$/;
+const LOCAL_PATH_MATCH_WINDOW_MAX_CHARS = 2048;
+
+type LocalPathToken = {
+  displayPath: string;
+  openPath: string;
+};
+
+function isMacOS() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /mac/i.test(navigator.userAgent);
+}
+
+function toSafeLink(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (!SAFE_LINK_PROTOCOLS.has(parsed.protocol.toLowerCase())) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function shouldOpenByModifierKey(event: MouseEvent, isMac: boolean): boolean {
+  return isMac ? event.metaKey || event.ctrlKey : event.ctrlKey || event.metaKey;
+}
+
+function resolveHomeDirFromCwd(cwd: string): string | null {
+  const segments = cwd.split("/");
+  if (segments.length < 3) {
+    return null;
+  }
+
+  const username = segments[2];
+  if (!username) {
+    return null;
+  }
+
+  if (segments[1] === "Users") {
+    return `/Users/${username}`;
+  }
+  if (segments[1] === "home") {
+    return `/home/${username}`;
+  }
+
+  return null;
+}
+
+function parseLocalPathToken(rawPath: string, homeDir: string | null): LocalPathToken | null {
+  const trimmed = rawPath.trim();
+  if (!(trimmed.startsWith("/") || trimmed.startsWith("~/") || trimmed.startsWith("Users/"))) {
+    return null;
+  }
+  const displayPath = trimmed.replace(LOCAL_PATH_TRAILING_PUNCTUATION, "");
+  if (displayPath.length <= 1 || displayPath.includes("\0")) {
+    return null;
+  }
+
+  if (displayPath.startsWith("/")) {
+    return { displayPath, openPath: displayPath };
+  }
+  if (displayPath.startsWith("Users/")) {
+    return { displayPath, openPath: `/${displayPath}` };
+  }
+  if (displayPath.startsWith("~/")) {
+    if (!homeDir) {
+      return null;
+    }
+    return { displayPath, openPath: `${homeDir}${displayPath.slice(1)}` };
+  }
+
+  return null;
+}
+
+function shouldContinueWrappedPathScan(lineText: string): boolean {
+  return lineText.indexOf(" ") === -1;
+}
+
+function getWindowedLineStrings(bufferLineNumber: number, term: Terminal): [string[], number] {
+  const activeBuffer = term.buffer.active;
+  const currentLine = activeBuffer.getLine(bufferLineNumber);
+  if (!currentLine) {
+    return [[], bufferLineNumber];
+  }
+
+  const currentLineText = currentLine.translateToString(true);
+  const strings: string[] = [currentLineText];
+  let startLine = bufferLineNumber;
+
+  if (currentLine.isWrapped && currentLineText[0] !== " ") {
+    let scannedChars = 0;
+    while (scannedChars < LOCAL_PATH_MATCH_WINDOW_MAX_CHARS) {
+      const previousLineNumber = startLine - 1;
+      const previousLine = activeBuffer.getLine(previousLineNumber);
+      if (!previousLine) {
+        break;
+      }
+
+      const previousText = previousLine.translateToString(true);
+      strings.unshift(previousText);
+      scannedChars += previousText.length;
+      startLine = previousLineNumber;
+
+      if (!previousLine.isWrapped || !shouldContinueWrappedPathScan(previousText)) {
+        break;
+      }
+    }
+  }
+
+  let endLine = bufferLineNumber;
+  let scannedChars = 0;
+  while (scannedChars < LOCAL_PATH_MATCH_WINDOW_MAX_CHARS) {
+    const nextLineNumber = endLine + 1;
+    const nextLine = activeBuffer.getLine(nextLineNumber);
+    if (!nextLine || !nextLine.isWrapped) {
+      break;
+    }
+
+    const nextText = nextLine.translateToString(true);
+    strings.push(nextText);
+    scannedChars += nextText.length;
+    endLine = nextLineNumber;
+
+    if (!shouldContinueWrappedPathScan(nextText)) {
+      break;
+    }
+  }
+
+  return [strings, startLine];
+}
+
+function mapStringIndexToBufferPosition(
+  term: Terminal,
+  bufferLineNumber: number,
+  startColumn: number,
+  stringIndex: number,
+): [number, number] {
+  const activeBuffer = term.buffer.active;
+  const reusableCell = activeBuffer.getNullCell();
+  let lineNumber = bufferLineNumber;
+  let column = startColumn;
+
+  while (stringIndex > 0) {
+    const line = activeBuffer.getLine(lineNumber);
+    if (!line) {
+      return [-1, -1];
+    }
+
+    for (let cellIndex = column; cellIndex < line.length; cellIndex += 1) {
+      line.getCell(cellIndex, reusableCell);
+      const chars = reusableCell.getChars();
+
+      if (reusableCell.getWidth()) {
+        stringIndex -= chars.length || 1;
+        if (cellIndex === line.length - 1 && chars === "") {
+          const nextLine = activeBuffer.getLine(lineNumber + 1);
+          if (nextLine && nextLine.isWrapped) {
+            nextLine.getCell(0, reusableCell);
+            if (reusableCell.getWidth() === 2) {
+              stringIndex += 1;
+            }
+          }
+        }
+      }
+
+      if (stringIndex < 0) {
+        return [lineNumber, cellIndex];
+      }
+    }
+
+    lineNumber += 1;
+    column = 0;
+  }
+
+  return [lineNumber, column];
+}
+
+function createLocalPathLinkProvider(
+  term: Terminal,
+  cwd: string,
+  onActivate: (event: MouseEvent, path: string) => void,
+): ILinkProvider {
+  const homeDir = resolveHomeDirFromCwd(cwd);
+
+  return {
+    provideLinks(bufferLineNumber, callback) {
+      const [windowedLineStrings, startLineNumber] = getWindowedLineStrings(bufferLineNumber - 1, term);
+      const mergedText = windowedLineStrings.join("");
+      if (!mergedText.includes("/")) {
+        callback(undefined);
+        return;
+      }
+
+      const links: ILink[] = [];
+      LOCAL_PATH_TOKEN_REGEX.lastIndex = 0;
+      let match: RegExpExecArray | null = null;
+      while ((match = LOCAL_PATH_TOKEN_REGEX.exec(mergedText)) !== null) {
+        const parsedPath = parseLocalPathToken(match[0], homeDir);
+        if (!parsedPath) {
+          continue;
+        }
+
+        const [startLine, startColumn] = mapStringIndexToBufferPosition(term, startLineNumber, 0, match.index);
+        const [endLine, endColumn] = mapStringIndexToBufferPosition(
+          term,
+          startLine,
+          startColumn,
+          parsedPath.displayPath.length,
+        );
+        if (startLine < 0 || startColumn < 0 || endLine < 0 || endColumn < 0) {
+          continue;
+        }
+
+        links.push({
+          range: {
+            start: { x: startColumn + 1, y: startLine + 1 },
+            end: { x: endColumn, y: endLine + 1 },
+          },
+          text: parsedPath.openPath,
+          activate: onActivate,
+        });
+      }
+      callback(links.length > 0 ? links : undefined);
+    },
+  };
+}
 
 function buildPtyRegistryKey(windowLabel: string, sessionId: string) {
   return `${windowLabel}::${sessionId}`;
@@ -167,12 +407,60 @@ export default function TerminalPane({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
   const serializeAddonRef = useRef<SerializeAddon | null>(null);
+  const webLinksAddonRef = useRef<WebLinksAddon | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const restoredRef = useRef(false);
   const themeRef = useRef<ITheme>(theme);
+  const searchOpenRef = useRef(false);
+  const isMacRef = useRef(isMacOS());
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
   themeRef.current = theme;
+
+  const closeSearch = useCallback(() => {
+    searchAddonRef.current?.clearDecorations();
+    setSearchOpen(false);
+  }, []);
+
+  const triggerSearch = useCallback(
+    (forward: boolean, incremental: boolean) => {
+      const addon = searchAddonRef.current;
+      const keyword = searchKeyword.trim();
+      if (!addon || !keyword) {
+        return false;
+      }
+      if (forward) {
+        return addon.findNext(keyword, { ...SEARCH_OPTIONS, incremental });
+      }
+      return addon.findPrevious(keyword, SEARCH_OPTIONS);
+    },
+    [searchKeyword],
+  );
+
+  useEffect(() => {
+    searchOpenRef.current = searchOpen;
+    if (searchOpen) {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
+    }
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) {
+      return;
+    }
+    if (!searchKeyword.trim()) {
+      searchAddonRef.current?.clearDecorations();
+      return;
+    }
+    triggerSearch(true, true);
+  }, [searchKeyword, searchOpen, triggerSearch]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -205,6 +493,13 @@ export default function TerminalPane({
         return true;
       }
 
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key === "Escape" && searchOpenRef.current) {
+        closeSearch();
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+
       // 仅按下 Cmd（Meta）时也可能触发“滚到光标区域”，因此直接拦截。
       if (event.key === "Meta" || event.code === "MetaLeft" || event.code === "MetaRight") {
         event.preventDefault();
@@ -216,6 +511,12 @@ export default function TerminalPane({
       // 保留 Ctrl/Alt 的终端语义（例如 Ctrl+C / Option+B 等）。
       if (event.metaKey && !event.ctrlKey && !event.altKey) {
         const key = event.key.toLowerCase();
+        if (key === "f") {
+          setSearchOpen(true);
+          event.preventDefault();
+          event.stopPropagation();
+          return false;
+        }
         // 允许系统粘贴走默认通路（paste event），否则会导致终端无法 Cmd+V 粘贴。
         if (key === "v") {
           return true;
@@ -234,14 +535,65 @@ export default function TerminalPane({
         event.stopPropagation();
         return false;
       }
+
+      if (
+        !isMacRef.current &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "f"
+      ) {
+        setSearchOpen(true);
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
       return true;
     });
     // 忽略 DECSCUSR（CSI Ps SP q），避免 shell/应用切换插入/正常模式时改成条形光标等。
     const cursorStyleHandler = term.parser.registerCsiHandler({ intermediates: " ", final: "q" }, () => true);
     const fitAddon = new FitAddon();
+    const searchAddon = new SearchAddon();
     const serializeAddon = new SerializeAddon();
+    const webLinksAddon = new WebLinksAddon((event, rawUrl) => {
+      const shouldOpen = shouldOpenByModifierKey(event, isMacRef.current);
+      if (!shouldOpen) {
+        return;
+      }
+      const safeUrl = toSafeLink(rawUrl);
+      if (!safeUrl) {
+        console.warn("忽略不安全链接协议。", rawUrl);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      void openUrl(safeUrl).catch((error) => {
+        console.warn("打开链接失败。", error);
+      });
+    });
+    const localPathLinkProvider = term.registerLinkProvider(
+      createLocalPathLinkProvider(term, cwd, (event, resolvedPath) => {
+        const shouldOpen = shouldOpenByModifierKey(event, isMacRef.current);
+        if (!shouldOpen) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        void openInFinder(resolvedPath)
+          .catch((error) => {
+            console.warn("在 Finder 中打开本地路径失败，回退到系统默认打开。", error);
+            return openPath(resolvedPath);
+          })
+          .catch((error) => {
+            console.warn("打开本地路径失败。", error);
+          });
+      }),
+    );
     term.loadAddon(fitAddon);
+    term.loadAddon(searchAddon);
     term.loadAddon(serializeAddon);
+    term.loadAddon(webLinksAddon);
     const safeFit = () => {
       if (disposed) {
         return;
@@ -292,7 +644,9 @@ export default function TerminalPane({
     }
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+    searchAddonRef.current = searchAddon;
     serializeAddonRef.current = serializeAddon;
+    webLinksAddonRef.current = webLinksAddon;
     webglAddonRef.current = null;
 
     const resizeObserver = new ResizeObserver(() => {
@@ -417,7 +771,10 @@ export default function TerminalPane({
         console.warn("缓存终端状态失败。", error);
       }
       unregisterSnapshot();
+      searchAddonRef.current = null;
+      webLinksAddonRef.current = null;
       cursorStyleHandler.dispose();
+      localPathLinkProvider.dispose();
       renderOnce.dispose();
       disposable.dispose();
       resizeObserver.disconnect();
@@ -446,7 +803,7 @@ export default function TerminalPane({
         }
       }, 0);
     };
-  }, [cwd, savedState, sessionId, windowLabel, onExit, onPtyReady, onRegisterSnapshotProvider]);
+  }, [cwd, savedState, sessionId, windowLabel, onExit, onPtyReady, onRegisterSnapshotProvider, closeSearch]);
 
   useEffect(() => {
     const term = termRef.current;
@@ -526,13 +883,68 @@ export default function TerminalPane({
       className={`terminal-pane relative flex h-full w-full min-h-0 min-w-0 p-[10px] ${
         isActive ? "outline outline-1 outline-[var(--terminal-accent-outline)]" : ""
       }`}
-      onMouseDownCapture={() => {
+      onMouseDownCapture={(event) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest("[data-terminal-search-overlay=true]")) {
+          return;
+        }
         onActivate(sessionId);
         // 关键：当 Pane 已经是 active 时，useEffect 不会再次触发 focus。
         // 这会导致 ⌘A/⌘C 落到浏览器默认行为（全选页面/复制）并引发页面滚动到底部。
         requestAnimationFrame(() => termRef.current?.focus());
       }}
     >
+      {searchOpen ? (
+        <div
+          data-terminal-search-overlay="true"
+          className="absolute left-4 top-3 z-30 flex w-[240px] items-center gap-1 rounded-md border border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)]/95 p-1.5 shadow-md"
+        >
+          <input
+            ref={searchInputRef}
+            value={searchKeyword}
+            onChange={(event) => setSearchKeyword(event.target.value)}
+            placeholder="搜索当前 Pane..."
+            className="h-7 w-full rounded-md border border-[var(--terminal-divider)] bg-[var(--terminal-bg)] px-2 text-[12px] text-[var(--terminal-fg)] outline-none focus-visible:border-[var(--terminal-accent-outline)]"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                triggerSearch(!event.shiftKey, false);
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                closeSearch();
+              }
+            }}
+          />
+          <button
+            type="button"
+            title="上一个 (Shift+Enter)"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--terminal-divider)] text-[11px] text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+            onClick={() => triggerSearch(false, false)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            title="下一个 (Enter)"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--terminal-divider)] text-[11px] text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+            onClick={() => triggerSearch(true, false)}
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            title="关闭 (Esc)"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--terminal-divider)] text-[11px] text-[var(--terminal-muted-fg)] hover:bg-[var(--terminal-hover-bg)] hover:text-[var(--terminal-fg)]"
+            onClick={() => closeSearch()}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       {codexPaneOverlay ? (
         <div className="pointer-events-none absolute right-4 top-3 z-20 rounded-md border border-[var(--terminal-divider)] bg-[var(--terminal-panel-bg)]/95 px-2.5 py-1.5 text-[10px] leading-4 text-[var(--terminal-muted-fg)] shadow-md">
           <div className="font-semibold text-[var(--terminal-fg)]">Codex</div>

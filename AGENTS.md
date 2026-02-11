@@ -117,6 +117,7 @@ DevHaven 是一个基于 **Tauri + React** 的桌面应用：前端负责 UI/交
 - 终端工作区显示 Codex CLI 运行状态（按项目/Worktree 路径归属聚合会话）：`src/utils/codexProjectStatus.ts`、`src/App.tsx` → `src/components/terminal/TerminalWorkspaceWindow.tsx`/`src/components/terminal/TerminalWorkspaceView.tsx`
 - 终端 pane 右上角 Codex 浮层（模型/推理强度，按 pane 精确匹配）：`src/components/terminal/TerminalWorkspaceView.tsx`（轮询分发）→ `src/components/terminal/TerminalPane.tsx`（浮层渲染）→ `src/services/terminal.ts`（`getTerminalCodexPaneOverlay`）↔ `src-tauri/src/lib.rs`（Command：`get_terminal_codex_pane_overlay`）→ `src-tauri/src/terminal.rs`（shell 子进程树 + lsof rollout 关联）
 - 终端快捷键（iTerm2/浏览器风格）：`src/components/terminal/TerminalWorkspaceView.tsx`（⌘T 新建 Tab、⌘W 关闭 Pane/Tab、⌘↑/⌘↓/⌘←/⌘→ 上一/下一 Tab、⌘⇧[ / ⌘⇧] 上一/下一 Tab、⌘1..⌘9 快速切换 Tab、⌘D 分屏）
+- 终端高级能力（仅当前 Pane 搜索 + 修饰键点击链接）：`src/components/terminal/TerminalPane.tsx`（Search/WebLinks addons，mac `⌘F`、Win/Linux `Ctrl+Shift+F` 打开搜索，`Enter/Shift+Enter/Esc` 导航/关闭；链接需 `Cmd/Ctrl+点击`，支持 `http/https/mailto` 与本地路径 `/Users/...`、`Users/...`、`~/...`）→ URL 用 `@tauri-apps/plugin-opener` 的 `openUrl`，本地路径优先走 `src/services/system.ts` 的 `openInFinder`（失败回退 `openPath`）↔ `src-tauri/capabilities/terminal.json`（`opener:default` 权限）
 - 会话/PTY 通信：
   - macOS shell 启动链路：`src-tauri/src/terminal.rs` 中 `terminal_create_session` 使用 login shell 风格启动（`/usr/bin/login -flp <user> /bin/bash --noprofile --norc -c "exec -l <shell>"`），以对齐 Ghostty 并加载用户 login 环境（例如 `~/.zprofile` 的 PATH）。
   - 前端：`src/services/terminal.ts`（`terminal-*` 事件监听）
